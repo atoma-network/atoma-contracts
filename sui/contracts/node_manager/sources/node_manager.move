@@ -3,7 +3,7 @@ module node_manager::node_manager {
     use sui::balance::{Self, Balance};
     use sui::coin::{Self, Coin};
     use sui::object_table::{Self, ObjectTable};
-    use sui::object::{Self, UID};
+    use sui::object::{Self, UID, ID};
     use sui::table_vec::{Self, TableVec};
     use sui::table::{Self, Table};
     use sui::transfer;
@@ -14,6 +14,17 @@ module node_manager::node_manager {
     const InitialTOMACollateralRequiredForRegistration: u64 = 1_000;
 
     const ENodeRegDisabled: u64 = 0;
+
+    struct NodeRegisteredEvent has copy, drop {
+        /// ID of the NodeBadge object
+        badge_id: ID,
+        node_small_id: SmallId,
+    }
+
+    struct NodeSubscribedToModel has copy, drop {
+        node_small_id: SmallId,
+        model_name: ascii::String,
+    }
 
     /// Owned object, transferred to the contract publisher.
     ///
@@ -146,8 +157,15 @@ module node_manager::node_manager {
 
         table::add(&mut atoma.nodes, small_id, node_entry);
 
+        let badge_id =  object::new(ctx);
+
+        sui::event::emit(NodeRegisteredEvent {
+            badge_id: object::uid_to_inner(&badge_id),
+            node_small_id: small_id,
+        });
+
         NodeBadge {
-            id: object::new(ctx),
+            id: badge_id,
             small_id,
         }
     }
@@ -163,10 +181,15 @@ module node_manager::node_manager {
         let model = object_table::borrow_mut(&mut atoma.models, model_name);
         // TODO: prevent duplicates
         table_vec::push_back(&mut model.nodes, node_badge.small_id);
+
+        sui::event::emit(NodeSubscribedToModel {
+            node_small_id: node_badge.small_id,
+            model_name,
+        });
     }
 
     // =========================================================================
-    // Admin functions
+    //                          Admin functions
     // =========================================================================
 
     public entry fun add_model(
