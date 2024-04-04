@@ -2,6 +2,7 @@ module node_manager::node_manager {
     use std::ascii;
     use sui::balance::{Self, Balance};
     use sui::coin::{Self, Coin};
+    use sui::event;
     use sui::object_table::{Self, ObjectTable};
     use sui::object::{Self, UID, ID};
     use sui::table_vec::{Self, TableVec};
@@ -14,6 +15,7 @@ module node_manager::node_manager {
     const InitialCollateralRequiredForRegistration: u64 = 1_000;
 
     const ENodeRegDisabled: u64 = 0;
+    const EModelDisabled: u64 = 1;
 
     struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
@@ -98,8 +100,21 @@ module node_manager::node_manager {
         /// Whether the model is disabled and cannot be used to serve prompts.
         is_disabled: bool,
         /// Which nodes support this model.
+        /// We group nodes by HW and SW specs, because different environments
+        /// might end up having different outputs for the same model due to
+        /// e.g. floating point arithmetics.
         /// Using a vector allows for a random access using an index.
-        nodes: TableVec<SmallId>,
+        nodes_per_hw_spec: Table<EnvironmentSpec, TableVec<SmallId>>,
+    }
+
+    /// An opaque identifier for an environment.
+    /// We group environments off-chain.
+    /// Nodes must know at the time of registration which environment they
+    /// belong to.
+    /// If they chose the wrong environment, they might end up getting slashed
+    /// for serving incorrect results.
+    struct EnvironmentSpec has store, copy, drop {
+        id: u64
     }
 
     fun init(ctx: &mut TxContext) {
@@ -163,7 +178,7 @@ module node_manager::node_manager {
 
         let badge_id =  object::new(ctx);
 
-        sui::event::emit(NodeRegisteredEvent {
+        event::emit(NodeRegisteredEvent {
             badge_id: object::uid_to_inner(&badge_id),
             node_small_id: small_id,
         });
@@ -177,16 +192,31 @@ module node_manager::node_manager {
     /// The node owner announces that they can serve prompts for the given
     /// model.
     /// Fails if the model name is not registered.
+    /// For information about the environment spec, see `EnvironmentSpec`
+    /// type.
     public entry fun add_node_to_model(
         atoma: &mut AtomaDb,
         model_name: ascii::String,
+        environment_spec: u64,
         node_badge: &NodeBadge,
+        ctx: &mut TxContext,
     ) {
         let model = object_table::borrow_mut(&mut atoma.models, model_name);
-        // TODO: prevent duplicates
-        table_vec::push_back(&mut model.nodes, node_badge.small_id);
+        assert!(model.is_disabled, EModelDisabled);
 
-        sui::event::emit(NodeSubscribedToModel {
+        let environment_spec = EnvironmentSpec { id: environment_spec };
+        if (table::contains(&model.nodes_per_hw_spec, environment_spec)) {
+            let nodes =
+                table::borrow_mut(&mut model.nodes_per_hw_spec, environment_spec);
+            table_vec::push_back(nodes, node_badge.small_id);
+        } else {
+            let nodes = table_vec::singleton(node_badge.small_id, ctx);
+            table::add(&mut model.nodes_per_hw_spec, environment_spec, nodes);
+        };
+
+        // TODO: prevent duplicates
+
+        event::emit(NodeSubscribedToModel {
             node_small_id: node_badge.small_id,
             model_name,
         });
@@ -206,24 +236,29 @@ module node_manager::node_manager {
             id: object::new(ctx),
             name: model_name,
             is_disabled: false,
-            nodes: table_vec::empty(ctx),
+            nodes_per_hw_spec: table::new(ctx),
         };
         object_table::add(&mut atoma.models, model_name, model);
     }
 
-    public entry fun remove_model(
+    /// Unfortunately, all keys from the table need to be dropped manually
+    /// because Sui's collection drops does not compose.
+    /// But since both EnvironmentSpec and SmallId are droppable types, the
+    /// logic to drop them is implementable ad-hoc.
+    public fun remove_model(
         atoma: &mut AtomaDb,
         model_name: ascii::String,
         _: &AtomaOwnerBadge,
-    ) {
+    ): Table<EnvironmentSpec, TableVec<SmallId>> {
         let MLModelEntry {
             id: model_id,
             name: _,
             is_disabled: _,
-            nodes,
+            nodes_per_hw_spec,
         } = object_table::remove(&mut atoma.models, model_name);
-        table_vec::drop(nodes);
         object::delete(model_id);
+
+        nodes_per_hw_spec
     }
 
     public entry fun disable_model(
