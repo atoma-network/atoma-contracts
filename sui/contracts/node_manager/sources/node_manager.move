@@ -11,7 +11,7 @@ module node_manager::node_manager {
     use toma::toma::TOMA;
 
     /// How much collateral is required at the time of contract publication.
-    const InitialTOMACollateralRequiredForRegistration: u64 = 1_000;
+    const InitialCollateralRequiredForRegistration: u64 = 1_000;
 
     const ENodeRegDisabled: u64 = 0;
 
@@ -72,12 +72,12 @@ module node_manager::node_manager {
 
         /// If set to true, no new nodes can be registered.
         is_registration_disabled: bool,
-        /// How many TOMA tokens (ignoring decimal places) are required to be
-        /// collateralized by a node in order to be registered.
+        /// How many protocol tokens (ignoring decimal places) are required to
+        /// be collateralized by a node in order to be registered.
         ///
-        /// This setting can change as each node's collateralized TOMA balance
+        /// This setting can change as each node's collateralized balance
         /// is stored in the node's account data.
-        registration_collateral_in_toma_token: u64,
+        registration_collateral_in_protocol_token: u64,
     }
 
     /// Field of AtomaDb.
@@ -106,8 +106,8 @@ module node_manager::node_manager {
             models: object_table::new(ctx),
             next_node_small_id: SmallId { inner: 0 },
             is_registration_disabled: false,
-            registration_collateral_in_toma_token:
-                InitialTOMACollateralRequiredForRegistration,
+            registration_collateral_in_protocol_token:
+                InitialCollateralRequiredForRegistration,
         };
         transfer::share_object(atoma_db);
 
@@ -145,7 +145,7 @@ module node_manager::node_manager {
         assert!(!atoma.is_registration_disabled, ENodeRegDisabled);
 
         let collateral =
-            balance::split(wallet, atoma.registration_collateral_in_toma_token);
+            balance::split(wallet, atoma.registration_collateral_in_protocol_token);
 
         let small_id = atoma.next_node_small_id;
         atoma.next_node_small_id.inner = atoma.next_node_small_id.inner + 1;
@@ -259,6 +259,6 @@ module node_manager::node_manager {
         new_required_collateral: u64,
         _: &AtomaOwnerBadge,
     ) {
-        atoma.registration_collateral_in_toma_token = new_required_collateral;
+        atoma.registration_collateral_in_protocol_token = new_required_collateral;
     }
 }
