@@ -45,6 +45,9 @@ module node_manager::node_manager {
     /// are at stake, we assign a u64 ID to each node instead of using Sui
     /// address which is 32 bytes.
     struct SmallId has store, copy, drop {
+        /// # Important
+        /// We start from 1 because 0 is reserved an empty node, which might
+        /// become valuable to represent in future.
         inner: u64,
     }
 
@@ -104,7 +107,8 @@ module node_manager::node_manager {
             id: object::new(ctx),
             nodes: table::new(ctx),
             models: object_table::new(ctx),
-            next_node_small_id: SmallId { inner: 0 },
+            // IMPORTANT: we start from 1 because 0 is reserved
+            next_node_small_id: SmallId { inner: 1 },
             is_registration_disabled: false,
             registration_collateral_in_protocol_token:
                 InitialCollateralRequiredForRegistration,
