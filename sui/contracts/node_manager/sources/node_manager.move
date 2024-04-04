@@ -49,14 +49,16 @@ module node_manager::node_manager {
     /// - O(1) access to model
     struct AtomaDb has key {
         id: UID,
+        /// We keep track of total registered nodes so that we can generate
+        /// SmallId for newly registered nodes as these IDs are sequential.
+        next_node_small_id: SmallId,
         /// Holds information about each node.
         nodes: Table<SmallId, NodeEntry>,
         /// Each model is represented here and stores which nodes support it.
         models: ObjectTable<ascii::String, MLModelEntry>,
 
-        /// We keep track of total registered nodes so that we can generate
-        /// SmallId for newly registered nodes as these IDs are sequential.
-        next_node_small_id: SmallId,
+        // Configuration
+
         /// If set to true, no new nodes can be registered.
         is_registration_disabled: bool,
         /// How many TOMA tokens (ignoring decimal places) are required to be
@@ -170,6 +172,7 @@ module node_manager::node_manager {
     public entry fun add_model(
         atoma: &mut AtomaDb,
         model_name: ascii::String,
+        _: &AtomaOwnerBadge,
         ctx: &mut TxContext,
     ) {
         let model = MLModelEntry {
@@ -181,9 +184,25 @@ module node_manager::node_manager {
         object_table::add(&mut atoma.models, model_name, model);
     }
 
+    public entry fun remove_model(
+        atoma: &mut AtomaDb,
+        model_name: ascii::String,
+        _: &AtomaOwnerBadge,
+    ) {
+        let MLModelEntry {
+            id: model_id,
+            name: _,
+            is_disabled: _,
+            nodes,
+        } = object_table::remove(&mut atoma.models, model_name);
+        table_vec::drop(nodes);
+        object::delete(model_id);
+    }
+
     public entry fun disable_model(
         atoma: &mut AtomaDb,
         model_name: ascii::String,
+        _: &AtomaOwnerBadge,
     ) {
         let model = object_table::borrow_mut(&mut atoma.models, model_name);
         model.is_disabled = true;
@@ -192,6 +211,7 @@ module node_manager::node_manager {
     public entry fun enable_model(
         atoma: &mut AtomaDb,
         model_name: ascii::String,
+        _: &AtomaOwnerBadge,
     ) {
         let model = object_table::borrow_mut(&mut atoma.models, model_name);
         model.is_disabled = false;
