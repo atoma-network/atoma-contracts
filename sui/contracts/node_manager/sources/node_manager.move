@@ -16,6 +16,7 @@ module node_manager::node_manager {
 
     const ENodeRegDisabled: u64 = 0;
     const EModelDisabled: u64 = 1;
+    const EModelEnvironmentSpecNotSupported: u64 = 2;
 
     struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
@@ -104,6 +105,12 @@ module node_manager::node_manager {
         /// might end up having different outputs for the same model due to
         /// e.g. floating point arithmetics.
         /// Using a vector allows for a random access using an index.
+        ///
+        /// EnvironmentSpec must be enabled by the contract owner for each
+        /// model.
+        /// This allows the contract owner to enable appropriate environments
+        /// for each model, e.g. large models might not even support low spec
+        /// environments.
         nodes_per_hw_spec: Table<EnvironmentSpec, TableVec<SmallId>>,
     }
 
@@ -191,7 +198,8 @@ module node_manager::node_manager {
 
     /// The node owner announces that they can serve prompts for the given
     /// model.
-    /// Fails if the model name is not registered.
+    /// Fails if the model name is not registered, or if the model does not
+    /// support the environment spec.
     /// For information about the environment spec, see `EnvironmentSpec`
     /// type.
     public entry fun add_node_to_model(
@@ -199,20 +207,19 @@ module node_manager::node_manager {
         model_name: ascii::String,
         environment_spec: u64,
         node_badge: &NodeBadge,
-        ctx: &mut TxContext,
     ) {
         let model = object_table::borrow_mut(&mut atoma.models, model_name);
-        assert!(model.is_disabled, EModelDisabled);
+        assert!(!model.is_disabled, EModelDisabled);
 
         let environment_spec = EnvironmentSpec { id: environment_spec };
-        if (table::contains(&model.nodes_per_hw_spec, environment_spec)) {
-            let nodes =
-                table::borrow_mut(&mut model.nodes_per_hw_spec, environment_spec);
-            table_vec::push_back(nodes, node_badge.small_id);
-        } else {
-            let nodes = table_vec::singleton(node_badge.small_id, ctx);
-            table::add(&mut model.nodes_per_hw_spec, environment_spec, nodes);
-        };
+        assert!(
+            table::contains(&model.nodes_per_hw_spec, environment_spec),
+            EModelEnvironmentSpecNotSupported,
+        );
+
+        let nodes =
+            table::borrow_mut(&mut model.nodes_per_hw_spec, environment_spec);
+        table_vec::push_back(nodes, node_badge.small_id);
 
         // TODO: prevent duplicates
 
@@ -226,19 +233,62 @@ module node_manager::node_manager {
     //                          Admin functions
     // =========================================================================
 
-    public entry fun add_model(
+    public entry fun add_model_entry(
         atoma: &mut AtomaDb,
+        model_name: ascii::String,
+        badge: &AtomaOwnerBadge,
+        ctx: &mut TxContext,
+    ) {
+        let model = create_model(model_name, badge, ctx);
+        add_model(atoma, model, badge);
+    }
+
+    public fun add_model(
+        atoma: &mut AtomaDb,
+        model: MLModelEntry,
+        _: &AtomaOwnerBadge,
+    ) {
+        object_table::add(&mut atoma.models, model.name, model);
+    }
+
+    public fun create_model(
         model_name: ascii::String,
         _: &AtomaOwnerBadge,
         ctx: &mut TxContext,
-    ) {
-        let model = MLModelEntry {
+    ): MLModelEntry {
+        MLModelEntry {
             id: object::new(ctx),
             name: model_name,
             is_disabled: false,
             nodes_per_hw_spec: table::new(ctx),
-        };
-        object_table::add(&mut atoma.models, model_name, model);
+        }
+    }
+
+    public entry fun add_model_environment_spec_entry(
+        atoma: &mut AtomaDb,
+        model_name: ascii::String,
+        environment_spec: u64,
+        badge: &AtomaOwnerBadge,
+        ctx: &mut TxContext,
+    ) {
+        let model = object_table::borrow_mut(&mut atoma.models, model_name);
+        add_model_environment_spec(model, environment_spec, badge, ctx)
+    }
+
+    public fun add_model_environment_spec(
+        model: &mut MLModelEntry,
+        environment_spec: u64,
+        _: &AtomaOwnerBadge,
+        ctx: &mut TxContext,
+    ) {
+        let environment_spec = EnvironmentSpec { id: environment_spec };
+        if (!table::contains(&model.nodes_per_hw_spec, environment_spec)) {
+            table::add(
+                &mut model.nodes_per_hw_spec,
+                environment_spec,
+                table_vec::empty(ctx)
+            );
+        }
     }
 
     /// Unfortunately, all keys from the table need to be dropped manually
@@ -259,6 +309,18 @@ module node_manager::node_manager {
         object::delete(model_id);
 
         nodes_per_hw_spec
+    }
+
+    public entry fun remove_model_environment_spec(
+        atoma: &mut AtomaDb,
+        model_name: ascii::String,
+        environment_spec: u64,
+        _: &AtomaOwnerBadge,
+    ) {
+        let model = object_table::borrow_mut(&mut atoma.models, model_name);
+        let environment_spec = EnvironmentSpec { id: environment_spec };
+        let v = table::remove(&mut model.nodes_per_hw_spec, environment_spec);
+        table_vec::drop(v);
     }
 
     public entry fun disable_model(
