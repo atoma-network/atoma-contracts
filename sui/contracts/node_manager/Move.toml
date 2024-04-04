@@ -1,0 +1,10 @@
+[package]
+name = "NodeManager"
+version = "0.1.0"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
+Toma = { local = "../toma" }
+
+[addresses]
+node_manager = "0x0"

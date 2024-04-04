@@ -1,0 +1,4 @@
+
+module gate::gate {
+
+}
