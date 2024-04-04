@@ -7,7 +7,7 @@ module node_manager::node_manager {
     use toma::toma::TOMA;
 
     /// How much collateral is required at the time of contract publication.
-    const INITIAL_TOMA_COLLATERAL: u64 = 1000;
+    const InitialTomaCollateralRequiredForRegistration: u64 = 1000;
 
     const ENodeRegDisabled: u64 = 0;
 
@@ -45,7 +45,7 @@ module node_manager::node_manager {
         let reg_config = RegistrationConfig {
             id: object::new(ctx),
             is_disabled: false,
-            toma_collateral: INITIAL_TOMA_COLLATERAL,
+            toma_collateral: InitialTomaCollateralRequiredForRegistration,
         };
         transfer::share_object(reg_config);
 
@@ -90,5 +90,31 @@ module node_manager::node_manager {
             id: object::new(ctx),
             collateral,
         }
+    }
+
+    // =========================================================================
+    // Admin functions
+    // =========================================================================
+
+    public entry fun disable_registration(
+        reg_conf: &mut RegistrationConfig,
+        _: &AtomaOwner,
+    ) {
+        reg_conf.is_disabled = true;
+    }
+
+    public entry fun enable_registration(
+        reg_conf: &mut RegistrationConfig,
+        _: &AtomaOwner,
+    ) {
+        reg_conf.is_disabled = false;
+    }
+
+    public entry fun set_required_registration_toma_collateral(
+        reg_conf: &mut RegistrationConfig,
+        new_required_collateral: u64,
+        _: &AtomaOwner,
+    ) {
+        reg_conf.toma_collateral = new_required_collateral;
     }
 }
