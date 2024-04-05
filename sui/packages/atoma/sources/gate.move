@@ -50,12 +50,15 @@ module atoma::gate {
         let echelons = db::get_model_echelons_if_enabled(atoma, params.model);
 
         // 2.
-        let echelon_id = select_eligible_echelon_at_random(
+        let echelon = select_eligible_echelon_at_random(
             echelons,
             nodes_to_sample,
             max_fee_per_sample,
             ctx,
         );
+
+        // 3.
+        let nodes = db::get_model_echelon_nodes(echelon);
     }
 
     public fun create_prompt_badge(
@@ -77,7 +80,8 @@ module atoma::gate {
     // =========================================================================
 
     struct EchelonIdAndPerformance has drop {
-        id: EchelonId,
+        /// Index within the echelons vector.
+        index: u64,
         performance: u64,
     }
 
@@ -98,7 +102,7 @@ module atoma::gate {
         nodes_to_sample: u64,
         max_fee_per_sample: u64,
         ctx: &mut TxContext,
-    ): EchelonId {
+    ): &ModelEchelon {
         //
         // 1.
         //
@@ -124,7 +128,7 @@ module atoma::gate {
             let performance = db::get_model_echelon_performance(echelon);
             total_performance = total_performance + performance; // A
             vector::push_back(&mut eligible_echelons, EchelonIdAndPerformance {
-                id: db::get_model_echelon_id(echelon),
+                index,
                 performance,
             });
         };
@@ -141,12 +145,12 @@ module atoma::gate {
             // index never out of bounds bcs on last iteration
             // remaining_performance == 0 while goal > 0
             let EchelonIdAndPerformance {
-                id, performance
+                index, performance
             } = vector::pop_back(&mut eligible_echelons);
             remaining_performance = remaining_performance - performance; // C
 
             if (goal > remaining_performance) {
-                return id // D
+                return vector::borrow(echelons, index) // D
             };
         };
 
