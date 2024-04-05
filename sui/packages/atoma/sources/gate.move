@@ -10,6 +10,9 @@ module atoma::gate {
 
     const ENoEligibleEchelons: u64 = 0;
 
+    /// Stored or owned object.
+    ///
+    /// Anyone holding on this object can submit raw prompts.
     struct PromptBadge has key, store {
         id: UID,
     }
