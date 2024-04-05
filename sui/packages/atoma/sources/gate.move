@@ -1,5 +1,5 @@
-module gate::gate {
-    use node_manager::node_manager::{AtomaOwnerBadge, AtomaDb};
+module atoma::gate {
+    use atoma::db::{AtomaManagerBadge, AtomaDb};
     use std::ascii;
     use std::option::{Self, Option};
     use std::string;
@@ -33,11 +33,11 @@ module gate::gate {
         params: TextPromptParams,
         _:& PromptBadge,
     ) {
-        //
+        // TODO
     }
 
     public fun create_prompt_badge(
-        _: &AtomaOwnerBadge,
+        _: &AtomaManagerBadge,
         ctx: &mut TxContext,
     ): PromptBadge {
         let id = object::new(ctx);

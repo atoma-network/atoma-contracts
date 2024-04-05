@@ -28,12 +28,7 @@ sui move build || exit 1
 
 echo
 echo " ==== Building node_manager package ===="
-cd "${root_dir}/sui/packages/node_manager"
-sui move build || exit 1
-
-echo
-echo " ==== Building gate package ===="
-cd "${root_dir}/sui/packages/gate"
+cd "${root_dir}/sui/packages/atoma"
 sui move build || exit 1
 
 # leave the caller where they started

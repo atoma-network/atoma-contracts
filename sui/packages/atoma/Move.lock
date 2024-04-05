@@ -2,25 +2,16 @@
 
 [move]
 version = 1
-manifest_digest = "A3BF7ED9D4ADF7B62030D39AE0F4ADC27475C25FD2E14AFA12A9AB6A0F1B1526"
+manifest_digest = "5176A58FAF083B2C88456E3368BFC527BE34D84B133E9B9C4A456F3705A47DBC"
 deps_digest = "3C4103934B1E040BB6B23F1D610B4EF9F2F1166A50A104EADCF77467C004C600"
 dependencies = [
-  { name = "NodeManager" },
   { name = "Sui" },
+  { name = "Toma" },
 ]
 
 [[move.package]]
 name = "MoveStdlib"
 source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/mainnet", subdir = "crates/sui-framework/packages/move-stdlib" }
-
-[[move.package]]
-name = "NodeManager"
-source = { local = "../node_manager" }
-
-dependencies = [
-  { name = "Sui" },
-  { name = "Toma" },
-]
 
 [[move.package]]
 name = "Sui"

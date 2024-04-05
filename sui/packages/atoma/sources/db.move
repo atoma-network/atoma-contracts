@@ -1,10 +1,11 @@
-module node_manager::node_manager {
+module atoma::db {
     //! Terminology:
     //! - Node: a machine that can serve prompts.
     //! - Model: a machine learning model that can be served by nodes.
     //! - Echelon: a set of hardware and software specifications of a node.
     //!   We group specs off-chain into a single identifier.
 
+    use atoma::atoma::ATOMA;
     use std::ascii;
     use std::vector;
     use sui::balance::{Self, Balance};
@@ -12,6 +13,7 @@ module node_manager::node_manager {
     use sui::event;
     use sui::object_table::{Self, ObjectTable};
     use sui::object::{Self, UID, ID};
+    use sui::package::{Self, Publisher};
     use sui::table_vec::{Self, TableVec};
     use sui::table::{Self, Table};
     use sui::transfer;
@@ -24,6 +26,7 @@ module node_manager::node_manager {
 
     const ENodeRegDisabled: u64 = 0;
     const EModelDisabled: u64 = 1;
+    const ENotAuthorized: u64 = 2;
 
     struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
@@ -39,7 +42,7 @@ module node_manager::node_manager {
     /// Owned object, transferred to the package publisher.
     ///
     /// Represents authority over the package.
-    struct AtomaOwnerBadge has key, store {
+    struct AtomaManagerBadge has key, store {
         id: UID,
     }
 
@@ -157,11 +160,6 @@ module node_manager::node_manager {
                 InitialCollateralRequiredForRegistration,
         };
         transfer::share_object(atoma_db);
-
-        let owner = AtomaOwnerBadge {
-            id: object::new(ctx),
-        };
-        transfer::transfer(owner, tx_context::sender(ctx));
     }
 
     /// Takes collateral from the sender's wallet and transfers them the node
@@ -249,10 +247,26 @@ module node_manager::node_manager {
     //                          Admin functions
     // =========================================================================
 
+    public entry fun create_manager_badge_entry(
+        pub: &Publisher, ctx: &mut TxContext,
+    ) {
+        let badge = create_manager_badge(pub, ctx);
+        transfer::transfer(badge, tx_context::sender(ctx));
+    }
+
+    public fun create_manager_badge(
+        pub: &Publisher, ctx: &mut TxContext,
+    ): AtomaManagerBadge {
+        assert!(package::from_module<ATOMA>(pub), ENotAuthorized);
+        AtomaManagerBadge {
+            id: object::new(ctx),
+        }
+    }
+
     public entry fun add_model_entry(
         atoma: &mut AtomaDb,
         model_name: ascii::String,
-        badge: &AtomaOwnerBadge,
+        badge: &AtomaManagerBadge,
         ctx: &mut TxContext,
     ) {
         let model = create_model(model_name, badge, ctx);
@@ -262,14 +276,14 @@ module node_manager::node_manager {
     public fun add_model(
         atoma: &mut AtomaDb,
         model: MLModelEntry,
-        _: &AtomaOwnerBadge,
+        _: &AtomaManagerBadge,
     ) {
         object_table::add(&mut atoma.models, model.name, model);
     }
 
     public fun create_model(
         model_name: ascii::String,
-        _: &AtomaOwnerBadge,
+        _: &AtomaManagerBadge,
         ctx: &mut TxContext,
     ): MLModelEntry {
         MLModelEntry {
@@ -286,7 +300,7 @@ module node_manager::node_manager {
         echelon: u64,
         fee_in_protocol_token: u64,
         relative_performance: u64,
-        badge: &AtomaOwnerBadge,
+        badge: &AtomaManagerBadge,
         ctx: &mut TxContext,
     ) {
         let model = object_table::borrow_mut(&mut atoma.models, model_name);
@@ -300,7 +314,7 @@ module node_manager::node_manager {
         echelon: u64,
         fee_in_protocol_token: u64,
         relative_performance: u64,
-        _: &AtomaOwnerBadge,
+        _: &AtomaManagerBadge,
         ctx: &mut TxContext,
     ) {
         let echelon = EchelonId { id: echelon };
@@ -316,7 +330,7 @@ module node_manager::node_manager {
     public entry fun remove_model(
         atoma: &mut AtomaDb,
         model_name: ascii::String,
-        _: &AtomaOwnerBadge,
+        _: &AtomaManagerBadge,
     ) {
         let MLModelEntry {
             id: model_id,
@@ -346,7 +360,7 @@ module node_manager::node_manager {
         atoma: &mut AtomaDb,
         model_name: ascii::String,
         echelon: u64,
-        _: &AtomaOwnerBadge,
+        _: &AtomaManagerBadge,
     ) {
         let model = object_table::borrow_mut(&mut atoma.models, model_name);
         let echelon_id = EchelonId { id: echelon };
@@ -361,7 +375,7 @@ module node_manager::node_manager {
     public entry fun disable_model(
         atoma: &mut AtomaDb,
         model_name: ascii::String,
-        _: &AtomaOwnerBadge,
+        _: &AtomaManagerBadge,
     ) {
         let model = object_table::borrow_mut(&mut atoma.models, model_name);
         model.is_disabled = true;
@@ -370,7 +384,7 @@ module node_manager::node_manager {
     public entry fun enable_model(
         atoma: &mut AtomaDb,
         model_name: ascii::String,
-        _: &AtomaOwnerBadge,
+        _: &AtomaManagerBadge,
     ) {
         let model = object_table::borrow_mut(&mut atoma.models, model_name);
         model.is_disabled = false;
@@ -378,14 +392,14 @@ module node_manager::node_manager {
 
     public entry fun disable_registration(
         atoma: &mut AtomaDb,
-        _: &AtomaOwnerBadge,
+        _: &AtomaManagerBadge,
     ) {
         atoma.is_registration_disabled = true;
     }
 
     public entry fun enable_registration(
         atoma: &mut AtomaDb,
-        _: &AtomaOwnerBadge,
+        _: &AtomaManagerBadge,
     ) {
         atoma.is_registration_disabled = false;
     }
@@ -393,7 +407,7 @@ module node_manager::node_manager {
     public entry fun set_required_registration_toma_collateral(
         atoma: &mut AtomaDb,
         new_required_collateral: u64,
-        _: &AtomaOwnerBadge,
+        _: &AtomaManagerBadge,
     ) {
         atoma.registration_collateral_in_protocol_token = new_required_collateral;
     }

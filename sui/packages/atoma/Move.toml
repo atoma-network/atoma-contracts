@@ -1,5 +1,5 @@
 [package]
-name = "NodeManager"
+name = "Atoma"
 version = "0.1.0"
 
 [dependencies]
@@ -7,4 +7,4 @@ Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fram
 Toma = { local = "../toma" }
 
 [addresses]
-node_manager = "0x0"
+atoma = "0x0"
