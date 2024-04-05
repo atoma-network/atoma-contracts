@@ -1,20 +1,12 @@
 module atoma::gate {
-    use atoma::db::{Self, AtomaManagerBadge, EchelonId, ModelEchelon, AtomaDb};
+    use atoma::db::{Self, AtomaManagerBadge, SmallId, ModelEchelon, AtomaDb};
     use std::ascii;
-    use std::option::{Self, Option};
     use std::string;
-    use sui::balance::{Self, Balance};
-    use sui::coin::{Self, Coin};
     use sui::event;
     use std::vector;
-    use sui::random::{Self, Random};
-    use sui::object_table::{Self, ObjectTable};
-    use sui::object::{Self, UID, ID};
-    use sui::table_vec::{Self, TableVec};
-    use sui::table::{Self, Table};
-    use sui::transfer;
+    use sui::object::{Self, UID};
+    use sui::table_vec;
     use sui::tx_context::{Self, TxContext};
-    use toma::toma::TOMA;
 
     const ENoEligibleEchelons: u64 = 0;
 
@@ -22,6 +14,9 @@ module atoma::gate {
         id: UID,
     }
 
+    #[allow(unused_field)]
+    /// Serves as an input to the `submit_text_prompt` function.
+    /// Is also included with the emitted `TextPromptEvent`.
     struct TextPromptParams has store, copy, drop {
         model: ascii::String,
         prompt: string::String,
@@ -30,16 +25,19 @@ module atoma::gate {
         temperature: u32,
     }
 
-    struct TextRequestEvent has copy, drop {
+    #[allow(unused_field)]
+    /// This event is emitted when the text prompt is submitted.
+    struct TextPromptEvent has copy, drop {
         params: TextPromptParams,
+        nodes: vector<SmallId>,
     }
 
     /// 1. Get the model echelons from the database.
     /// 2. Randomly pick one of the echelons.
     /// 3. Sample the required number of nodes from the echelon.
+    /// 4. Emit TextPromptEvent.
     public fun submit_text_prompt(
         atoma: &mut AtomaDb,
-        wallet: &mut Balance<TOMA>,
         params: TextPromptParams,
         nodes_to_sample: u64,
         max_fee_per_sample: u64,
@@ -59,6 +57,22 @@ module atoma::gate {
 
         // 3.
         let nodes = db::get_model_echelon_nodes(echelon);
+        let nodes_count = table_vec::length(nodes);
+        let selected_nodes = vector::empty();
+        let iteration = 0;
+        while (iteration < nodes_to_sample) {
+            // TODO: keep track of selected indexes to avoid duplicates
+            let node_index = random_u64(ctx) % nodes_count;
+            let node_id = table_vec::borrow(nodes, node_index);
+            vector::push_back(&mut selected_nodes, *node_id);
+            iteration = iteration + 1;
+        };
+
+        // 4.
+        event::emit(TextPromptEvent {
+            params,
+            nodes: selected_nodes,
+        });
     }
 
     public fun create_prompt_badge(
