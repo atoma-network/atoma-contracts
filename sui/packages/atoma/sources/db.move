@@ -237,9 +237,8 @@ module atoma::db {
         let echelon_id = EchelonId { id: echelon };
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
 
+        // TODO: https://github.com/atoma-network/atoma-contracts/issues/2
         table_vec::push_back(&mut echelon.nodes, node_badge.small_id);
-
-        // TODO: prevent duplicates
 
         event::emit(NodeSubscribedToModelEvent {
             node_small_id: node_badge.small_id,

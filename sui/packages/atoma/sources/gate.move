@@ -67,9 +67,18 @@ module atoma::gate {
         let selected_nodes = vector::empty();
         let iteration = 0;
         while (iteration < nodes_to_sample) {
-            // TODO: keep track of selected indexes to avoid duplicates
             let node_index = random_u64(ctx) % nodes_count;
             let node_id = table_vec::borrow(nodes, node_index);
+
+            if (vector::contains(&selected_nodes, node_id)) {
+                // try again with a different node without incrementing the
+                // iteration counter
+                //
+                // we won't get stuck because we're guaranteed to have enough
+                // nodes in the echelon
+                continue
+            };
+
             vector::push_back(&mut selected_nodes, *node_id);
             iteration = iteration + 1;
         };
@@ -110,7 +119,7 @@ module atoma::gate {
     /// 2. Randomly pick one of the echelons.
     ///
     /// # Algorithm
-    /// TODO: needs testing and proofreading
+    /// TODO: https://github.com/atoma-network/atoma-contracts/issues/3
     /// A) total performance is a sum of all eligible echelons'
     /// performances
     /// B) goal is a random number in interval <1; total_performance>
@@ -177,10 +186,7 @@ module atoma::gate {
         abort ENoEligibleEchelons
     }
 
-    /// TODO: random number generator is currently on testnet only, and we
-    ///       use the mainnet branch for development.
-    ///       Once random is released as stable, we can replace this.
-    /// <https://github.com/MystenLabs/sui/blob/main/crates/sui-framework/packages/sui-framework/sources/random.move#L187>
+    /// TODO: https://github.com/atoma-network/atoma-contracts/issues/4
     fun random_u64(ctx: &mut TxContext): u64 {
         let buffer = sui::address::to_bytes(
             tx_context::fresh_object_address(ctx)
