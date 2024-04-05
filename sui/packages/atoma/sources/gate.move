@@ -52,7 +52,10 @@ module atoma::gate {
             echelons,
             nodes_to_sample,
             max_fee_per_sample,
-            ctx,
+            // ideally we'd pass the context, but move is dumb and thinks that
+            // because we return a reference, we could still be using the
+            // context, which we need to access mutably later on
+            random_u64(ctx),
         );
 
         // 3.
@@ -115,7 +118,7 @@ module atoma::gate {
         echelons: &vector<ModelEchelon>,
         nodes_to_sample: u64,
         max_fee_per_sample: u64,
-        ctx: &mut TxContext,
+        random_u64: u64,
     ): &ModelEchelon {
         //
         // 1.
@@ -152,7 +155,7 @@ module atoma::gate {
         // 2.
         //
 
-        let goal = 1 + random_u64(ctx) % total_performance; // B
+        let goal = 1 + random_u64 % total_performance; // B
 
         let remaining_performance = total_performance;
         while (true) {
