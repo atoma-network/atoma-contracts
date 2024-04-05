@@ -1,5 +1,8 @@
 module atoma::db {
-    //! Terminology:
+    //! At the heart of the Atoma network protocol is on-chain database.
+    //! It keeps track of nodes and models.
+    //!
+    //! # Terminology
     //! - Node: a machine that can serve prompts.
     //! - Model: a machine learning model that can be served by nodes.
     //! - Echelon: a set of hardware and software specifications of a node.
@@ -18,7 +21,6 @@ module atoma::db {
     use sui::table::{Self, Table};
     use sui::transfer;
     use sui::tx_context::{Self, TxContext};
-    use sui::vec_map::{Self, VecMap};
     use toma::toma::TOMA;
 
     /// How much collateral is required at the time of package publication.
@@ -27,6 +29,10 @@ module atoma::db {
     const ENodeRegDisabled: u64 = 0;
     const EModelDisabled: u64 = 1;
     const ENotAuthorized: u64 = 2;
+    const EProtocolFeeCannotBeZero: u64 = 3;
+    const ERelativePerformanceCannotBeZero: u64 = 4;
+    const EEchelonNotFound: u64 = 5;
+    const EEchelonAlreadyExistsForModel: u64 = 6;
 
     struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
@@ -82,7 +88,7 @@ module atoma::db {
         /// Holds information about each node.
         nodes: Table<SmallId, NodeEntry>,
         /// Each model is represented here and stores which nodes support it.
-        models: ObjectTable<ascii::String, MLModelEntry>,
+        models: ObjectTable<ascii::String, ModelEntry>,
 
         // Configuration
 
@@ -99,12 +105,10 @@ module atoma::db {
     /// Field of AtomaDb.
     struct NodeEntry has store {
         collateral: Balance<TOMA>,
-        /// TODO: figure out how this is going to be used
-        public_key: vector<u8>,
     }
 
     /// Object field of AtomaDb.
-    struct MLModelEntry has key, store {
+    struct ModelEntry has key, store {
         id: UID,
         /// UTF8 model identifier.
         name: ascii::String,
@@ -118,13 +122,15 @@ module atoma::db {
         /// for each model, e.g. large models might not even support low spec
         /// echelons.
         ///
-        /// All operations are O(n) but we anyway mostly just need to iterate
-        /// the whole thing to find all echelons that fit within a price range.
-        echelons: VecMap<EchelonId, MLModelEchelon>,
+        /// We use vector because mostly we just need to iterate the whole thing
+        /// and filter out echelons that are not eligible to be considered in
+        /// the selection process.
+        echelons: vector<ModelEchelon>,
     }
 
-    /// Stored in MLModelEntry.
-    struct MLModelEchelon has store {
+    /// Stored in ModelEntry.
+    struct ModelEchelon has store {
+        id: EchelonId,
         /// How much per request is charged by nodes in this group.
         fee_in_protocol_token: u64,
         /// The higher this number, the more likely this echelon is to be
@@ -148,6 +154,7 @@ module atoma::db {
         id: u64
     }
 
+    #[allow(unused_function)]
     fun init(ctx: &mut TxContext) {
         let atoma_db = AtomaDb {
             id: object::new(ctx),
@@ -167,11 +174,10 @@ module atoma::db {
     public entry fun register_node_entry(
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
-        public_key: vector<u8>,
         ctx: &mut TxContext,
     ) {
         let badge =
-            register_node(atoma, coin::balance_mut(wallet), public_key, ctx);
+            register_node(atoma, coin::balance_mut(wallet), ctx);
         transfer::transfer(badge, tx_context::sender(ctx));
     }
 
@@ -184,7 +190,6 @@ module atoma::db {
     public fun register_node(
         atoma: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
-        public_key: vector<u8>,
         ctx: &mut TxContext,
     ): NodeBadge {
         assert!(!atoma.is_registration_disabled, ENodeRegDisabled);
@@ -197,7 +202,6 @@ module atoma::db {
 
         let node_entry = NodeEntry {
             collateral,
-            public_key,
         };
 
         table::add(&mut atoma.nodes, small_id, node_entry);
@@ -231,7 +235,7 @@ module atoma::db {
         assert!(!model.is_disabled, EModelDisabled);
 
         let echelon_id = EchelonId { id: echelon };
-        let echelon = vec_map::get_mut(&mut model.echelons, &echelon_id);
+        let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
 
         table_vec::push_back(&mut echelon.nodes, node_badge.small_id);
 
@@ -241,6 +245,30 @@ module atoma::db {
             node_small_id: node_badge.small_id,
             model_name,
         });
+    }
+
+    public fun get_model_echelons_if_enabled(
+        atoma: &AtomaDb, model_name: ascii::String,
+    ): &vector<ModelEchelon> {
+        let model = object_table::borrow(&atoma.models, model_name);
+        assert!(!model.is_disabled, EModelDisabled);
+        &model.echelons
+    }
+
+    public fun get_model_echelon_id(echelon: &ModelEchelon): EchelonId {
+        echelon.id
+    }
+
+    public fun get_model_echelon_fee(echelon: &ModelEchelon): u64 {
+        echelon.fee_in_protocol_token
+    }
+
+    public fun get_model_echelon_nodes(echelon: &ModelEchelon): &TableVec<SmallId> {
+        &echelon.nodes
+    }
+
+    public fun get_model_echelon_performance(echelon: &ModelEchelon): u64 {
+        echelon.relative_performance
     }
 
     // =========================================================================
@@ -275,7 +303,7 @@ module atoma::db {
 
     public fun add_model(
         atoma: &mut AtomaDb,
-        model: MLModelEntry,
+        model: ModelEntry,
         _: &AtomaManagerBadge,
     ) {
         object_table::add(&mut atoma.models, model.name, model);
@@ -285,12 +313,12 @@ module atoma::db {
         model_name: ascii::String,
         _: &AtomaManagerBadge,
         ctx: &mut TxContext,
-    ): MLModelEntry {
-        MLModelEntry {
+    ): ModelEntry {
+        ModelEntry {
             id: object::new(ctx),
             name: model_name,
             is_disabled: false,
-            echelons: vec_map::empty()
+            echelons: vector::empty()
         }
     }
 
@@ -310,15 +338,22 @@ module atoma::db {
     }
 
     public fun add_model_echelon(
-        model: &mut MLModelEntry,
+        model: &mut ModelEntry,
         echelon: u64,
         fee_in_protocol_token: u64,
         relative_performance: u64,
         _: &AtomaManagerBadge,
         ctx: &mut TxContext,
     ) {
-        let echelon = EchelonId { id: echelon };
-        vec_map::insert(&mut model.echelons, echelon, MLModelEchelon {
+        assert!(fee_in_protocol_token > 0, EProtocolFeeCannotBeZero);
+        assert!(relative_performance > 0, ERelativePerformanceCannotBeZero);
+        let echelon_id = EchelonId { id: echelon };
+        assert!(
+            !contains_echelon(&model.echelons, echelon_id),
+            EEchelonAlreadyExistsForModel,
+        );
+        vector::push_back(&mut model.echelons, ModelEchelon {
+            id: echelon_id,
             fee_in_protocol_token,
             relative_performance,
             nodes: table_vec::empty(ctx),
@@ -332,7 +367,7 @@ module atoma::db {
         model_name: ascii::String,
         _: &AtomaManagerBadge,
     ) {
-        let MLModelEntry {
+        let ModelEntry {
             id: model_id,
             name: _,
             is_disabled: _,
@@ -340,12 +375,11 @@ module atoma::db {
         } = object_table::remove(&mut atoma.models, model_name);
         object::delete(model_id);
 
-        let (_, echelons) = vec_map::into_keys_values(echelons);
-
         let index = 0;
         let len = vector::length(&echelons);
         while (index < len) {
-            let MLModelEchelon {
+            let ModelEchelon {
+                id: _,
                 fee_in_protocol_token: _,
                 relative_performance: _,
                 nodes,
@@ -364,11 +398,12 @@ module atoma::db {
     ) {
         let model = object_table::borrow_mut(&mut atoma.models, model_name);
         let echelon_id = EchelonId { id: echelon };
-        let (_, MLModelEchelon {
+        let ModelEchelon {
+            id: _,
             fee_in_protocol_token: _,
             relative_performance: _,
             nodes,
-        }) = vec_map::remove(&mut model.echelons, &echelon_id);
+        } = remove_echelon(&mut model.echelons, echelon_id);
         table_vec::drop(nodes);
     }
 
@@ -391,15 +426,13 @@ module atoma::db {
     }
 
     public entry fun disable_registration(
-        atoma: &mut AtomaDb,
-        _: &AtomaManagerBadge,
+        atoma: &mut AtomaDb, _: &AtomaManagerBadge,
     ) {
         atoma.is_registration_disabled = true;
     }
 
     public entry fun enable_registration(
-        atoma: &mut AtomaDb,
-        _: &AtomaManagerBadge,
+        atoma: &mut AtomaDb, _: &AtomaManagerBadge,
     ) {
         atoma.is_registration_disabled = false;
     }
@@ -410,5 +443,57 @@ module atoma::db {
         _: &AtomaManagerBadge,
     ) {
         atoma.registration_collateral_in_protocol_token = new_required_collateral;
+    }
+
+    // =========================================================================
+    //                          Helpers
+    // =========================================================================
+
+    fun get_echelon_mut(
+        echelons: &mut vector<ModelEchelon>, id: EchelonId
+    ): &mut ModelEchelon {
+        let i = 0;
+        let n = vector::length(echelons);
+        while (i < n) {
+            let echelon = vector::borrow_mut(echelons, i);
+            if (echelon.id == id) {
+                return echelon
+            };
+            i = i + 1;
+        };
+
+        abort EEchelonNotFound
+    }
+
+    fun contains_echelon(
+        echelons: &vector<ModelEchelon>, id: EchelonId
+    ): bool {
+        let i = 0;
+        let n = vector::length(echelons);
+        while (i < n) {
+            let echelon = vector::borrow(echelons, i);
+            if (echelon.id == id) {
+                return true
+            };
+            i = i + 1;
+        };
+
+        false
+    }
+
+    fun remove_echelon(
+        echelons: &mut vector<ModelEchelon>, id: EchelonId
+    ): ModelEchelon {
+        let i = 0;
+        let n = vector::length(echelons);
+        while (i < n) {
+            let echelon = vector::borrow(echelons, i);
+            if (echelon.id == id) {
+                return vector::remove(echelons, i)
+            };
+            i = i + 1;
+        };
+
+        abort EEchelonNotFound
     }
 }
