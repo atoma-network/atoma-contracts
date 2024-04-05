@@ -8,12 +8,12 @@ Useful links:
 
 ## Dev Environment
 
-There's a [`check` shell script](dev/check) that builds all contracts.
+There's a [`check` shell script](dev/check) that builds all packages.
 
 ## `TOMA` token
 
 The `TOMA` token is used as collateral that nodes must lock up to participate.
-It's defined in the [`toma` contract](./contracts/toma).
+It's defined in the [`toma` package](./packages/toma).
 
 <!-- List of References -->
 

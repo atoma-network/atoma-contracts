@@ -22,18 +22,18 @@ function abs_path_to_git_root_dir() {
 entrance_dir=$(pwd)
 root_dir=$(abs_path_to_git_root_dir)
 
-echo " ==== Building TOMA token contract ===="
-cd "${root_dir}/sui/contracts/toma"
+echo " ==== Building TOMA token package ===="
+cd "${root_dir}/sui/packages/toma"
 sui move build || exit 1
 
 echo
-echo " ==== Building node_manager contract ===="
-cd "${root_dir}/sui/contracts/node_manager"
+echo " ==== Building node_manager package ===="
+cd "${root_dir}/sui/packages/node_manager"
 sui move build || exit 1
 
 echo
-echo " ==== Building gate contract ===="
-cd "${root_dir}/sui/contracts/gate"
+echo " ==== Building gate package ===="
+cd "${root_dir}/sui/packages/gate"
 sui move build || exit 1
 
 # leave the caller where they started

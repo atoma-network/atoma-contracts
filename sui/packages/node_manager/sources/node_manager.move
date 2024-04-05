@@ -19,7 +19,7 @@ module node_manager::node_manager {
     use sui::vec_map::{Self, VecMap};
     use toma::toma::TOMA;
 
-    /// How much collateral is required at the time of contract publication.
+    /// How much collateral is required at the time of package publication.
     const InitialCollateralRequiredForRegistration: u64 = 1_000;
 
     const ENodeRegDisabled: u64 = 0;
@@ -36,9 +36,9 @@ module node_manager::node_manager {
         model_name: ascii::String,
     }
 
-    /// Owned object, transferred to the contract publisher.
+    /// Owned object, transferred to the package publisher.
     ///
-    /// Represents authority over the contract.
+    /// Represents authority over the package.
     struct AtomaOwnerBadge has key, store {
         id: UID,
     }
@@ -63,7 +63,7 @@ module node_manager::node_manager {
 
     /// Shared object.
     ///
-    /// Database of the contract.
+    /// Database of the package.
     /// It stores information about each node and which models are supported by
     /// each node.
     ///
@@ -109,9 +109,9 @@ module node_manager::node_manager {
         is_disabled: bool,
         /// Which echelons (groups of nodes) support this model.
         ///
-        /// EchelonId must be enabled by the contract owner for each
+        /// EchelonId must be enabled by the package owner for each
         /// model.
-        /// This allows the contract owner to enable appropriate echelons
+        /// This allows the package owner to enable appropriate echelons
         /// for each model, e.g. large models might not even support low spec
         /// echelons.
         ///
