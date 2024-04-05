@@ -33,7 +33,7 @@ module atoma::gate {
         params: TextPromptParams,
         _:& PromptBadge,
     ) {
-        // TODO
+        //
     }
 
     public fun create_prompt_badge(

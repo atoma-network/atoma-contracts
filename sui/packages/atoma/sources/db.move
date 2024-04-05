@@ -34,12 +34,12 @@ module atoma::db {
         node_small_id: SmallId,
     }
 
-    struct NodeSubscribedToModel has copy, drop {
+    struct NodeSubscribedToModelEvent has copy, drop {
         node_small_id: SmallId,
         model_name: ascii::String,
     }
 
-    /// Owned object, transferred to the package publisher.
+    /// Owned object.
     ///
     /// Represents authority over the package.
     struct AtomaManagerBadge has key, store {
@@ -237,7 +237,7 @@ module atoma::db {
 
         // TODO: prevent duplicates
 
-        event::emit(NodeSubscribedToModel {
+        event::emit(NodeSubscribedToModelEvent {
             node_small_id: node_badge.small_id,
             model_name,
         });
