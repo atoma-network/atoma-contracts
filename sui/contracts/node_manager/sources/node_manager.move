@@ -1,5 +1,12 @@
 module node_manager::node_manager {
+    //! Terminology:
+    //! - Node: a machine that can serve prompts.
+    //! - Model: a machine learning model that can be served by nodes.
+    //! - Echelon: a set of hardware and software specifications of a node.
+    //!   We group specs off-chain into a single identifier.
+
     use std::ascii;
+    use std::vector;
     use sui::balance::{Self, Balance};
     use sui::coin::{Self, Coin};
     use sui::event;
@@ -9,6 +16,7 @@ module node_manager::node_manager {
     use sui::table::{Self, Table};
     use sui::transfer;
     use sui::tx_context::{Self, TxContext};
+    use sui::vec_map::{Self, VecMap};
     use toma::toma::TOMA;
 
     /// How much collateral is required at the time of contract publication.
@@ -16,7 +24,6 @@ module node_manager::node_manager {
 
     const ENodeRegDisabled: u64 = 0;
     const EModelDisabled: u64 = 1;
-    const EModelEnvironmentSpecNotSupported: u64 = 2;
 
     struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
@@ -100,27 +107,41 @@ module node_manager::node_manager {
         name: ascii::String,
         /// Whether the model is disabled and cannot be used to serve prompts.
         is_disabled: bool,
+        /// Which echelons (groups of nodes) support this model.
+        ///
+        /// EchelonId must be enabled by the contract owner for each
+        /// model.
+        /// This allows the contract owner to enable appropriate echelons
+        /// for each model, e.g. large models might not even support low spec
+        /// echelons.
+        ///
+        /// All operations are O(n) but we anyway mostly just need to iterate
+        /// the whole thing to find all echelons that fit within a price range.
+        echelons: VecMap<EchelonId, MLModelEchelon>,
+    }
+
+    /// Stored in MLModelEntry.
+    struct MLModelEchelon has store {
+        /// How much per request is charged by nodes in this group.
+        fee_in_protocol_token: u64,
+        /// The higher this number, the more likely this echelon is to be
+        /// selected to serve a prompt.
+        relative_performance: u64,
         /// Which nodes support this model.
-        /// We group nodes by HW and SW specs, because different environments
+        /// We group nodes by HW and SW specs, because different echelons
         /// might end up having different outputs for the same model due to
         /// e.g. floating point arithmetics.
         /// Using a vector allows for a random access using an index.
-        ///
-        /// EnvironmentSpec must be enabled by the contract owner for each
-        /// model.
-        /// This allows the contract owner to enable appropriate environments
-        /// for each model, e.g. large models might not even support low spec
-        /// environments.
-        nodes_per_hw_spec: Table<EnvironmentSpec, TableVec<SmallId>>,
+        nodes: TableVec<SmallId>
     }
 
-    /// An opaque identifier for an environment.
-    /// We group environments off-chain.
-    /// Nodes must know at the time of registration which environment they
+    /// An opaque identifier for an echelon.
+    /// We group echelons off-chain.
+    /// Nodes must know at the time of registration which echelon they
     /// belong to.
-    /// If they chose the wrong environment, they might end up getting slashed
+    /// If they chose the wrong echelon, they might end up getting slashed
     /// for serving incorrect results.
-    struct EnvironmentSpec has store, copy, drop {
+    struct EchelonId has store, copy, drop {
         id: u64
     }
 
@@ -199,27 +220,22 @@ module node_manager::node_manager {
     /// The node owner announces that they can serve prompts for the given
     /// model.
     /// Fails if the model name is not registered, or if the model does not
-    /// support the environment spec.
-    /// For information about the environment spec, see `EnvironmentSpec`
+    /// support the echelon.
+    /// For information about the echelon, see `EchelonId`
     /// type.
     public entry fun add_node_to_model(
         atoma: &mut AtomaDb,
         model_name: ascii::String,
-        environment_spec: u64,
+        echelon: u64,
         node_badge: &NodeBadge,
     ) {
         let model = object_table::borrow_mut(&mut atoma.models, model_name);
         assert!(!model.is_disabled, EModelDisabled);
 
-        let environment_spec = EnvironmentSpec { id: environment_spec };
-        assert!(
-            table::contains(&model.nodes_per_hw_spec, environment_spec),
-            EModelEnvironmentSpecNotSupported,
-        );
+        let echelon_id = EchelonId { id: echelon };
+        let echelon = vec_map::get_mut(&mut model.echelons, &echelon_id);
 
-        let nodes =
-            table::borrow_mut(&mut model.nodes_per_hw_spec, environment_spec);
-        table_vec::push_back(nodes, node_badge.small_id);
+        table_vec::push_back(&mut echelon.nodes, node_badge.small_id);
 
         // TODO: prevent duplicates
 
@@ -260,67 +276,86 @@ module node_manager::node_manager {
             id: object::new(ctx),
             name: model_name,
             is_disabled: false,
-            nodes_per_hw_spec: table::new(ctx),
+            echelons: vec_map::empty()
         }
     }
 
-    public entry fun add_model_environment_spec_entry(
+    public entry fun add_model_echelon_entry(
         atoma: &mut AtomaDb,
         model_name: ascii::String,
-        environment_spec: u64,
+        echelon: u64,
+        fee_in_protocol_token: u64,
+        relative_performance: u64,
         badge: &AtomaOwnerBadge,
         ctx: &mut TxContext,
     ) {
         let model = object_table::borrow_mut(&mut atoma.models, model_name);
-        add_model_environment_spec(model, environment_spec, badge, ctx)
+        add_model_echelon(
+            model, echelon, fee_in_protocol_token, relative_performance, badge, ctx
+        )
     }
 
-    public fun add_model_environment_spec(
+    public fun add_model_echelon(
         model: &mut MLModelEntry,
-        environment_spec: u64,
+        echelon: u64,
+        fee_in_protocol_token: u64,
+        relative_performance: u64,
         _: &AtomaOwnerBadge,
         ctx: &mut TxContext,
     ) {
-        let environment_spec = EnvironmentSpec { id: environment_spec };
-        if (!table::contains(&model.nodes_per_hw_spec, environment_spec)) {
-            table::add(
-                &mut model.nodes_per_hw_spec,
-                environment_spec,
-                table_vec::empty(ctx)
-            );
-        }
+        let echelon = EchelonId { id: echelon };
+        vec_map::insert(&mut model.echelons, echelon, MLModelEchelon {
+            fee_in_protocol_token,
+            relative_performance,
+            nodes: table_vec::empty(ctx),
+        });
     }
 
-    /// Unfortunately, all keys from the table need to be dropped manually
-    /// because Sui's collection drops does not compose.
-    /// But since both EnvironmentSpec and SmallId are droppable types, the
-    /// logic to drop them is implementable ad-hoc.
-    public fun remove_model(
+    /// If this fails due to tx computation limit, you might need to remove
+    /// bunch of model echelons one by one and then remove the model.
+    public entry fun remove_model(
         atoma: &mut AtomaDb,
         model_name: ascii::String,
         _: &AtomaOwnerBadge,
-    ): Table<EnvironmentSpec, TableVec<SmallId>> {
+    ) {
         let MLModelEntry {
             id: model_id,
             name: _,
             is_disabled: _,
-            nodes_per_hw_spec,
+            echelons,
         } = object_table::remove(&mut atoma.models, model_name);
         object::delete(model_id);
 
-        nodes_per_hw_spec
+        let (_, echelons) = vec_map::into_keys_values(echelons);
+
+        let index = 0;
+        let len = vector::length(&echelons);
+        while (index < len) {
+            let MLModelEchelon {
+                fee_in_protocol_token: _,
+                relative_performance: _,
+                nodes,
+            } = vector::pop_back(&mut echelons);
+            table_vec::drop(nodes);
+        };
+
+        vector::destroy_empty(echelons);
     }
 
-    public entry fun remove_model_environment_spec(
+    public entry fun remove_model_echelon(
         atoma: &mut AtomaDb,
         model_name: ascii::String,
-        environment_spec: u64,
+        echelon: u64,
         _: &AtomaOwnerBadge,
     ) {
         let model = object_table::borrow_mut(&mut atoma.models, model_name);
-        let environment_spec = EnvironmentSpec { id: environment_spec };
-        let v = table::remove(&mut model.nodes_per_hw_spec, environment_spec);
-        table_vec::drop(v);
+        let echelon_id = EchelonId { id: echelon };
+        let (_, MLModelEchelon {
+            fee_in_protocol_token: _,
+            relative_performance: _,
+            nodes,
+        }) = vec_map::remove(&mut model.echelons, &echelon_id);
+        table_vec::drop(nodes);
     }
 
     public entry fun disable_model(

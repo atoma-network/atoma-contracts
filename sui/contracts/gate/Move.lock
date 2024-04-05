@@ -2,22 +2,40 @@
 
 [move]
 version = 1
-manifest_digest = "D8F2068664DA33CC726EE6418082E8EA7ACE0EC5DA094DBFA5E8BC09B37DB21D"
-deps_digest = "F8BBB0CCB2491CA29A3DF03D6F92277A4F3574266507ACD77214D37ECA3F3082"
+manifest_digest = "A3BF7ED9D4ADF7B62030D39AE0F4ADC27475C25FD2E14AFA12A9AB6A0F1B1526"
+deps_digest = "3C4103934B1E040BB6B23F1D610B4EF9F2F1166A50A104EADCF77467C004C600"
 dependencies = [
+  { name = "NodeManager" },
   { name = "Sui" },
 ]
 
 [[move.package]]
 name = "MoveStdlib"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/testnet", subdir = "crates/sui-framework/packages/move-stdlib" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/mainnet", subdir = "crates/sui-framework/packages/move-stdlib" }
+
+[[move.package]]
+name = "NodeManager"
+source = { local = "../node_manager" }
+
+dependencies = [
+  { name = "Sui" },
+  { name = "Toma" },
+]
 
 [[move.package]]
 name = "Sui"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/testnet", subdir = "crates/sui-framework/packages/sui-framework" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/mainnet", subdir = "crates/sui-framework/packages/sui-framework" }
 
 dependencies = [
   { name = "MoveStdlib" },
+]
+
+[[move.package]]
+name = "Toma"
+source = { local = "../toma" }
+
+dependencies = [
+  { name = "Sui" },
 ]
 
 [move.toolchain-version]
