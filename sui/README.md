@@ -52,7 +52,7 @@ See the contract documentation for more information on what these parameters mea
 
 ```sh
 ./cli --wallet ~/.sui/sui_config/client.yaml \
-    db add-model \
+    db add-model-echelon \
     --package "your package id can be found when publishing" \
     --model-name "llama" \
     --echelon 1 \
@@ -82,9 +82,9 @@ And let's use the echelon we created above.
 ```sh
 ./cli --wallet ~/.sui/sui_config/client.yaml \
     db add-node-to-model \
-    --package "0xa9db77975df5c11949463eaa8bdfaab5e1f4ba6d26d95751a150511cf81658eb" \
+    --package "your package id can be found when publishing" \
     --model-name "llama" \
-    --echelon 2
+    --echelon 1
 ```
 
 ## `TOMA` token
@@ -103,7 +103,7 @@ Use the following template to mint yourself some `TOMA` tokens.
 sui client call \
     --package "0x2" --module "coin" --function "mint_and_transfer" \
     --gas-budget 10000000 \
-    --args YOUR_TOMA_MINT_CAP 1000000 RECIPIENT_ADDR \
+    --args YOUR_TOMA_MINT_CAP 1000000 $(sui client active-address) \
     --type-args YOUR_TOMA_PACKAGE_ID::toma::TOMA
 ```
 

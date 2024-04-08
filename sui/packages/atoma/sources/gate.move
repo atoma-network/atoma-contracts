@@ -35,6 +35,33 @@ module atoma::gate {
         nodes: vector<SmallId>,
     }
 
+    /// TODO: Temporary function that showcases the contract.
+    public entry fun submit_example_text_prompt(
+        atoma: &mut AtomaDb,
+        model: ascii::String,
+        prompt: string::String,
+        nodes_to_sample: u64,
+        ctx: &mut TxContext,
+    ) {
+        let params = TextPromptParams {
+            model,
+            prompt,
+            max_tokens: 100,
+            temperature: 0,
+        };
+        let max_total_fee = 100;
+        let badge = PromptBadge { id: object::new(ctx) };
+        submit_text_prompt(
+            atoma,
+            params,
+            nodes_to_sample,
+            max_total_fee,
+            &badge,
+            ctx,
+        );
+        destroy_prompt_badge(badge);
+    }
+
     /// 1. Get the model echelons from the database.
     /// 2. Randomly pick one of the echelons.
     /// 3. Sample the required number of nodes from the echelon.
