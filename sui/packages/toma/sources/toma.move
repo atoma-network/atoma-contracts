@@ -14,10 +14,10 @@ module toma::toma {
 
     /// A treasury cap is sent to the publisher, who then controls minting and
     /// burning of TOMA tokens.
-    fun init(witness: TOMA, ctx: &mut TxContext) {
+    fun init(otw: TOMA, ctx: &mut TxContext) {
         let url = option::none();
         let (treasury, metadata) = coin::create_currency(
-            witness,
+            otw,
             DECIMALS,
             SYMBOL,
             NAME,

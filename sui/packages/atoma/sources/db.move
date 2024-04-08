@@ -444,6 +444,19 @@ module atoma::db {
         atoma.registration_collateral_in_protocol_token = new_required_collateral;
     }
 
+    public entry fun set_model_echelon_fee(
+        atoma: &mut AtomaDb,
+        model_name: ascii::String,
+        echelon: u64,
+        new_fee_in_protocol_token: u64,
+        _: &AtomaManagerBadge,
+    ) {
+        let model = object_table::borrow_mut(&mut atoma.models, model_name);
+        let echelon_id = EchelonId { id: echelon };
+        let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
+        echelon.fee_in_protocol_token = new_fee_in_protocol_token;
+    }
+
     // =========================================================================
     //                          Helpers
     // =========================================================================
