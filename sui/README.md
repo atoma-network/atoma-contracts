@@ -25,6 +25,8 @@ sui client active-address
 sui client faucet
 ```
 
+Following series of commands can be replicated all in one go with [`oneclicksetup`](./dev/oneclicksetup) script.
+
 This publishes both `atoma` package and `toma` coin package into a single on-chain package.
 We skip dependency verification because testnet and mainnet use different stdlib versions.
 Your current directory has to be where this README is located.
@@ -86,8 +88,6 @@ And let's use the echelon we created above.
     --model-name "llama" \
     --echelon 1
 ```
-
-The setup above can be to some degree automated with [`oneclicksetup`](./dev/oneclicksetup) script.
 
 Now that the network has a model, echelon and a node, we can send a test prompt:
 

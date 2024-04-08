@@ -2,3 +2,5 @@
 build
 # don't track the rust build directory
 target
+# ignore temporary files and directories
+.tmp
