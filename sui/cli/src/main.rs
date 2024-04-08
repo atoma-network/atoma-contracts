@@ -1,5 +1,7 @@
 mod add_model;
 mod add_model_echelon;
+mod register_node;
+mod set_required_registration_collateral;
 
 use std::path::PathBuf;
 
@@ -40,11 +42,11 @@ struct Cli {
 #[derive(Subcommand)]
 enum Cmds {
     #[command(subcommand)]
-    Gate(GateCmds),
+    Db(DbCmds),
 }
 
 #[derive(Subcommand)]
-enum GateCmds {
+enum DbCmds {
     AddModel {
         #[arg(short, long)]
         package: String,
@@ -63,6 +65,16 @@ enum GateCmds {
         #[arg(short, long)]
         relative_performance: u64,
     },
+    SetRequiredRegistrationTomaCollateral {
+        #[arg(short, long)]
+        package: String,
+        #[arg(short, long)]
+        new_amount: u64,
+    },
+    RegisterNode {
+        #[arg(short, long)]
+        package: String,
+    },
 }
 
 #[tokio::main]
@@ -78,7 +90,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Active address: {active_address}");
 
     match cli.command {
-        Some(Cmds::Gate(GateCmds::AddModel {
+        Some(Cmds::Db(DbCmds::AddModel {
             package,
             model_name,
         })) => {
@@ -92,7 +104,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
             println!("{digest}");
         }
-        Some(Cmds::Gate(GateCmds::AddModelEchelon {
+        Some(Cmds::Db(DbCmds::AddModelEchelon {
             package,
             model_name,
             echelon,
@@ -106,6 +118,30 @@ async fn main() -> Result<(), anyhow::Error> {
                 echelon,
                 fee_in_protocol_token,
                 relative_performance,
+                cli.gas_budget.unwrap_or(1_000_000_000),
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::SetRequiredRegistrationTomaCollateral {
+            package,
+            new_amount,
+        })) => {
+            let digest = set_required_registration_collateral::command(
+                &mut wallet,
+                &package,
+                new_amount,
+                cli.gas_budget.unwrap_or(1_000_000_000),
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::RegisterNode { package })) => {
+            let digest = register_node::command(
+                &mut wallet,
+                &package,
                 cli.gas_budget.unwrap_or(1_000_000_000),
             )
             .await?;

@@ -13,3 +13,8 @@ tokio = { version = "1.2", features = ["full"] }
 git = "https://github.com/mystenlabs/sui"
 package = "sui-sdk"
 branch = "framework/mainnet"
+
+[dependencies.move-core-types]
+git = "https://github.com/mystenlabs/sui"
+package = "move-core-types"
+branch = "framework/mainnet"

@@ -42,7 +42,7 @@ Use the CLI tool to add a model to the previously published package.
 
 ```sh
 ./cli --wallet ~/.sui/sui_config/client.yaml \
-    gate add-model \
+    db add-model \
     --package "your package id can be found in publish tx digest" \
     --model-name "llama"
 ```
@@ -52,7 +52,7 @@ See the contract documentation for more information on what these parameters mea
 
 ```sh
 ./cli --wallet ~/.sui/sui_config/client.yaml \
-    gate add-model \
+    db add-model \
     --package "your package id can be found when publishing" \
     --model-name "llama" \
     --echelon 1 \
@@ -60,13 +60,52 @@ See the contract documentation for more information on what these parameters mea
     --relative-performance 100
 ```
 
+We can change the required collateral for node registration.
+
+```sh
+./cli --wallet ~/.sui/sui_config/client.yaml \
+    db set-required-registration-toma-collateral \
+    --package "your package id can be found when publishing" \
+    --new-amount 1
+```
+
+Now let's mint some [`TOMA`](#toma-token) tokens and register a new node for the model we created above.
+
+```sh
+./cli --wallet ~/.sui/sui_config/client.yaml \
+    db register-node \
+    --package "your package id can be found when publishing"
+```
+
 ## `TOMA` token
 
 The `TOMA` token is used as collateral that nodes must lock up to participate.
 It's defined in the [`toma` package](./packages/toma).
+
+We can use the CLI to mint `TOMA` tokens to an address.
+As the package publisher, you can see your `$ sui client active-address` on [Sui Explorer][sui-explorer].
+Find the ID of an object called `TreasuryCap<TOMA>`.
+That's your mint cap.
+Then, get the package ID in which the `TOMA` token is published.
+Use the following template to mint yourself some `TOMA` tokens.
+
+```sh
+sui client call \
+    --package "0x2" --module "coin" --function "mint_and_transfer" \
+    --gas-budget 10000000 \
+    --args YOUR_TOMA_MINT_CAP 1000000 RECIPIENT_ADDR \
+    --type-args YOUR_TOMA_PACKAGE_ID::toma::TOMA
+```
+
+Check that your balance has the tokens.
+
+```sh
+sui client balance
+```
 
 <!-- List of References -->
 
 [github-sui-std]: https://github.com/MystenLabs/sui/blob/main/crates/sui-framework/packages/sui-framework/sources
 [sui-install]: https://docs.sui.io/guides/developer/getting-started/sui-install
 [sui-analyzer]: https://marketplace.visualstudio.com/items?itemName=MoveBit.sui-move-analyzer
+[sui-explorer]: https://explorer.sui.io
