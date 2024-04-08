@@ -167,6 +167,13 @@ module atoma::db {
                 InitialCollateralRequiredForRegistration,
         };
         transfer::share_object(atoma_db);
+
+        // Create a manager badge for the package owner for convenience.
+        // More can be created later.
+        let atoma_manager_badge = AtomaManagerBadge {
+            id: object::new(ctx),
+        };
+        transfer::transfer(atoma_manager_badge, tx_context::sender(ctx));
     }
 
     /// Takes collateral from the sender's wallet and transfers them the node

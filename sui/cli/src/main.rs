@@ -1,0 +1,132 @@
+mod add_model;
+
+use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
+use sui_sdk::{
+    rpc_types::{
+        ObjectChange, Page, SuiTransactionBlockResponseOptions, SuiTransactionBlockResponseQuery,
+        TransactionFilter,
+    },
+    types::{base_types::ObjectID, object::Owner},
+    wallet_context::WalletContext,
+    SuiClient,
+};
+
+const DB_MODULE_NAME: &str = "db";
+const DB_MANAGER_TYPE_NAME: &str = "AtomaManagerBadge";
+const DB_TYPE_NAME: &str = "AtomaDb";
+
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct Cli {
+    /// Some operations require a budget to be set.
+    /// We also provide sensible default values for this.
+    #[arg(short, long)]
+    gas_budget: Option<u64>,
+
+    /// Where to find the config for the wallet keystore.
+    #[arg(short, long)]
+    wallet: PathBuf,
+
+    #[command(subcommand)]
+    command: Option<Cmds>,
+}
+
+#[derive(Subcommand)]
+enum Cmds {
+    #[command(subcommand)]
+    Gate(GateCmds),
+}
+
+#[derive(Subcommand)]
+enum GateCmds {
+    AddModel {
+        #[arg(short, long)]
+        package: String,
+        #[arg(short, long)]
+        model_name: String,
+    },
+}
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let cli = Cli::parse();
+
+    if !cli.wallet.exists() {
+        return Err(anyhow::anyhow!("Wallet path does not exist"));
+    }
+
+    let mut wallet = WalletContext::new(&cli.wallet, None, None)?;
+    let active_address = wallet.active_address()?;
+    println!("Active address: {active_address}");
+
+    match cli.command {
+        Some(Cmds::Gate(GateCmds::AddModel {
+            package,
+            model_name,
+        })) => {
+            let digest = add_model::command(
+                &mut wallet,
+                &package,
+                &model_name,
+                cli.gas_budget.unwrap_or(1_000_000_000),
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        None => {}
+    }
+
+    Ok(())
+}
+
+async fn get_atoma_db(client: &SuiClient, package: ObjectID) -> Result<ObjectID, anyhow::Error> {
+    let Page {
+        data,
+        has_next_page,
+        ..
+    } = client
+        .read_api()
+        .query_transaction_blocks(
+            SuiTransactionBlockResponseQuery {
+                filter: Some(TransactionFilter::ChangedObject(package)),
+                options: Some(SuiTransactionBlockResponseOptions {
+                    show_object_changes: true,
+                    ..Default::default()
+                }),
+            },
+            None,
+            Some(1),
+            false,
+        )
+        .await?;
+    assert_eq!(1, data.len());
+    assert!(!has_next_page);
+
+    let changes = data.into_iter().next().unwrap().object_changes.unwrap();
+
+    changes
+        .into_iter()
+        .find_map(|change| {
+            if let ObjectChange::Created {
+                owner: Owner::Shared { .. },
+                object_type,
+                object_id,
+                ..
+            } = change
+            {
+                if object_type.module.as_str() == DB_MODULE_NAME
+                    && object_type.name.as_str() == DB_TYPE_NAME
+                {
+                    Some(object_id)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| anyhow::anyhow!("No {DB_TYPE_NAME} found for the package"))
+}

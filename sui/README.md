@@ -10,6 +10,22 @@ Useful links:
 
 There's a [`check` shell script](dev/check) that builds all packages.
 
+As of right now we don't use `localnet` for testing because the Sui CLI support for faucet is broken.
+
+## Useful commands
+
+This would publishes both `atoma` package and `toma` coin package into a single on-chain package.
+We skip dependency verification because testnet and mainnet use different stdlib versions.
+
+```sh
+sui client publish \
+    --with-unpublished-dependencies \
+    --skip-dependency-verification \
+    --gas-budget 1000000000 \
+    --json \
+    packages/atoma
+```
+
 ## `TOMA` token
 
 The `TOMA` token is used as collateral that nodes must lock up to participate.
