@@ -135,6 +135,7 @@ module atoma::db {
         fee_in_protocol_token: u64,
         /// The higher this number, the more likely this echelon is to be
         /// selected to serve a prompt.
+        /// Read it as "relative performance compared to other echelons".
         relative_performance: u64,
         /// Which nodes support this model.
         /// We group nodes by HW and SW specs, because different echelons

@@ -1,14 +1,18 @@
 mod add_model;
+mod add_model_echelon;
 
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use sui_sdk::{
     rpc_types::{
-        ObjectChange, Page, SuiTransactionBlockResponseOptions, SuiTransactionBlockResponseQuery,
-        TransactionFilter,
+        ObjectChange, Page, SuiObjectDataFilter, SuiObjectDataOptions, SuiObjectResponseQuery,
+        SuiTransactionBlockResponseOptions, SuiTransactionBlockResponseQuery, TransactionFilter,
     },
-    types::{base_types::ObjectID, object::Owner},
+    types::{
+        base_types::{ObjectID, ObjectType, SuiAddress},
+        object::Owner,
+    },
     wallet_context::WalletContext,
     SuiClient,
 };
@@ -47,6 +51,18 @@ enum GateCmds {
         #[arg(short, long)]
         model_name: String,
     },
+    AddModelEchelon {
+        #[arg(short, long)]
+        package: String,
+        #[arg(short, long)]
+        model_name: String,
+        #[arg(short, long)]
+        echelon: u64,
+        #[arg(short, long)]
+        fee_in_protocol_token: u64,
+        #[arg(short, long)]
+        relative_performance: u64,
+    },
 }
 
 #[tokio::main]
@@ -70,6 +86,26 @@ async fn main() -> Result<(), anyhow::Error> {
                 &mut wallet,
                 &package,
                 &model_name,
+                cli.gas_budget.unwrap_or(1_000_000_000),
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Gate(GateCmds::AddModelEchelon {
+            package,
+            model_name,
+            echelon,
+            fee_in_protocol_token,
+            relative_performance,
+        })) => {
+            let digest = add_model_echelon::command(
+                &mut wallet,
+                &package,
+                &model_name,
+                echelon,
+                fee_in_protocol_token,
+                relative_performance,
                 cli.gas_budget.unwrap_or(1_000_000_000),
             )
             .await?;
@@ -129,4 +165,49 @@ async fn get_atoma_db(client: &SuiClient, package: ObjectID) -> Result<ObjectID,
             }
         })
         .ok_or_else(|| anyhow::anyhow!("No {DB_TYPE_NAME} found for the package"))
+}
+
+async fn get_db_manager_badge(
+    client: &SuiClient,
+    package: ObjectID,
+    active_address: SuiAddress,
+) -> Result<ObjectID, anyhow::Error> {
+    let Page {
+        data,
+        has_next_page,
+        ..
+    } = client
+        .read_api()
+        .get_owned_objects(
+            active_address,
+            Some(SuiObjectResponseQuery {
+                filter: Some(SuiObjectDataFilter::Package(package)),
+                options: Some(SuiObjectDataOptions {
+                    show_type: true,
+                    ..Default::default()
+                }),
+            }),
+            None,
+            None,
+        )
+        .await?;
+    assert!(!has_next_page, "We don't support pagination yet");
+
+    data.into_iter()
+        .find_map(|resp| {
+            let object = resp.data?;
+
+            let ObjectType::Struct(type_) = object.type_? else {
+                return None;
+            };
+
+            if type_.module().as_str() == DB_MODULE_NAME
+                && type_.name().as_str() == DB_MANAGER_TYPE_NAME
+            {
+                Some(object.object_id)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| anyhow::anyhow!("No {DB_MANAGER_TYPE_NAME} found for the package"))
 }

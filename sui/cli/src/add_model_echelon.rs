@@ -6,12 +6,15 @@ use sui_sdk::{
 
 use crate::{get_atoma_db, get_db_manager_badge, DB_MODULE_NAME};
 
-const ADD_MODEL_ENDPOINT_NAME: &str = "add_model_entry";
+const ADD_MODEL_ECHELON_ENDPOINT_NAME: &str = "add_model_echelon_entry";
 
 pub(crate) async fn command(
     wallet: &mut WalletContext,
     package: &str,
     model_name: &str,
+    echelon: u64,
+    fee_in_protocol_token: u64,
+    relative_performance: u64,
     gas_budget: u64,
 ) -> Result<TransactionDigest, anyhow::Error> {
     let client = wallet.get_client().await?;
@@ -26,11 +29,14 @@ pub(crate) async fn command(
             active_address,
             package,
             DB_MODULE_NAME,
-            ADD_MODEL_ENDPOINT_NAME,
+            ADD_MODEL_ECHELON_ENDPOINT_NAME,
             vec![],
             vec![
                 SuiJsonValue::from_object_id(atoma_db),
                 SuiJsonValue::new(model_name.into())?,
+                SuiJsonValue::new(echelon.to_string().into())?,
+                SuiJsonValue::new(fee_in_protocol_token.to_string().into())?,
+                SuiJsonValue::new(relative_performance.to_string().into())?,
                 SuiJsonValue::from_object_id(manager_badge),
             ],
             None,
