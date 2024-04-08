@@ -126,6 +126,23 @@ module atoma::gate {
     /// C) we iterate over eligible echelons and subtract their performance
     ///    from a counter that starts at total_performance
     /// D) the first echelon that makes the counter go below goal is selected
+    ///
+    /// For example, imagine three echelons:
+    /// - `A` has 10 nodes and RP of 1.
+    /// - `B` has 1 node and RP of 1.
+    /// - `C` has 5 nodes and RP of 7.
+    ///
+    /// The total is: 10 * 1 + 1 * 1 + 5 * 7 = 46
+    /// We generate a random number `R` in range of 1 to 46.
+    /// Let's start with `B` which should get probability of 1/46.
+    /// If the order of the array is `ABC`,
+    /// then we must roll exactly 11 to hit B. 1/46 chance.
+    /// If the order is `BAC` we must roll exactly 1 to hit B. 1/46
+    /// If the order is `CBA` we must roll exactly 46 to hit B. 1/46
+    ///
+    /// Repeat the same thought process with the other echelons.
+    /// That's how I validated in my mind that the order does not matter,
+    /// the probability will be satisfied.
     fun select_eligible_echelon_at_random(
         echelons: &vector<ModelEchelon>,
         nodes_to_sample: u64,
