@@ -1,0 +1,35 @@
+#!/bin/bash
+
+#
+# $ ./check
+#
+
+function abs_path_to_git_root_dir() {
+    # Recursively find the repo root directory so that this script can be called
+    # from anywhere
+
+    if [ -d "atoma-contracts" ]; then
+        echo "$(pwd)/atoma-contracts"
+    elif [ "$(pwd)" == "/" ]; then
+        echo "No atoma-contracts directory found"
+        exit 1
+    else
+        cd ..
+        abs_path_to_git_root_dir
+    fi
+}
+
+entrance_dir=$(pwd)
+root_dir=$(abs_path_to_git_root_dir)
+
+echo " ==== Building TOMA token package ===="
+cd "${root_dir}/sui/packages/toma"
+sui move build || exit 1
+
+echo
+echo " ==== Building node_manager package ===="
+cd "${root_dir}/sui/packages/atoma"
+sui move build || exit 1
+
+# leave the caller where they started
+cd $entrance_dir
