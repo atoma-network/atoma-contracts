@@ -1,5 +1,6 @@
 mod add_model;
 mod add_model_echelon;
+mod add_node_to_model;
 mod register_node;
 mod set_required_registration_collateral;
 
@@ -21,6 +22,7 @@ use sui_sdk::{
 
 const DB_MODULE_NAME: &str = "db";
 const DB_MANAGER_TYPE_NAME: &str = "AtomaManagerBadge";
+const DB_NODE_TYPE_NAME: &str = "NodeBadge";
 const DB_TYPE_NAME: &str = "AtomaDb";
 
 #[derive(Parser)]
@@ -74,6 +76,14 @@ enum DbCmds {
     RegisterNode {
         #[arg(short, long)]
         package: String,
+    },
+    AddNodeToModel {
+        #[arg(short, long)]
+        package: String,
+        #[arg(short, long)]
+        model_name: String,
+        #[arg(short, long)]
+        echelon: u64,
     },
 }
 
@@ -142,6 +152,22 @@ async fn main() -> Result<(), anyhow::Error> {
             let digest = register_node::command(
                 &mut wallet,
                 &package,
+                cli.gas_budget.unwrap_or(1_000_000_000),
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::AddNodeToModel {
+            package,
+            model_name,
+            echelon,
+        })) => {
+            let digest = add_node_to_model::command(
+                &mut wallet,
+                &package,
+                &model_name,
+                echelon,
                 cli.gas_budget.unwrap_or(1_000_000_000),
             )
             .await?;
@@ -246,4 +272,49 @@ async fn get_db_manager_badge(
             }
         })
         .ok_or_else(|| anyhow::anyhow!("No {DB_MANAGER_TYPE_NAME} found for the package"))
+}
+
+async fn get_node_badge(
+    client: &SuiClient,
+    package: ObjectID,
+    active_address: SuiAddress,
+) -> Result<ObjectID, anyhow::Error> {
+    let Page {
+        data,
+        has_next_page,
+        ..
+    } = client
+        .read_api()
+        .get_owned_objects(
+            active_address,
+            Some(SuiObjectResponseQuery {
+                filter: Some(SuiObjectDataFilter::Package(package)),
+                options: Some(SuiObjectDataOptions {
+                    show_type: true,
+                    ..Default::default()
+                }),
+            }),
+            None,
+            None,
+        )
+        .await?;
+    assert!(!has_next_page, "We don't support pagination yet");
+
+    data.into_iter()
+        .find_map(|resp| {
+            let object = resp.data?;
+
+            let ObjectType::Struct(type_) = object.type_? else {
+                return None;
+            };
+
+            if type_.module().as_str() == DB_MODULE_NAME
+                && type_.name().as_str() == DB_NODE_TYPE_NAME
+            {
+                Some(object.object_id)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| anyhow::anyhow!("No {DB_NODE_TYPE_NAME} found for the package"))
 }

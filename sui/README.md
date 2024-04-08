@@ -77,6 +77,16 @@ Now let's mint some [`TOMA`](#toma-token) tokens and register a new node for the
     --package "your package id can be found when publishing"
 ```
 
+And let's use the echelon we created above.
+
+```sh
+./cli --wallet ~/.sui/sui_config/client.yaml \
+    db add-node-to-model \
+    --package "0xa9db77975df5c11949463eaa8bdfaab5e1f4ba6d26d95751a150511cf81658eb" \
+    --model-name "llama" \
+    --echelon 2
+```
+
 ## `TOMA` token
 
 The `TOMA` token is used as collateral that nodes must lock up to participate.
