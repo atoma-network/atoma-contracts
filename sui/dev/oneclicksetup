@@ -85,7 +85,7 @@ cd $root_dir/sui/dev
     --package "${package}" \
     --model-name "llama" \
     --echelon 1 \
-    --fee-in-protocol-token 1000 \
+    --fee-in-protocol-token 1 \
     --relative-performance 100
 
 ./cli --wallet ~/.sui/sui_config/client.yaml \
