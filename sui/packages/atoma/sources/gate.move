@@ -43,7 +43,7 @@ module atoma::gate {
         atoma: &mut AtomaDb,
         params: TextPromptParams,
         nodes_to_sample: u64,
-        max_fee_per_sample: u64,
+        max_total_fee: u64,
         _:& PromptBadge,
         ctx: &mut TxContext,
     ) {
@@ -54,11 +54,11 @@ module atoma::gate {
         let echelon = select_eligible_echelon_at_random(
             echelons,
             nodes_to_sample,
-            max_fee_per_sample,
+            max_total_fee,
             // ideally we'd pass the context, but move is dumb and thinks that
             // because we return a reference, we could still be using the
             // context, which we need to access mutably later on
-            random_u64(ctx),
+            random_u256(ctx),
         );
 
         // 3.
@@ -129,14 +129,14 @@ module atoma::gate {
     fun select_eligible_echelon_at_random(
         echelons: &vector<ModelEchelon>,
         nodes_to_sample: u64,
-        max_fee_per_sample: u64,
-        random_u64: u64,
+        max_total_fee: u64,
+        random_u256: u256,
     ): &ModelEchelon {
         //
         // 1.
         //
 
-        let total_performance = 0;
+        let total_performance: u256 = 0;
         let eligible_echelons = vector::empty();
         let echelon_count = vector::length(echelons);
         let index = 0;
@@ -144,7 +144,7 @@ module atoma::gate {
             let echelon = vector::borrow(echelons, index);
 
             let fee = db::get_model_echelon_fee(echelon);
-            if (fee > max_fee_per_sample) {
+            if (fee > max_total_fee) {
                 continue
             };
 
@@ -155,7 +155,8 @@ module atoma::gate {
             };
 
             let performance = db::get_model_echelon_performance(echelon);
-            total_performance = total_performance + performance; // A
+            total_performance = total_performance +
+                (performance as u256) * (node_count as u256); // A
             vector::push_back(&mut eligible_echelons, EchelonIdAndPerformance {
                 index,
                 performance,
@@ -167,23 +168,22 @@ module atoma::gate {
         // 2.
         //
 
-        let goal = 1 + random_u64 % total_performance; // B
+        let goal = 1 + random_u256 % total_performance; // B
 
         let remaining_performance = total_performance;
-        while (true) {
+        loop {
             // index never out of bounds bcs on last iteration
             // remaining_performance == 0 while goal > 0
             let EchelonIdAndPerformance {
                 index, performance
             } = vector::pop_back(&mut eligible_echelons);
-            remaining_performance = remaining_performance - performance; // C
+            remaining_performance =
+                remaining_performance - (performance as u256); // C
 
             if (goal > remaining_performance) {
                 return vector::borrow(echelons, index) // D
             };
-        };
-
-        abort ENoEligibleEchelons
+        }
     }
 
     /// TODO: https://github.com/atoma-network/atoma-contracts/issues/4
@@ -198,6 +198,23 @@ module atoma::gate {
         while (i < num_of_bytes) {
             let byte = vector::pop_back(&mut buffer);
             result = (result << 8) + (byte as u64);
+            i = i + 1;
+        };
+        result
+    }
+
+    /// TODO: https://github.com/atoma-network/atoma-contracts/issues/4
+    fun random_u256(ctx: &mut TxContext): u256 {
+        let buffer = sui::address::to_bytes(
+            tx_context::fresh_object_address(ctx)
+        );
+
+        let num_of_bytes = 32;
+        let result: u256 = 0;
+        let i = 0;
+        while (i < num_of_bytes) {
+            let byte = vector::pop_back(&mut buffer);
+            result = (result << 8) + (byte as u256);
             i = i + 1;
         };
         result
