@@ -204,7 +204,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 &model_name,
                 &prompt_path,
                 nodes_to_sample,
-                cli.gas_budget.unwrap_or(1_000_000_000),
+                cli.gas_budget.unwrap_or(2_000_000_000),
             )
             .await?;
 

@@ -263,4 +263,28 @@ module atoma::gate {
         };
         result
     }
+
+    #[test]
+    fun test_random_u64() {
+        let ctx = tx_context::new_from_hint(
+            @0x1,
+            9908,
+            10,
+            10,
+            0
+        );
+        random_u64(&mut ctx);
+    }
+
+    #[test]
+    fun test_random_u256() {
+        let ctx = tx_context::new_from_hint(
+            @0x1,
+            9908,
+            10,
+            10,
+            0
+        );
+        random_u256(&mut ctx);
+    }
 }
