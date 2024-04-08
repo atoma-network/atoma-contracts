@@ -9,6 +9,9 @@
 #
 # Usage: ./oneclicksetup.sh <package ID>
 #
+# When this script is done, we will have a model named "llama" with one echelon
+# ID 1, and a node registered to that model echelon.
+#
 
 package="${1}"
 

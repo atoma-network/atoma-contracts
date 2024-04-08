@@ -3,6 +3,7 @@ mod add_model_echelon;
 mod add_node_to_model;
 mod register_node;
 mod set_required_registration_collateral;
+mod submit_example_text_prompt;
 
 use std::path::PathBuf;
 
@@ -20,6 +21,7 @@ use sui_sdk::{
     SuiClient,
 };
 
+const GATE_MODULE_NAME: &str = "gate";
 const DB_MODULE_NAME: &str = "db";
 const DB_MANAGER_TYPE_NAME: &str = "AtomaManagerBadge";
 const DB_NODE_TYPE_NAME: &str = "NodeBadge";
@@ -45,6 +47,8 @@ struct Cli {
 enum Cmds {
     #[command(subcommand)]
     Db(DbCmds),
+    #[command(subcommand)]
+    Gate(GateCmds),
 }
 
 #[derive(Subcommand)]
@@ -84,6 +88,20 @@ enum DbCmds {
         model_name: String,
         #[arg(short, long)]
         echelon: u64,
+    },
+}
+
+#[derive(Subcommand)]
+enum GateCmds {
+    SubmitExampleTextPrompt {
+        #[arg(short, long)]
+        package: String,
+        #[arg(short, long)]
+        model_name: String,
+        #[arg(long)]
+        prompt_path: PathBuf,
+        #[arg(short, long)]
+        nodes_to_sample: u64,
     },
 }
 
@@ -168,6 +186,24 @@ async fn main() -> Result<(), anyhow::Error> {
                 &package,
                 &model_name,
                 echelon,
+                cli.gas_budget.unwrap_or(1_000_000_000),
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Gate(GateCmds::SubmitExampleTextPrompt {
+            package,
+            model_name,
+            prompt_path,
+            nodes_to_sample,
+        })) => {
+            let digest = submit_example_text_prompt::command(
+                &mut wallet,
+                &package,
+                &model_name,
+                &prompt_path,
+                nodes_to_sample,
                 cli.gas_budget.unwrap_or(1_000_000_000),
             )
             .await?;

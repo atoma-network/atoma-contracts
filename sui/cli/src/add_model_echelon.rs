@@ -6,7 +6,7 @@ use sui_sdk::{
 
 use crate::{get_atoma_db, get_db_manager_badge, DB_MODULE_NAME};
 
-const ADD_MODEL_ECHELON_ENDPOINT_NAME: &str = "add_model_echelon_entry";
+const ENDPOINT_NAME: &str = "add_model_echelon_entry";
 
 pub(crate) async fn command(
     wallet: &mut WalletContext,
@@ -29,7 +29,7 @@ pub(crate) async fn command(
             active_address,
             package,
             DB_MODULE_NAME,
-            ADD_MODEL_ECHELON_ENDPOINT_NAME,
+            ENDPOINT_NAME,
             vec![],
             vec![
                 SuiJsonValue::from_object_id(atoma_db),

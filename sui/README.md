@@ -87,6 +87,19 @@ And let's use the echelon we created above.
     --echelon 1
 ```
 
+The setup above can be to some degree automated with [`oneclicksetup`](./dev/oneclicksetup) script.
+
+Now that the network has a model, echelon and a node, we can send a test prompt:
+
+```sh
+./cli --wallet ~/.sui/sui_config/client.yaml \
+    gate submit-example-text-prompt \
+    --package "your package id can be found when publishing" \
+    --model-name "llama" \
+    --prompt-path "path/to/text/file" \
+    --nodes-to-sample 1
+```
+
 ## `TOMA` token
 
 The `TOMA` token is used as collateral that nodes must lock up to participate.
