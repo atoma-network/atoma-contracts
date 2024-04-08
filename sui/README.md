@@ -70,7 +70,3 @@ It's defined in the [`toma` package](./packages/toma).
 [github-sui-std]: https://github.com/MystenLabs/sui/blob/main/crates/sui-framework/packages/sui-framework/sources
 [sui-install]: https://docs.sui.io/guides/developer/getting-started/sui-install
 [sui-analyzer]: https://marketplace.visualstudio.com/items?itemName=MoveBit.sui-move-analyzer
-
-```
-
-```
