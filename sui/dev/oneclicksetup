@@ -109,7 +109,7 @@ echo "Package: ${package}"
 
 echo "Sending test text prompt"
 
-echo "hellow world" >/tmp/atoma-test-prompt.txt
+echo "What should be my next travel destination ?" >/tmp/atoma-test-prompt.txt
 ./cli --wallet ~/.sui/sui_config/client.yaml \
     gate submit-example-text-prompt \
     --package "${package}" \
