@@ -1,0 +1,20 @@
+[package]
+name = "cli"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+anyhow = "1.0"
+clap = "4.5"
+tokio = { version = "1.2", features = ["full"] }
+
+[dependencies.sui-sdk]
+git = "https://github.com/mystenlabs/sui"
+package = "sui-sdk"
+branch = "framework/mainnet"
+
+[dependencies.move-core-types]
+git = "https://github.com/mystenlabs/sui"
+package = "move-core-types"
+branch = "framework/mainnet"

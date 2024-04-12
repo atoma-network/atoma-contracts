@@ -35,6 +35,33 @@ module atoma::gate {
         nodes: vector<SmallId>,
     }
 
+    /// TODO: Temporary function that showcases the contract.
+    public entry fun submit_example_text_prompt(
+        atoma: &mut AtomaDb,
+        model: ascii::String,
+        prompt: string::String,
+        nodes_to_sample: u64,
+        ctx: &mut TxContext,
+    ) {
+        let params = TextPromptParams {
+            model,
+            prompt,
+            max_tokens: 100,
+            temperature: 0,
+        };
+        let max_total_fee = 18_446_744_073_709_551_615;
+        let badge = PromptBadge { id: object::new(ctx) };
+        submit_text_prompt(
+            atoma,
+            params,
+            nodes_to_sample,
+            max_total_fee,
+            &badge,
+            ctx,
+        );
+        destroy_prompt_badge(badge);
+    }
+
     /// 1. Get the model echelons from the database.
     /// 2. Randomly pick one of the echelons.
     /// 3. Sample the required number of nodes from the echelon.
@@ -111,7 +138,7 @@ module atoma::gate {
     struct EchelonIdAndPerformance has drop {
         /// Index within the echelons vector.
         index: u64,
-        performance: u64,
+        performance: u256,
     }
 
     /// 1. Filter out only appropriate echelons that are below max fee and
@@ -162,22 +189,28 @@ module atoma::gate {
 
             let fee = db::get_model_echelon_fee(echelon);
             if (fee > max_total_fee) {
+                index = index + 1;
                 continue
             };
 
             let nodes = db::get_model_echelon_nodes(echelon);
             let node_count = table_vec::length(nodes);
             if (node_count < nodes_to_sample) {
+                index = index + 1;
                 continue
             };
 
-            let performance = db::get_model_echelon_performance(echelon);
-            total_performance = total_performance +
-                (performance as u256) * (node_count as u256); // A
+            let performance =
+                (db::get_model_echelon_performance(echelon) as u256)
+                *
+                (node_count as u256);
+            total_performance = total_performance + performance; // A
             vector::push_back(&mut eligible_echelons, EchelonIdAndPerformance {
                 index,
                 performance,
             });
+
+            index = index + 1;
         };
         assert!(vector::length(&eligible_echelons) > 0, ENoEligibleEchelons);
 
@@ -194,8 +227,7 @@ module atoma::gate {
             let EchelonIdAndPerformance {
                 index, performance
             } = vector::pop_back(&mut eligible_echelons);
-            remaining_performance =
-                remaining_performance - (performance as u256); // C
+            remaining_performance = remaining_performance - performance; // C
 
             if (goal > remaining_performance) {
                 return vector::borrow(echelons, index) // D
@@ -235,5 +267,29 @@ module atoma::gate {
             i = i + 1;
         };
         result
+    }
+
+    #[test]
+    fun test_random_u64() {
+        let ctx = tx_context::new_from_hint(
+            @0x1,
+            9908,
+            10,
+            10,
+            0
+        );
+        random_u64(&mut ctx);
+    }
+
+    #[test]
+    fun test_random_u256() {
+        let ctx = tx_context::new_from_hint(
+            @0x1,
+            9908,
+            10,
+            10,
+            0
+        );
+        random_u256(&mut ctx);
     }
 }

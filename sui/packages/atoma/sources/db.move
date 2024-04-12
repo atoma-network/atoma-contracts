@@ -135,6 +135,7 @@ module atoma::db {
         fee_in_protocol_token: u64,
         /// The higher this number, the more likely this echelon is to be
         /// selected to serve a prompt.
+        /// Read it as "relative performance compared to other echelons".
         relative_performance: u64,
         /// Which nodes support this model.
         /// We group nodes by HW and SW specs, because different echelons
@@ -167,6 +168,13 @@ module atoma::db {
                 InitialCollateralRequiredForRegistration,
         };
         transfer::share_object(atoma_db);
+
+        // Create a manager badge for the package owner for convenience.
+        // More can be created later.
+        let atoma_manager_badge = AtomaManagerBadge {
+            id: object::new(ctx),
+        };
+        transfer::transfer(atoma_manager_badge, tx_context::sender(ctx));
     }
 
     /// Takes collateral from the sender's wallet and transfers them the node

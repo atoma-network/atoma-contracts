@@ -1,0 +1,121 @@
+#!/bin/bash
+
+#
+# Helper script that setups a test Atoma network environment on Sui
+#
+# Usage: ./oneclicksetup.sh
+#
+# When this script is done, we will have a model named "llama" with one echelon
+# ID 1, and a node registered to that model echelon.
+#
+
+function abs_path_to_git_root_dir() {
+    # Recursively find the repo root directory so that this script can be called
+    # from anywhere
+
+    if [ -d "atoma-contracts" ]; then
+        echo "$(pwd)/atoma-contracts"
+    elif [ "$(pwd)" == "/" ]; then
+        echo "No atoma-contracts directory found"
+        exit 1
+    else
+        cd ..
+        abs_path_to_git_root_dir
+    fi
+}
+
+entrance_dir=$(pwd)
+root_dir=$(abs_path_to_git_root_dir)
+
+cd $root_dir/sui
+
+json=$(
+    sui client publish \
+        --with-unpublished-dependencies \
+        --skip-dependency-verification \
+        --gas-budget 1000000000 \
+        --json \
+        packages/atoma
+)
+
+# if last command failed, print the error
+if [ $? -ne 0 ]; then
+    echo "${json}"
+    exit 1
+fi
+
+package=$(
+    echo "${json}" | jq -r '.objectChanges[] | select(.packageId) | .packageId'
+)
+
+if [ -z "${package}" ] || [[ ! "${package}" =~ ^0x ]]; then
+    echo "Could not publish the package. Exiting."
+    exit 1
+fi
+
+treasury=$(
+    echo "${json}" |
+        jq -r '.objectChanges[] | select(.objectType | type == "string" and startswith("0x2::coin::TreasuryCap")) | .objectId'
+)
+
+if [ -z "${treasury}" ] || [[ ! "${treasury}" =~ ^0x ]]; then
+    echo "Could not find the treasury. Exiting."
+    exit 1
+fi
+
+echo "Minting some TOMA tokens so that we can deposit collateral"
+
+sui client call \
+    --package "0x2" --module "coin" --function "mint_and_transfer" \
+    --gas-budget 10000000 \
+    --args "${treasury}" 1000000 $(sui client active-address) \
+    --type-args "${package}::toma::TOMA" || exit 1
+
+cd $root_dir/sui/dev
+
+# These commands follow the README.md
+
+./cli --wallet ~/.sui/sui_config/client.yaml \
+    db add-model \
+    --package "${package}" \
+    --model-name "llama"
+
+./cli --wallet ~/.sui/sui_config/client.yaml \
+    db add-model-echelon \
+    --package "${package}" \
+    --model-name "llama" \
+    --echelon 1 \
+    --fee-in-protocol-token 1 \
+    --relative-performance 100
+
+./cli --wallet ~/.sui/sui_config/client.yaml \
+    db set-required-registration-toma-collateral \
+    --package "${package}" \
+    --new-amount 1
+
+./cli --wallet ~/.sui/sui_config/client.yaml \
+    db register-node \
+    --package "${package}"
+
+./cli --wallet ~/.sui/sui_config/client.yaml \
+    db add-node-to-model \
+    --package "${package}" \
+    --model-name "llama" \
+    --echelon 1
+
+echo
+echo
+echo "Package: ${package}"
+
+echo "Sending test text prompt"
+
+echo "hellow world" >/tmp/atoma-test-prompt.txt
+./cli --wallet ~/.sui/sui_config/client.yaml \
+    gate submit-example-text-prompt \
+    --package "${package}" \
+    --model-name "llama" \
+    --prompt-path /tmp/atoma-test-prompt.txt \
+    --nodes-to-sample 1
+
+# leave the caller where they started
+cd $entrance_dir
