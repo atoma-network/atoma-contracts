@@ -26,6 +26,13 @@ module atoma::gate {
         max_tokens: u64,
         /// Represents a floating point number between 0 and 1, big endian.
         temperature: u32,
+        random_seed: u128,
+        repeat_last_n: u32,
+        /// Represents a floating point number between 1 and infty, big endian.
+        repeat_penalty: u32,
+        /// Represents a floating point number between 0 and 1, big endian.
+        top_p: Option<u32>,
+        top_k: Option<u32>
     }
 
     #[allow(unused_field)]
