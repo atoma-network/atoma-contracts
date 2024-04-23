@@ -383,10 +383,10 @@ module atoma::db {
                 relative_performance: _,
                 nodes,
             } = vector::pop_back(&mut echelons);
-            table_vec::drop(nodes);
+            nodes.drop();
         };
 
-        vector::destroy_empty(echelons);
+        echelons.destroy_empty();
     }
 
     public entry fun remove_model_echelon(
