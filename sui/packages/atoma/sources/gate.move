@@ -3,7 +3,6 @@ module atoma::gate {
     use atoma::db::{Self, AtomaManagerBadge, SmallId, ModelEchelon, AtomaDb};
     use std::ascii;
     use std::string;
-    use sui::event;
 
     const ENoEligibleEchelons: u64 = 0;
 
@@ -128,7 +127,7 @@ module atoma::gate {
         );
 
         // 5.
-        event::emit(TextPromptEvent {
+        sui::event::emit(TextPromptEvent {
             params,
             ticket_id,
             nodes: selected_nodes,

@@ -6,7 +6,6 @@ module atoma::db {
     use std::ascii;
     use sui::balance::Balance;
     use sui::coin::Coin;
-    use sui::event;
     use sui::object_table::{Self, ObjectTable};
     use sui::package::{Self, Publisher};
     use sui::table_vec::{Self, TableVec};
@@ -208,7 +207,7 @@ module atoma::db {
         self.nodes.add(small_id, node_entry);
 
         let badge_id = object::new(ctx);
-        event::emit(NodeRegisteredEvent {
+        sui::event::emit(NodeRegisteredEvent {
             badge_id: object::uid_to_inner(&badge_id),
             node_small_id: small_id,
         });
@@ -239,7 +238,7 @@ module atoma::db {
         // TODO: https://github.com/atoma-network/atoma-contracts/issues/2
         table_vec::push_back(&mut echelon.nodes, node_badge.small_id);
 
-        event::emit(NodeSubscribedToModelEvent {
+        sui::event::emit(NodeSubscribedToModelEvent {
             node_small_id: node_badge.small_id,
             model_name,
         });

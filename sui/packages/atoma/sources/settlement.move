@@ -1,5 +1,5 @@
 module atoma::settlement {
-    use atoma::db::{Self, EchelonId, SmallId, NodeBadge, AtomaDb};
+    use atoma::db::{EchelonId, SmallId, NodeBadge, AtomaDb};
     use std::ascii;
     use sui::dynamic_object_field;
     use atoma::utils::random_u64;
@@ -199,7 +199,7 @@ module atoma::settlement {
         else if (ticket.did_timeout(ctx)) {
             let echelon =
                 atoma.get_model_echelon(ticket.model_name, ticket.echelon_id);
-            let nodes = db::get_model_echelon_nodes(echelon);
+            let nodes = echelon.get_model_echelon_nodes();
             let nodes_count = nodes.length();
 
             let mut new_nodes = vector::empty();
