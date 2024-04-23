@@ -7,6 +7,7 @@ module atoma::settlement {
     const ENotAwaitingEvaluation: u64 = 0;
     const EEvaluationAlreadySubmitted: u64 = 1;
     const ENotReadyToSettle: u64 = 2;
+    const EBlake2b256HashMustBe32Bytes: u64 = 3;
 
     /// Nodes did not agree on the settlement.
     public struct DisputeEvent has copy, drop {
@@ -89,6 +90,9 @@ module atoma::settlement {
         merkle_root: vector<u8>,
         chunk_hash: vector<u8>,
     ) {
+        assert!(merkle_root.length() == 32, EBlake2b256HashMustBe32Bytes);
+        assert!(chunk_hash.length() == 32, EBlake2b256HashMustBe32Bytes);
+
         let ticket = get_settlement_ticket_mut(atoma, ticket_id);
         let node_id = badge.get_node_id();
 
