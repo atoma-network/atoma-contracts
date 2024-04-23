@@ -1,11 +1,8 @@
 module toma::toma {
-    use std::option;
     use sui::coin;
-    use sui::transfer;
-    use sui::tx_context::{Self, TxContext};
 
     /// The coin type.
-    struct TOMA has drop {}
+    public struct TOMA has drop {}
 
     const DECIMALS: u8 = 6;
     const SYMBOL: vector<u8> = b"TOMA";

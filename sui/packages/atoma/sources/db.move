@@ -278,6 +278,10 @@ module atoma::db {
         echelon.relative_performance
     }
 
+    public fun get_node_id(node: &NodeBadge): SmallId {
+        node.small_id
+    }
+
     // =========================================================================
     //                          Admin functions
     // =========================================================================

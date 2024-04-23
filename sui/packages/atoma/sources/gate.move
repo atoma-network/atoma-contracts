@@ -147,6 +147,7 @@ module atoma::gate {
     ///
     /// # Algorithm
     /// TODO: https://github.com/atoma-network/atoma-contracts/issues/3
+    ///
     /// A) total performance is a sum of all eligible echelons'
     /// performances
     /// B) goal is a random number in interval <1; total_performance>
