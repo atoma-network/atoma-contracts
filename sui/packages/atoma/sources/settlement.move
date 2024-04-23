@@ -17,6 +17,19 @@ module atoma::settlement {
         timeout: Option<TimeoutInfo>,
     }
 
+    /// Some nodes did not provide their commitment in time.
+    /// These new nodes have been sampled on their behalf.
+    public struct NewlySampledNodesEvent has copy, drop {
+        ticket_id: ID,
+        new_nodes: vector<MapNodeToChunk>,
+    }
+    /// Informs newly sampled node about the chunk that it should
+    /// submit commitment for.
+    public struct MapNodeToChunk has store, copy, drop {
+        node_id: SmallId,
+        order: u64,
+    }
+
     /// Dynamic object field of atoma db.
     ///
     /// Ticket that's created when user submits a new prompt.
@@ -170,7 +183,7 @@ module atoma::settlement {
                 } = ticket;
                 id.delete();
 
-                // TODO: reward the nodes
+                // TODO: https://github.com/atoma-network/atoma-contracts/issues/12
             } else {
                 ticket.is_being_disputed = true;
                 return_settlement_ticket(atoma, ticket);
@@ -201,7 +214,10 @@ module atoma::settlement {
                     // sample another node to replace the slashed one
                     let random_node_index = random_u64(ctx) % nodes_count;
                     let new_node_id = nodes.borrow(random_node_index);
-                    new_nodes.push_back(*new_node_id);
+                    new_nodes.push_back(MapNodeToChunk {
+                        node_id: *new_node_id,
+                        order: i,
+                    });
                     *ticket.all.borrow_mut(i) = *new_node_id;
                 };
 
@@ -212,7 +228,10 @@ module atoma::settlement {
             ticket.timeout.started_at_epoch_timestamp_ms = ctx.epoch_timestamp_ms();
             return_settlement_ticket(atoma, ticket);
 
-            // TODO: emit event that publishes info about the new nodes
+            sui::event::emit(NewlySampledNodesEvent {
+                ticket_id,
+                new_nodes,
+            });
         }
         else {
             abort ENotReadyToSettle
@@ -231,7 +250,7 @@ module atoma::settlement {
         nodes: vector<SmallId>,
         timeout_ms: u64,
         ctx: &mut TxContext,
-    ) {
+    ): ID {
         let ticket = SettlementTicket {
             id: object::new(ctx),
             model_name,
@@ -247,8 +266,11 @@ module atoma::settlement {
                 started_at_epoch_timestamp_ms: ctx.epoch_timestamp_ms(),
             },
         };
+        let id = object::id(&ticket);
 
         return_settlement_ticket(atoma, ticket);
+
+        id
     }
 
     /// # How the timeout works?

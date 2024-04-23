@@ -28,6 +28,9 @@ module atoma::gate {
     #[allow(unused_field)]
     /// This event is emitted when the text prompt is submitted.
     public struct TextPromptEvent has copy, drop {
+        /// The ID of the settlement object.
+        ticket_id: ID,
+        /// The parameters of the prompt that nodes must evaluate.
         params: TextPromptParams,
         /// This might not be the final list of nodes that will be used to
         /// evaluate the prompt.
@@ -115,7 +118,7 @@ module atoma::gate {
         };
 
         // 4.
-        atoma::settlement::new_ticket(
+        let ticket_id = atoma::settlement::new_ticket(
             atoma,
             params.model,
             echelon.get_model_echelon_id(),
@@ -127,6 +130,7 @@ module atoma::gate {
         // 5.
         event::emit(TextPromptEvent {
             params,
+            ticket_id,
             nodes: selected_nodes,
         });
     }
