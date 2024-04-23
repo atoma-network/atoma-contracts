@@ -21,6 +21,10 @@ module atoma::db {
 
     /// How much collateral is required at the time of package publication.
     const InitialCollateralRequiredForRegistration: u64 = 1_000;
+    /// Maximum time nodes can take to settle a prompt before we attempt to
+    /// settle without them.
+    /// This is the initial value and can change.
+    const InitialSettlementTimeoutMs: u64 = 60_000;
 
     const ENodeRegDisabled: u64 = 0;
     const EModelDisabled: u64 = 1;
@@ -127,6 +131,9 @@ module atoma::db {
     /// Stored in ModelEntry.
     public struct ModelEchelon has store {
         id: EchelonId,
+        /// If settlement is not done within this time, we attempt to settle
+        /// without waiting for nodes that did not respond.
+        settlement_timeout_ms: u64,
         /// How much per request is charged by nodes in this group.
         fee_in_protocol_token: u64,
         /// The higher this number, the more likely this echelon is to be
@@ -268,8 +275,17 @@ module atoma::db {
         echelon.relative_performance
     }
 
+    public fun get_model_echelon_settlement_timeout_ms(echelon: &ModelEchelon): u64 {
+        echelon.settlement_timeout_ms
+    }
+
     public fun get_node_id(node: &NodeBadge): SmallId {
         node.small_id
+    }
+
+    /// Other modules can take advantage of dynamic fields attached to the UID.
+    public(package) fun get_uid_mut(self: &mut AtomaDb): &mut UID {
+        &mut self.id
     }
 
     // =========================================================================
@@ -355,6 +371,7 @@ module atoma::db {
             id: echelon_id,
             fee_in_protocol_token,
             relative_performance,
+            settlement_timeout_ms: InitialSettlementTimeoutMs,
             nodes: table_vec::empty(ctx),
         });
     }
@@ -381,6 +398,7 @@ module atoma::db {
                 id: _,
                 fee_in_protocol_token: _,
                 relative_performance: _,
+                settlement_timeout_ms: _,
                 nodes,
             } = vector::pop_back(&mut echelons);
             nodes.drop();
@@ -401,6 +419,7 @@ module atoma::db {
             id: _,
             fee_in_protocol_token: _,
             relative_performance: _,
+            settlement_timeout_ms: _,
             nodes,
         } = remove_echelon(&mut model.echelons, echelon_id);
         nodes.drop();
@@ -451,6 +470,19 @@ module atoma::db {
         let echelon_id = EchelonId { id: echelon };
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
         echelon.fee_in_protocol_token = new_fee_in_protocol_token;
+    }
+
+    public entry fun set_model_echelon_settlement_timeout_ms(
+        self: &mut AtomaDb,
+        model_name: ascii::String,
+        echelon: u64,
+        new_timeout_ms: u64,
+        _: &AtomaManagerBadge,
+    ) {
+        let model = self.models.borrow_mut(model_name);
+        let echelon_id = EchelonId { id: echelon };
+        let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
+        echelon.settlement_timeout_ms = new_timeout_ms;
     }
 
     // =========================================================================

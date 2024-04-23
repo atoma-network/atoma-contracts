@@ -28,6 +28,10 @@ module atoma::gate {
     /// This event is emitted when the text prompt is submitted.
     public struct TextPromptEvent has copy, drop {
         params: TextPromptParams,
+        /// This might not be the final list of nodes that will be used to
+        /// evaluate the prompt.
+        /// If nodes don't agree on the output or not enough nodes provide
+        /// the output in time, extra nodes will be sampled.
         nodes: vector<SmallId>,
     }
 
