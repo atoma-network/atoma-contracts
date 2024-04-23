@@ -28,13 +28,13 @@ module atoma::settlement {
         stats: OperationalStats,
     }
 
-    struct MapNodeToHash has store, drop {
+    public struct MapNodeToHash has store, drop {
         node_id: SmallId,
         hash: vector<u8>,
     }
 
     /// Holds data that's relevant for successful resolution of the prompt.
-    struct OperationalStats has store, drop {
+    public struct OperationalStats has store, drop {
         /// Will be relevant for timeouting.
         started_in_epoch: u64,
         /// Will be relevant for timeouting.

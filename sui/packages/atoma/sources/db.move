@@ -34,13 +34,13 @@ module atoma::db {
     const EEchelonNotFound: u64 = 5;
     const EEchelonAlreadyExistsForModel: u64 = 6;
 
-    struct NodeRegisteredEvent has copy, drop {
+    public struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
         badge_id: ID,
         node_small_id: SmallId,
     }
 
-    struct NodeSubscribedToModelEvent has copy, drop {
+    public struct NodeSubscribedToModelEvent has copy, drop {
         node_small_id: SmallId,
         model_name: ascii::String,
     }
@@ -48,14 +48,14 @@ module atoma::db {
     /// Owned object.
     ///
     /// Represents authority over the package.
-    struct AtomaManagerBadge has key, store {
+    public struct AtomaManagerBadge has key, store {
         id: UID,
     }
 
     /// Owned object, transferred to each node.
     ///
     /// Proof of registration for a node.
-    struct NodeBadge has key, store {
+    public struct NodeBadge has key, store {
         id: UID,
         small_id: SmallId,
     }
@@ -63,7 +63,7 @@ module atoma::db {
     /// Since referring to node is ubiquitous and potentially large collections
     /// are at stake, we assign a u64 ID to each node instead of using Sui
     /// address which is 32 bytes.
-    struct SmallId has store, copy, drop {
+    public struct SmallId has store, copy, drop {
         /// # Important
         /// We start from 1 because 0 is reserved an empty node, which might
         /// become valuable to represent in future.
@@ -80,7 +80,7 @@ module atoma::db {
     /// - random node selection per model
     /// - O(1) access to node metadata
     /// - O(1) access to model
-    struct AtomaDb has key {
+    public struct AtomaDb has key {
         id: UID,
         /// We keep track of total registered nodes so that we can generate
         /// SmallId for newly registered nodes as these IDs are sequential.
@@ -103,12 +103,12 @@ module atoma::db {
     }
 
     /// Field of AtomaDb.
-    struct NodeEntry has store {
+    public struct NodeEntry has store {
         collateral: Balance<TOMA>,
     }
 
     /// Object field of AtomaDb.
-    struct ModelEntry has key, store {
+    public struct ModelEntry has key, store {
         id: UID,
         /// UTF8 model identifier.
         name: ascii::String,
@@ -129,7 +129,7 @@ module atoma::db {
     }
 
     /// Stored in ModelEntry.
-    struct ModelEchelon has store {
+    public struct ModelEchelon has store {
         id: EchelonId,
         /// How much per request is charged by nodes in this group.
         fee_in_protocol_token: u64,
@@ -151,7 +151,7 @@ module atoma::db {
     /// belong to.
     /// If they chose the wrong echelon, they might end up getting slashed
     /// for serving incorrect results.
-    struct EchelonId has store, copy, drop {
+    public struct EchelonId has store, copy, drop {
         id: u64
     }
 
@@ -382,7 +382,7 @@ module atoma::db {
             id: model_id,
             name: _,
             is_disabled: _,
-            echelons,
+            mut echelons,
         } = object_table::remove(&mut atoma.models, model_name);
         object::delete(model_id);
 
@@ -476,7 +476,7 @@ module atoma::db {
     fun get_echelon_mut(
         echelons: &mut vector<ModelEchelon>, id: EchelonId
     ): &mut ModelEchelon {
-        let i = 0;
+        let mut i = 0;
         let n = vector::length(echelons);
         while (i < n) {
             let echelon = vector::borrow_mut(echelons, i);
@@ -492,7 +492,7 @@ module atoma::db {
     fun contains_echelon(
         echelons: &vector<ModelEchelon>, id: EchelonId
     ): bool {
-        let i = 0;
+        let mut i = 0;
         let n = vector::length(echelons);
         while (i < n) {
             let echelon = vector::borrow(echelons, i);
@@ -508,7 +508,7 @@ module atoma::db {
     fun remove_echelon(
         echelons: &mut vector<ModelEchelon>, id: EchelonId
     ): ModelEchelon {
-        let i = 0;
+        let mut i = 0;
         let n = vector::length(echelons);
         while (i < n) {
             let echelon = vector::borrow(echelons, i);

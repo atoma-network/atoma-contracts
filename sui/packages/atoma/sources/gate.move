@@ -13,14 +13,14 @@ module atoma::gate {
     /// Stored or owned object.
     ///
     /// Anyone holding on this object can submit raw prompts.
-    struct PromptBadge has key, store {
+    public struct PromptBadge has key, store {
         id: UID,
     }
 
     #[allow(unused_field)]
     /// Serves as an input to the `submit_text_prompt` function.
     /// Is also included with the emitted `TextPromptEvent`.
-    struct TextPromptParams has store, copy, drop {
+    public struct TextPromptParams has store, copy, drop {
         model: ascii::String,
         prompt: string::String,
         max_tokens: u64,
@@ -30,7 +30,7 @@ module atoma::gate {
 
     #[allow(unused_field)]
     /// This event is emitted when the text prompt is submitted.
-    struct TextPromptEvent has copy, drop {
+    public struct TextPromptEvent has copy, drop {
         params: TextPromptParams,
         nodes: vector<SmallId>,
     }
@@ -91,8 +91,8 @@ module atoma::gate {
         // 3.
         let nodes = db::get_model_echelon_nodes(echelon);
         let nodes_count = table_vec::length(nodes);
-        let selected_nodes = vector::empty();
-        let iteration = 0;
+        let mut selected_nodes = vector::empty();
+        let mut iteration = 0;
         while (iteration < nodes_to_sample) {
             let node_index = random_u64(ctx) % nodes_count;
             let node_id = table_vec::borrow(nodes, node_index);
@@ -135,7 +135,7 @@ module atoma::gate {
     //                              Helpers
     // =========================================================================
 
-    struct EchelonIdAndPerformance has drop {
+    public struct EchelonIdAndPerformance has drop {
         /// Index within the echelons vector.
         index: u64,
         performance: u256,
@@ -181,10 +181,10 @@ module atoma::gate {
         // 1.
         //
 
-        let total_performance: u256 = 0;
-        let eligible_echelons = vector::empty();
+        let mut total_performance: u256 = 0;
+        let mut eligible_echelons = vector::empty();
         let echelon_count = vector::length(echelons);
-        let index = 0;
+        let mut index = 0;
         while (index < echelon_count) {
             let echelon = vector::borrow(echelons, index);
 
@@ -221,7 +221,7 @@ module atoma::gate {
 
         let goal = 1 + random_u256 % total_performance; // B
 
-        let remaining_performance = total_performance;
+        let mut remaining_performance = total_performance;
         loop {
             // index never out of bounds bcs on last iteration
             // remaining_performance == 0 while goal > 0
@@ -238,13 +238,13 @@ module atoma::gate {
 
     /// TODO: https://github.com/atoma-network/atoma-contracts/issues/4
     fun random_u64(ctx: &mut TxContext): u64 {
-        let buffer = sui::address::to_bytes(
+        let mut buffer = sui::address::to_bytes(
             tx_context::fresh_object_address(ctx)
         );
 
         let num_of_bytes = 8;
-        let result: u64 = 0;
-        let i = 0;
+        let mut result: u64 = 0;
+        let mut i = 0;
         while (i < num_of_bytes) {
             let byte = vector::pop_back(&mut buffer);
             result = (result << 8) + (byte as u64);
@@ -255,13 +255,13 @@ module atoma::gate {
 
     /// TODO: https://github.com/atoma-network/atoma-contracts/issues/4
     fun random_u256(ctx: &mut TxContext): u256 {
-        let buffer = sui::address::to_bytes(
+        let mut buffer = sui::address::to_bytes(
             tx_context::fresh_object_address(ctx)
         );
 
         let num_of_bytes = 32;
-        let result: u256 = 0;
-        let i = 0;
+        let mut result: u256 = 0;
+        let mut i = 0;
         while (i < num_of_bytes) {
             let byte = vector::pop_back(&mut buffer);
             result = (result << 8) + (byte as u256);
@@ -272,7 +272,7 @@ module atoma::gate {
 
     #[test]
     fun test_random_u64() {
-        let ctx = tx_context::new_from_hint(
+        let mut ctx = tx_context::new_from_hint(
             @0x1,
             9908,
             10,
@@ -284,7 +284,7 @@ module atoma::gate {
 
     #[test]
     fun test_random_u256() {
-        let ctx = tx_context::new_from_hint(
+        let mut ctx = tx_context::new_from_hint(
             @0x1,
             9908,
             10,

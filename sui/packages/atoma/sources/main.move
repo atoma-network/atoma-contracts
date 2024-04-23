@@ -3,7 +3,7 @@ module atoma::atoma {
     use sui::transfer;
     use sui::tx_context::{Self, TxContext};
 
-    struct ATOMA has drop {}
+    public struct ATOMA has drop {}
 
     /// The package publisher allows upgrades and admin access to other modules.
     fun init(otw: ATOMA, ctx: &mut TxContext) {
