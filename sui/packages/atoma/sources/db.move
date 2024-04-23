@@ -403,7 +403,7 @@ module atoma::db {
             relative_performance: _,
             nodes,
         } = remove_echelon(&mut model.echelons, echelon_id);
-        table_vec::drop(nodes);
+        nodes.drop();
     }
 
     public entry fun disable_model(
@@ -411,7 +411,7 @@ module atoma::db {
         model_name: ascii::String,
         _: &AtomaManagerBadge,
     ) {
-        let model = object_table::borrow_mut(&mut self.models, model_name);
+        let model = self.models.borrow_mut(model_name);
         model.is_disabled = true;
     }
 
@@ -420,21 +420,17 @@ module atoma::db {
         model_name: ascii::String,
         _: &AtomaManagerBadge,
     ) {
-        let model = object_table::borrow_mut(&mut self.models, model_name);
+        let model = self.models.borrow_mut(model_name);
         model.is_disabled = false;
     }
 
     public entry fun disable_registration(
         self: &mut AtomaDb, _: &AtomaManagerBadge,
-    ) {
-        self.is_registration_disabled = true;
-    }
+    ) { self.is_registration_disabled = true; }
 
     public entry fun enable_registration(
         self: &mut AtomaDb, _: &AtomaManagerBadge,
-    ) {
-        self.is_registration_disabled = false;
-    }
+    ) { self.is_registration_disabled = false; }
 
     public entry fun set_required_registration_toma_collateral(
         self: &mut AtomaDb,
@@ -451,7 +447,7 @@ module atoma::db {
         new_fee_in_protocol_token: u64,
         _: &AtomaManagerBadge,
     ) {
-        let model = object_table::borrow_mut(&mut self.models, model_name);
+        let model = self.models.borrow_mut(model_name);
         let echelon_id = EchelonId { id: echelon };
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
         echelon.fee_in_protocol_token = new_fee_in_protocol_token;
@@ -465,9 +461,9 @@ module atoma::db {
         echelons: &mut vector<ModelEchelon>, id: EchelonId
     ): &mut ModelEchelon {
         let mut i = 0;
-        let n = vector::length(echelons);
+        let n = echelons.length();
         while (i < n) {
-            let echelon = vector::borrow_mut(echelons, i);
+            let echelon = echelons.borrow_mut(i);
             if (echelon.id == id) {
                 return echelon
             };
@@ -481,9 +477,9 @@ module atoma::db {
         echelons: &vector<ModelEchelon>, id: EchelonId
     ): bool {
         let mut i = 0;
-        let n = vector::length(echelons);
+        let n = echelons.length();
         while (i < n) {
-            let echelon = vector::borrow(echelons, i);
+            let echelon = echelons.borrow(i);
             if (echelon.id == id) {
                 return true
             };
@@ -497,11 +493,11 @@ module atoma::db {
         echelons: &mut vector<ModelEchelon>, id: EchelonId
     ): ModelEchelon {
         let mut i = 0;
-        let n = vector::length(echelons);
+        let n = echelons.length();
         while (i < n) {
-            let echelon = vector::borrow(echelons, i);
+            let echelon = echelons.borrow(i);
             if (echelon.id == id) {
-                return vector::remove(echelons, i)
+                return echelons.remove(i)
             };
             i = i + 1;
         };
