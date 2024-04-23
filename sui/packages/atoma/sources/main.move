@@ -1,4 +1,11 @@
 module atoma::atoma {
+    //! # Terminology
+    //! - Node: a machine that can serve prompts.
+    //! - Model: a machine learning model that can be served by nodes.
+    //! - Echelon: a set of hardware and software specifications of a node.
+    //!   We group specs off-chain into a single identifier.
+    //! - Commitment: a process of submitting prompt evaluation by a node.
+
     use sui::package;
 
     public struct ATOMA has drop {}

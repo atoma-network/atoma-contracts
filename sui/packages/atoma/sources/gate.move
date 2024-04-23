@@ -66,7 +66,8 @@ module atoma::gate {
     /// 1. Get the model echelons from the database.
     /// 2. Randomly pick one of the echelons.
     /// 3. Sample the required number of nodes from the echelon.
-    /// 4. Emit TextPromptEvent.
+    /// 4. Create a new settlement ticket in the database.
+    /// 5. Emit TextPromptEvent.
     public fun submit_text_prompt(
         atoma: &mut AtomaDb,
         params: TextPromptParams,
@@ -90,7 +91,7 @@ module atoma::gate {
         );
 
         // 3.
-        let nodes = db::get_model_echelon_nodes(echelon);
+        let nodes = echelon.get_model_echelon_nodes();
         let nodes_count = nodes.length();
         let mut selected_nodes = vector::empty();
         let mut iteration = 0;
@@ -112,6 +113,16 @@ module atoma::gate {
         };
 
         // 4.
+        atoma::settlement::new_ticket(
+            atoma,
+            params.model,
+            echelon.get_model_echelon_id(),
+            selected_nodes,
+            echelon.get_model_echelon_settlement_timeout_ms(),
+            ctx
+        );
+
+        // 5.
         event::emit(TextPromptEvent {
             params,
             nodes: selected_nodes,

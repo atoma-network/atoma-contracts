@@ -4,8 +4,8 @@ module atoma::settlement {
     use sui::dynamic_object_field;
     use atoma::utils::random_u64;
 
-    const ENotAwaitingEvaluation: u64 = 0;
-    const EEvaluationAlreadySubmitted: u64 = 1;
+    const ENotAwaitingCommitment: u64 = 0;
+    const EAlreadyCommitted: u64 = 1;
     const ENotReadyToSettle: u64 = 2;
     const EBlake2b256HashMustBe32Bytes: u64 = 3;
 
@@ -33,7 +33,7 @@ module atoma::settlement {
         model_name: ascii::String,
         /// The selected model echelon for the prompt.
         echelon_id: EchelonId,
-        /// List of nodes that must evaluate the prompt.
+        /// List of nodes that must submit commitment.
         /// The order is important.
         /// It must match the order in the prompt event emitted by the gate
         /// module.
@@ -43,11 +43,11 @@ module atoma::settlement {
         /// node in the order they are in this vector.
         all: vector<SmallId>,
         /// This vector is sorted, ie. the first element is the first node that
-        /// completed the evaluation first.
+        /// submitted the commitment first.
         completed: vector<SmallId>,
         /// The root of the merkle tree that contains the prompt data.
         /// It's empty when the ticket is created.
-        /// The first node that completes the evaluation will fill in this root.
+        /// The first node that submits commitment will fill in this root.
         ///
         /// Each node must submit their root and the part of hash of chunk.
         /// If the final hash does not match the root, or if any node does not
@@ -83,7 +83,7 @@ module atoma::settlement {
         started_at_epoch_timestamp_ms: u64,
     }
 
-    public entry fun submit_evaluation(
+    public entry fun submit_commitment(
         atoma: &mut AtomaDb,
         badge: &NodeBadge,
         ticket_id: ID,
@@ -97,11 +97,11 @@ module atoma::settlement {
         let node_id = badge.get_node_id();
 
         // check that the node is not in the completed list
-        assert!(!ticket.completed.contains(&node_id), EEvaluationAlreadySubmitted);
+        assert!(!ticket.completed.contains(&node_id), EAlreadyCommitted);
 
         // check that the node is in the all list
         let (contains, node_order) = ticket.all.index_of(&node_id);
-        assert!(contains, ENotAwaitingEvaluation);
+        assert!(contains, ENotAwaitingCommitment);
 
         // if merkle root is not empty, check that it matches
         // otherwise set it
@@ -131,12 +131,14 @@ module atoma::settlement {
         ticket.completed.push_back(node_id);
     }
 
-    /// 1. All nodes have submitted their evaluation, check if the expected
+    /// 1. All nodes have submitted their commitment, check if the expected
     ///    merkle root matches the hash of the leaves.
     ///    If it does, the ticket is settled.
     ///    If it doesn't, the ticket is being disputed.
     /// 2. The timeout to settle has passed but not all nodes have submitted
-    ///    their evaluation.
+    ///    their commitment.
+    ///    In this case, we slash the nodes that have not submitted their
+    ///    commitment and sample other nodes that must do so in their stead.
     public entry fun try_to_settle(
         atoma: &mut AtomaDb,
         ticket_id: ID,
@@ -215,6 +217,38 @@ module atoma::settlement {
         else {
             abort ENotReadyToSettle
         }
+    }
+
+    /// An oracle node can resolve a disputed ticket.
+    public entry fun settle_dispute() {
+        // TODO
+    }
+
+    public(package) fun new_ticket(
+        atoma: &mut AtomaDb,
+        model_name: ascii::String,
+        echelon_id: EchelonId,
+        nodes: vector<SmallId>,
+        timeout_ms: u64,
+        ctx: &mut TxContext,
+    ) {
+        let ticket = SettlementTicket {
+            id: object::new(ctx),
+            model_name,
+            echelon_id,
+            all: nodes,
+            completed: vector::empty(),
+            merkle_root: vector::empty(),
+            merkle_leaves: vector::empty(),
+            is_being_disputed: false,
+            timeout: TimeoutInfo {
+                timeout_ms,
+                started_in_epoch: ctx.epoch(),
+                started_at_epoch_timestamp_ms: ctx.epoch_timestamp_ms(),
+            },
+        };
+
+        return_settlement_ticket(atoma, ticket);
     }
 
     /// # How the timeout works?

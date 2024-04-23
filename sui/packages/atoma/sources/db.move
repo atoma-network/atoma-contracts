@@ -1,12 +1,6 @@
 module atoma::db {
     //! At the heart of the Atoma network protocol is on-chain database.
     //! It keeps track of nodes and models.
-    //!
-    //! # Terminology
-    //! - Node: a machine that can serve prompts.
-    //! - Model: a machine learning model that can be served by nodes.
-    //! - Echelon: a set of hardware and software specifications of a node.
-    //!   We group specs off-chain into a single identifier.
 
     use atoma::atoma::ATOMA;
     use std::ascii;
@@ -266,28 +260,28 @@ module atoma::db {
         get_echelon_mut(&mut model.echelons, echelon_id)
     }
 
-    public fun get_model_echelon_id(echelon: &ModelEchelon): EchelonId {
-        echelon.id
+    public fun get_model_echelon_id(self: &ModelEchelon): EchelonId {
+        self.id
     }
 
-    public fun get_model_echelon_fee(echelon: &ModelEchelon): u64 {
-        echelon.fee_in_protocol_token
+    public fun get_model_echelon_fee(self: &ModelEchelon): u64 {
+        self.fee_in_protocol_token
     }
 
-    public fun get_model_echelon_nodes(echelon: &ModelEchelon): &TableVec<SmallId> {
-        &echelon.nodes
+    public fun get_model_echelon_nodes(self: &ModelEchelon): &TableVec<SmallId> {
+        &self.nodes
     }
 
-    public fun get_model_echelon_performance(echelon: &ModelEchelon): u64 {
-        echelon.relative_performance
+    public fun get_model_echelon_performance(self: &ModelEchelon): u64 {
+        self.relative_performance
     }
 
-    public fun get_model_echelon_settlement_timeout_ms(echelon: &ModelEchelon): u64 {
-        echelon.settlement_timeout_ms
+    public fun get_model_echelon_settlement_timeout_ms(self: &ModelEchelon): u64 {
+        self.settlement_timeout_ms
     }
 
-    public fun get_node_id(node: &NodeBadge): SmallId {
-        node.small_id
+    public fun get_node_id(self: &NodeBadge): SmallId {
+        self.small_id
     }
 
     /// Other modules can take advantage of dynamic fields attached to the UID.
