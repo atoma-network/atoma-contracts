@@ -23,7 +23,7 @@ module toma::toma {
             ctx
         );
 
-        transfer::public_transfer(treasury, tx_context::sender(ctx));
-        transfer::public_transfer(metadata, tx_context::sender(ctx));
+        transfer::public_transfer(treasury, ctx.sender());
+        transfer::public_transfer(metadata, ctx.sender());
     }
 }

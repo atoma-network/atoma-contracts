@@ -10,17 +10,13 @@ module atoma::db {
 
     use atoma::atoma::ATOMA;
     use std::ascii;
-    use std::vector;
-    use sui::balance::{Self, Balance};
-    use sui::coin::{Self, Coin};
+    use sui::balance::Balance;
+    use sui::coin::Coin;
     use sui::event;
     use sui::object_table::{Self, ObjectTable};
-    use sui::object::{Self, UID, ID};
     use sui::package::{Self, Publisher};
     use sui::table_vec::{Self, TableVec};
     use sui::table::{Self, Table};
-    use sui::transfer;
-    use sui::tx_context::{Self, TxContext};
     use toma::toma::TOMA;
 
     /// How much collateral is required at the time of package publication.
@@ -174,19 +170,18 @@ module atoma::db {
         let atoma_manager_badge = AtomaManagerBadge {
             id: object::new(ctx),
         };
-        transfer::transfer(atoma_manager_badge, tx_context::sender(ctx));
+        transfer::transfer(atoma_manager_badge, ctx.sender());
     }
 
     /// Takes collateral from the sender's wallet and transfers them the node
     /// badge.
     public entry fun register_node_entry(
-        atoma: &mut AtomaDb,
+        self: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
         ctx: &mut TxContext,
     ) {
-        let badge =
-            register_node(atoma, coin::balance_mut(wallet), ctx);
-        transfer::transfer(badge, tx_context::sender(ctx));
+        let badge = register_node(self, wallet.balance_mut(), ctx);
+        transfer::transfer(badge, ctx.sender());
     }
 
     /// Splits the collateral from the sender's wallet and registers a new node.
@@ -196,31 +191,26 @@ module atoma::db {
     /// It can be used later to add or remove available models, delete account,
     /// etc.
     public fun register_node(
-        atoma: &mut AtomaDb,
+        self: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
         ctx: &mut TxContext,
     ): NodeBadge {
-        assert!(!atoma.is_registration_disabled, ENodeRegDisabled);
+        assert!(!self.is_registration_disabled, ENodeRegDisabled);
 
         let collateral =
-            balance::split(wallet, atoma.registration_collateral_in_protocol_token);
+            wallet.split(self.registration_collateral_in_protocol_token);
 
-        let small_id = atoma.next_node_small_id;
-        atoma.next_node_small_id.inner = atoma.next_node_small_id.inner + 1;
+        let small_id = self.next_node_small_id;
+        self.next_node_small_id.inner = self.next_node_small_id.inner + 1;
 
-        let node_entry = NodeEntry {
-            collateral,
-        };
+        let node_entry = NodeEntry { collateral };
+        self.nodes.add(small_id, node_entry);
 
-        table::add(&mut atoma.nodes, small_id, node_entry);
-
-        let badge_id =  object::new(ctx);
-
+        let badge_id = object::new(ctx);
         event::emit(NodeRegisteredEvent {
             badge_id: object::uid_to_inner(&badge_id),
             node_small_id: small_id,
         });
-
         NodeBadge {
             id: badge_id,
             small_id,
@@ -234,12 +224,12 @@ module atoma::db {
     /// For information about the echelon, see `EchelonId`
     /// type.
     public entry fun add_node_to_model(
-        atoma: &mut AtomaDb,
+        self: &mut AtomaDb,
         model_name: ascii::String,
         echelon: u64,
         node_badge: &NodeBadge,
     ) {
-        let model = object_table::borrow_mut(&mut atoma.models, model_name);
+        let model = self.models.borrow_mut(model_name);
         assert!(!model.is_disabled, EModelDisabled);
 
         let echelon_id = EchelonId { id: echelon };
@@ -255,9 +245,9 @@ module atoma::db {
     }
 
     public fun get_model_echelons_if_enabled(
-        atoma: &AtomaDb, model_name: ascii::String,
+        self: &AtomaDb, model_name: ascii::String,
     ): &vector<ModelEchelon> {
-        let model = object_table::borrow(&atoma.models, model_name);
+        let model = self.models.borrow(model_name);
         assert!(!model.is_disabled, EModelDisabled);
         &model.echelons
     }
@@ -290,34 +280,32 @@ module atoma::db {
         pub: &Publisher, ctx: &mut TxContext,
     ) {
         let badge = create_manager_badge(pub, ctx);
-        transfer::transfer(badge, tx_context::sender(ctx));
+        transfer::transfer(badge, ctx.sender());
     }
 
     public fun create_manager_badge(
         pub: &Publisher, ctx: &mut TxContext,
     ): AtomaManagerBadge {
         assert!(package::from_module<ATOMA>(pub), ENotAuthorized);
-        AtomaManagerBadge {
-            id: object::new(ctx),
-        }
+        AtomaManagerBadge { id: object::new(ctx) }
     }
 
     public entry fun add_model_entry(
-        atoma: &mut AtomaDb,
+        self: &mut AtomaDb,
         model_name: ascii::String,
         badge: &AtomaManagerBadge,
         ctx: &mut TxContext,
     ) {
         let model = create_model(model_name, badge, ctx);
-        add_model(atoma, model, badge);
+        add_model(self, model, badge);
     }
 
     public fun add_model(
-        atoma: &mut AtomaDb,
+        self: &mut AtomaDb,
         model: ModelEntry,
         _: &AtomaManagerBadge,
     ) {
-        object_table::add(&mut atoma.models, model.name, model);
+        self.models.add(model.name, model);
     }
 
     public fun create_model(
@@ -334,7 +322,7 @@ module atoma::db {
     }
 
     public entry fun add_model_echelon_entry(
-        atoma: &mut AtomaDb,
+        self: &mut AtomaDb,
         model_name: ascii::String,
         echelon: u64,
         fee_in_protocol_token: u64,
@@ -342,7 +330,7 @@ module atoma::db {
         badge: &AtomaManagerBadge,
         ctx: &mut TxContext,
     ) {
-        let model = object_table::borrow_mut(&mut atoma.models, model_name);
+        let model = self.models.borrow_mut(model_name);
         add_model_echelon(
             model, echelon, fee_in_protocol_token, relative_performance, badge, ctx
         )
@@ -374,7 +362,7 @@ module atoma::db {
     /// If this fails due to tx computation limit, you might need to remove
     /// bunch of model echelons one by one and then remove the model.
     public entry fun remove_model(
-        atoma: &mut AtomaDb,
+        self: &mut AtomaDb,
         model_name: ascii::String,
         _: &AtomaManagerBadge,
     ) {
@@ -383,8 +371,8 @@ module atoma::db {
             name: _,
             is_disabled: _,
             mut echelons,
-        } = object_table::remove(&mut atoma.models, model_name);
-        object::delete(model_id);
+        } = object_table::remove(&mut self.models, model_name);
+        model_id.delete();
 
         let index = 0;
         let len = vector::length(&echelons);
@@ -402,12 +390,12 @@ module atoma::db {
     }
 
     public entry fun remove_model_echelon(
-        atoma: &mut AtomaDb,
+        self: &mut AtomaDb,
         model_name: ascii::String,
         echelon: u64,
         _: &AtomaManagerBadge,
     ) {
-        let model = object_table::borrow_mut(&mut atoma.models, model_name);
+        let model = object_table::borrow_mut(&mut self.models, model_name);
         let echelon_id = EchelonId { id: echelon };
         let ModelEchelon {
             id: _,
@@ -419,51 +407,51 @@ module atoma::db {
     }
 
     public entry fun disable_model(
-        atoma: &mut AtomaDb,
+        self: &mut AtomaDb,
         model_name: ascii::String,
         _: &AtomaManagerBadge,
     ) {
-        let model = object_table::borrow_mut(&mut atoma.models, model_name);
+        let model = object_table::borrow_mut(&mut self.models, model_name);
         model.is_disabled = true;
     }
 
     public entry fun enable_model(
-        atoma: &mut AtomaDb,
+        self: &mut AtomaDb,
         model_name: ascii::String,
         _: &AtomaManagerBadge,
     ) {
-        let model = object_table::borrow_mut(&mut atoma.models, model_name);
+        let model = object_table::borrow_mut(&mut self.models, model_name);
         model.is_disabled = false;
     }
 
     public entry fun disable_registration(
-        atoma: &mut AtomaDb, _: &AtomaManagerBadge,
+        self: &mut AtomaDb, _: &AtomaManagerBadge,
     ) {
-        atoma.is_registration_disabled = true;
+        self.is_registration_disabled = true;
     }
 
     public entry fun enable_registration(
-        atoma: &mut AtomaDb, _: &AtomaManagerBadge,
+        self: &mut AtomaDb, _: &AtomaManagerBadge,
     ) {
-        atoma.is_registration_disabled = false;
+        self.is_registration_disabled = false;
     }
 
     public entry fun set_required_registration_toma_collateral(
-        atoma: &mut AtomaDb,
+        self: &mut AtomaDb,
         new_required_collateral: u64,
         _: &AtomaManagerBadge,
     ) {
-        atoma.registration_collateral_in_protocol_token = new_required_collateral;
+        self.registration_collateral_in_protocol_token = new_required_collateral;
     }
 
     public entry fun set_model_echelon_fee(
-        atoma: &mut AtomaDb,
+        self: &mut AtomaDb,
         model_name: ascii::String,
         echelon: u64,
         new_fee_in_protocol_token: u64,
         _: &AtomaManagerBadge,
     ) {
-        let model = object_table::borrow_mut(&mut atoma.models, model_name);
+        let model = object_table::borrow_mut(&mut self.models, model_name);
         let echelon_id = EchelonId { id: echelon };
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
         echelon.fee_in_protocol_token = new_fee_in_protocol_token;

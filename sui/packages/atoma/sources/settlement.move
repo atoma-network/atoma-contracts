@@ -1,7 +1,5 @@
 module atoma::settlement {
-    use sui::object::UID;
-    use std::vector;
-    use atoma::db::{Self, AtomaManagerBadge, SmallId, NodeBadge, AtomaDb};
+    use atoma::db::{SmallId, NodeBadge, AtomaDb};
 
     const ENotAwaitingNodeEvaluation: u64 = 0;
 
@@ -45,30 +43,37 @@ module atoma::settlement {
         all_hashes_match: bool,
     }
 
+    /// If a node is part of the awaiting list, it can submit the evaluation.
+    /// The evaluation is accepted regardless of the hash value.
+    ///
+    /// Once all/enough nodes submit or the timeout is reached, the
+    /// `try_to_settle` endpoint can be called.
     public entry fun submit_evaluation(
         ticket: &mut SettlementTicket,
         badge: &NodeBadge,
         hash: vector<u8>,
     ) {
-        let node_id = db::get_node_id(badge);
-        let (contains, index) = vector::index_of(&ticket.awaiting, &node_id);
+        let node_id = badge.get_node_id();
+        let (contains, index) = ticket.awaiting.index_of(&node_id);
         assert!(contains, ENotAwaitingNodeEvaluation);
-        vector::remove(&mut ticket.awaiting, index);
+        ticket.awaiting.remove(index);
 
-        if (ticket.completed.length() != 0) {
-            let first_hash = vector::borrow(&ticket.completed, 0).hash;
+        if (!ticket.completed.is_empty()) {
+            let first_hash = ticket.completed.borrow(0).hash;
             if (hash != first_hash) {
                 ticket.stats.all_hashes_match = false;
             };
         };
 
-        vector::push_back(&mut ticket.completed, MapNodeToHash {
+        ticket.completed.push_back(MapNodeToHash {
             node_id: node_id,
             hash: hash,
         });
     }
 
-    public entry fun try_to_settle() {
+    public entry fun try_to_settle(
+        atoma: &mut AtomaDb,
+    ) {
         //
     }
 }

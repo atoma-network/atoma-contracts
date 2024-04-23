@@ -3,10 +3,6 @@ module atoma::gate {
     use std::ascii;
     use std::string;
     use sui::event;
-    use std::vector;
-    use sui::object::{Self, UID};
-    use sui::table_vec;
-    use sui::tx_context::{Self, TxContext};
 
     const ENoEligibleEchelons: u64 = 0;
 
@@ -75,7 +71,7 @@ module atoma::gate {
         ctx: &mut TxContext,
     ) {
         // 1.
-        let echelons = db::get_model_echelons_if_enabled(atoma, params.model);
+        let echelons = atoma.get_model_echelons_if_enabled(params.model);
 
         // 2.
         let echelon = select_eligible_echelon_at_random(
@@ -90,14 +86,14 @@ module atoma::gate {
 
         // 3.
         let nodes = db::get_model_echelon_nodes(echelon);
-        let nodes_count = table_vec::length(nodes);
+        let nodes_count = nodes.length();
         let mut selected_nodes = vector::empty();
         let mut iteration = 0;
         while (iteration < nodes_to_sample) {
             let node_index = random_u64(ctx) % nodes_count;
-            let node_id = table_vec::borrow(nodes, node_index);
+            let node_id = nodes.borrow(node_index);
 
-            if (vector::contains(&selected_nodes, node_id)) {
+            if (selected_nodes.contains(node_id)) {
                 // try again with a different node without incrementing the
                 // iteration counter
                 //
@@ -106,7 +102,7 @@ module atoma::gate {
                 continue
             };
 
-            vector::push_back(&mut selected_nodes, *node_id);
+            selected_nodes.push_back(*node_id);
             iteration = iteration + 1;
         };
 
@@ -127,7 +123,7 @@ module atoma::gate {
 
     public fun destroy_prompt_badge(badge: PromptBadge) {
         let PromptBadge { id } = badge;
-        object::delete(id);
+        id.delete();
     }
 
 
@@ -183,10 +179,10 @@ module atoma::gate {
 
         let mut total_performance: u256 = 0;
         let mut eligible_echelons = vector::empty();
-        let echelon_count = vector::length(echelons);
+        let echelon_count = echelons.length();
         let mut index = 0;
         while (index < echelon_count) {
-            let echelon = vector::borrow(echelons, index);
+            let echelon = echelons.borrow(index);
 
             let fee = db::get_model_echelon_fee(echelon);
             if (fee > max_total_fee) {
@@ -195,7 +191,7 @@ module atoma::gate {
             };
 
             let nodes = db::get_model_echelon_nodes(echelon);
-            let node_count = table_vec::length(nodes);
+            let node_count = nodes.length();
             if (node_count < nodes_to_sample) {
                 index = index + 1;
                 continue
@@ -206,14 +202,14 @@ module atoma::gate {
                 *
                 (node_count as u256);
             total_performance = total_performance + performance; // A
-            vector::push_back(&mut eligible_echelons, EchelonIdAndPerformance {
+            eligible_echelons.push_back(EchelonIdAndPerformance {
                 index,
                 performance,
             });
 
             index = index + 1;
         };
-        assert!(vector::length(&eligible_echelons) > 0, ENoEligibleEchelons);
+        assert!(eligible_echelons.length() > 0, ENoEligibleEchelons);
 
         //
         // 2.
@@ -227,11 +223,11 @@ module atoma::gate {
             // remaining_performance == 0 while goal > 0
             let EchelonIdAndPerformance {
                 index, performance
-            } = vector::pop_back(&mut eligible_echelons);
+            } = eligible_echelons.pop_back();
             remaining_performance = remaining_performance - performance; // C
 
             if (goal > remaining_performance) {
-                return vector::borrow(echelons, index) // D
+                return echelons.borrow(index) // D
             };
         }
     }
@@ -246,7 +242,7 @@ module atoma::gate {
         let mut result: u64 = 0;
         let mut i = 0;
         while (i < num_of_bytes) {
-            let byte = vector::pop_back(&mut buffer);
+            let byte = buffer.pop_back();
             result = (result << 8) + (byte as u64);
             i = i + 1;
         };
@@ -263,7 +259,7 @@ module atoma::gate {
         let mut result: u256 = 0;
         let mut i = 0;
         while (i < num_of_bytes) {
-            let byte = vector::pop_back(&mut buffer);
+            let byte = buffer.pop_back();
             result = (result << 8) + (byte as u256);
             i = i + 1;
         };
