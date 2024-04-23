@@ -128,7 +128,7 @@ module atoma::db {
         /// If settlement is not done within this time, we attempt to settle
         /// without waiting for nodes that did not respond.
         settlement_timeout_ms: u64,
-        /// How much per request is charged by nodes in this group.
+        /// How much per token is charged by nodes in this group.
         fee_in_protocol_token: u64,
         /// The higher this number, the more likely this echelon is to be
         /// selected to serve a prompt.
@@ -338,6 +338,7 @@ module atoma::db {
         }
     }
 
+    /// The fee is charged per token.
     public entry fun add_model_echelon_entry(
         self: &mut AtomaDb,
         model_name: ascii::String,
@@ -353,6 +354,7 @@ module atoma::db {
         )
     }
 
+    /// The fee is charged per token.
     public fun add_model_echelon(
         model: &mut ModelEntry,
         echelon: u64,
@@ -460,6 +462,7 @@ module atoma::db {
         self.registration_collateral_in_protocol_token = new_required_collateral;
     }
 
+    /// The fee is charged per token.
     public entry fun set_model_echelon_fee(
         self: &mut AtomaDb,
         model_name: ascii::String,

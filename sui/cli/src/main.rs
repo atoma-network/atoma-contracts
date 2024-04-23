@@ -66,6 +66,7 @@ enum DbCmds {
         model_name: String,
         #[arg(short, long)]
         echelon: u64,
+        /// Max fee per token
         #[arg(short, long)]
         fee_in_protocol_token: u64,
         #[arg(short, long)]

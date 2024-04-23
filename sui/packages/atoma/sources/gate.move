@@ -50,19 +50,21 @@ module atoma::gate {
             max_tokens: 100,
             temperature: 0,
         };
-        let max_total_fee = 18_446_744_073_709_551_615;
+        let max_fee_per_token = 18_446_744_073_709_551_615;
         let badge = PromptBadge { id: object::new(ctx) };
         submit_text_prompt(
             atoma,
             params,
             nodes_to_sample,
-            max_total_fee,
+            max_fee_per_token,
             &badge,
             ctx,
         );
         destroy_prompt_badge(badge);
     }
 
+    /// The fee is per input token.
+    ///
     /// 1. Get the model echelons from the database.
     /// 2. Randomly pick one of the echelons.
     /// 3. Sample the required number of nodes from the echelon.
@@ -72,7 +74,7 @@ module atoma::gate {
         atoma: &mut AtomaDb,
         params: TextPromptParams,
         nodes_to_sample: u64,
-        max_total_fee: u64,
+        max_fee_per_token: u64,
         _:& PromptBadge,
         ctx: &mut TxContext,
     ) {
@@ -83,7 +85,7 @@ module atoma::gate {
         let echelon = select_eligible_echelon_at_random(
             echelons,
             nodes_to_sample,
-            max_total_fee,
+            max_fee_per_token,
             // ideally we'd pass the context, but move is dumb and thinks that
             // because we return a reference, we could still be using the
             // context, which we need to access mutably later on
@@ -186,7 +188,7 @@ module atoma::gate {
     fun select_eligible_echelon_at_random(
         echelons: &vector<ModelEchelon>,
         nodes_to_sample: u64,
-        max_total_fee: u64,
+        max_fee_per_token: u64,
         random_u256: u256,
     ): &ModelEchelon {
         //
@@ -201,7 +203,7 @@ module atoma::gate {
             let echelon = echelons.borrow(index);
 
             let fee = db::get_model_echelon_fee(echelon);
-            if (fee > max_total_fee) {
+            if (fee > max_fee_per_token) {
                 index = index + 1;
                 continue
             };
