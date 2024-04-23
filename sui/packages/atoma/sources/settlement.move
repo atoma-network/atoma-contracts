@@ -1,10 +1,20 @@
 module atoma::settlement {
-    //! TODO: check the merkle tree hashes to prove that each node did the work
-
-    use atoma::db::{SmallId, NodeBadge, AtomaDb};
+    use atoma::db::{Self, EchelonId, SmallId, NodeBadge, AtomaDb};
+    use std::ascii;
     use sui::dynamic_object_field;
+    use atoma::utils::random_u64;
 
-    const ENotAwaitingNodeEvaluation: u64 = 0;
+    const ENotAwaitingEvaluation: u64 = 0;
+    const EEvaluationAlreadySubmitted: u64 = 1;
+    const ENotReadyToSettle: u64 = 2;
+
+    /// Nodes did not agree on the settlement.
+    public struct DisputeEvent has copy, drop {
+        ticket_id: ID,
+        /// If None then the dispute is ready to be resolved, otherwise it's
+        /// Some then the oracle needs to wait for the timeout to pass.
+        timeout: Option<TimeoutInfo>,
+    }
 
     /// Dynamic object field of atoma db.
     ///
@@ -18,24 +28,50 @@ module atoma::settlement {
     /// diminishing returns of validation value added.
     public struct SettlementTicket has key, store {
         id: UID,
-        /// List of nodes that are currently evaluating the prompt and have not
-        /// as of yet completed the evaluation.
-        awaiting: vector<SmallId>,
-        /// Maps nodes that completed the evaluation to the hash of the result.
+        /// The name of the model that the prompt is for.
+        model_name: ascii::String,
+        /// The selected model echelon for the prompt.
+        echelon_id: EchelonId,
+        /// List of nodes that must evaluate the prompt.
+        /// The order is important.
+        /// It must match the order in the prompt event emitted by the gate
+        /// module.
+        /// That's because the order determines the order of chunks when
+        /// calculating the merkle tree.
+        /// The merkle root is a hash of all the hashes of the chunks by each
+        /// node in the order they are in this vector.
+        all: vector<SmallId>,
         /// This vector is sorted, ie. the first element is the first node that
         /// completed the evaluation first.
-        completed: vector<MapNodeToHash>,
-        /// Some extra metadata about the settlement.
-        stats: OperationalStats,
+        completed: vector<SmallId>,
+        /// The root of the merkle tree that contains the prompt data.
+        /// It's empty when the ticket is created.
+        /// The first node that completes the evaluation will fill in this root.
+        ///
+        /// Each node must submit their root and the part of hash of chunk.
+        /// If the final hash does not match the root, or if any node does not
+        /// agree with the root, the settlement is being disputed.
+        merkle_root: vector<u8>,
+        /// The root must match the hash of the leaves of the merkle tree.
+        /// Each leaf is a 32 byte Blake2b-256 hash of the chunk.
+        /// The order is the same as the order of the nodes in the `all` vector.
+        /// E.g. node `all[2]` submits their hash of the chunk and it will be
+        /// stored in the index 2 * 32 = 64..96 of this vector.
+        ///
+        /// If nodes submit their leaves out of order, we just pad the vector
+        /// with zeros.
+        /// Those will be overwritten when each node submits the hash of the chunk.
+        merkle_leaves: vector<u8>,
+        /// If any node does not agree with the first hash, the settlement is
+        /// being disputed.
+        ///
+        /// An oracle must step in and resolve the dispute.
+        is_being_disputed: bool,
+        /// There's only limited time to settle the prompt.
+        timeout: TimeoutInfo,
     }
 
-    public struct MapNodeToHash has store, drop {
-        node_id: SmallId,
-        hash: vector<u8>,
-    }
-
-    /// Holds data that's relevant for successful resolution of the prompt.
-    public struct OperationalStats has store, drop {
+    public struct TimeoutInfo has store, copy, drop {
         /// If the settlement takes more than this, the settlement can be cut
         /// short.
         /// See the `try_to_settle` endpoint.
@@ -44,100 +80,136 @@ module atoma::settlement {
         started_in_epoch: u64,
         /// Will be relevant for timeouting.
         started_at_epoch_timestamp_ms: u64,
-        /// A happy path flag.
-        /// Set to true when this object is created, and will be set to false
-        /// if any hash doesn't match the first submitted hash.
-        all_hashes_match: bool,
     }
 
-    /// If a node is part of the awaiting list, it can submit the evaluation.
-    /// The evaluation is accepted regardless of the hash value.
-    ///
-    /// Once all/enough nodes submit or the timeout is reached, the
-    /// `try_to_settle` endpoint can be called.
     public entry fun submit_evaluation(
         atoma: &mut AtomaDb,
         badge: &NodeBadge,
         ticket_id: ID,
-        hash: vector<u8>,
+        merkle_root: vector<u8>,
+        chunk_hash: vector<u8>,
     ) {
         let ticket = get_settlement_ticket_mut(atoma, ticket_id);
         let node_id = badge.get_node_id();
-        let (contains, index) = ticket.awaiting.index_of(&node_id);
-        assert!(contains, ENotAwaitingNodeEvaluation);
-        ticket.awaiting.remove(index);
 
-        if (!ticket.completed.is_empty()) {
-            let first_hash = ticket.completed.borrow(0).hash;
-            if (hash != first_hash) {
-                ticket.stats.all_hashes_match = false;
-            };
+        // check that the node is not in the completed list
+        assert!(!ticket.completed.contains(&node_id), EEvaluationAlreadySubmitted);
+
+        // check that the node is in the all list
+        let (contains, node_order) = ticket.all.index_of(&node_id);
+        assert!(contains, ENotAwaitingEvaluation);
+
+        // if merkle root is not empty, check that it matches
+        // otherwise set it
+        if (ticket.merkle_root.is_empty()) {
+            ticket.merkle_root = merkle_root;
+        } else {
+            ticket.is_being_disputed = true;
+            sui::event::emit(DisputeEvent {
+                ticket_id,
+                timeout: option::some(ticket.timeout),
+            });
         };
 
-        ticket.completed.push_back(MapNodeToHash {
-            node_id: node_id,
-            hash: hash,
-        });
+        let starts_at = node_order * 32;
+        let ends_at = starts_at + 31;
+        // pad the leaves if needed
+        while (ends_at > ticket.merkle_leaves.length()) {
+            ticket.merkle_leaves.push_back(0);
+        };
+        // copy the hash to its place
+        let mut i = 0;
+        while (i < 32) {
+            *ticket.merkle_leaves.borrow_mut(starts_at + i) = chunk_hash[i];
+            i = i + 1;
+        };
+
+        ticket.completed.push_back(node_id);
     }
 
-    /// 1. Happy path is when all hashes match and nothing is being awaited
-    /// 2. If timeout is reached or all nodes have submitted, we need to decide
-    ///    whether a critical mass of nodes agree on the solution to slash the
-    ///     rest, or TODO
-    /// 3. Nothing to do, we need to wait
+    /// 1. All nodes have submitted their evaluation, check if the expected
+    ///    merkle root matches the hash of the leaves.
+    ///    If it does, the ticket is settled.
+    ///    If it doesn't, the ticket is being disputed.
+    /// 2. The timeout to settle has passed but not all nodes have submitted
+    ///    their evaluation.
     public entry fun try_to_settle(
         atoma: &mut AtomaDb,
         ticket_id: ID,
-        ctx: &TxContext,
+        ctx: &mut TxContext,
     ) {
         // We remove it so that Sui Move doesn't scream at us for not being able
         // to use mut ref to atoma.
         // If settlement can be done, the ticket will be destroyed.
         // If not, it will be again added to the db.
-        let ticket = remove_settlement_ticket(atoma, ticket_id);
+        let mut ticket = remove_settlement_ticket(atoma, ticket_id);
 
         //
         // 1.
         //
-        if (ticket.stats.all_hashes_match && ticket.awaiting.is_empty()) {
-            let SettlementTicket {
-                id,
-                awaiting: _,
-                completed,
-                stats: _,
-            } = ticket;
-            id.delete();
+        if (ticket.completed.length() == ticket.all.length()) {
+            let computed_mroot = sui::hash::blake2b256(&ticket.merkle_leaves);
+            if (computed_mroot == ticket.merkle_root) {
+                let SettlementTicket {
+                    id,
+                    completed,
 
-            // TODO: reward the nodes
+                    model_name: _,
+                    echelon_id: _,
+                    all: _,
+                    merkle_root: _,
+                    merkle_leaves: _,
+                    is_being_disputed: _,
+                    timeout: _,
+                } = ticket;
+                id.delete();
+
+                // TODO: reward the nodes
+            } else {
+                ticket.is_being_disputed = true;
+                return_settlement_ticket(atoma, ticket);
+                sui::event::emit(DisputeEvent {
+                    ticket_id,
+                    timeout: option::none(),
+                });
+            }
         }
         //
         // 2.
         //
-        else if (ticket.awaiting.is_empty() || ticket.stats.did_timeout(ctx)) {
-            // TODO: find critical mass of nodes that agree on the solution
+        else if (ticket.did_timeout(ctx)) {
+            let echelon =
+                atoma.get_model_echelon(ticket.model_name, ticket.echelon_id);
+            let nodes = db::get_model_echelon_nodes(echelon);
+            let nodes_count = nodes.length();
 
-            // TODO: if there isn't, ask for more nodes to evaluate?
+            let mut new_nodes = vector::empty();
+            let mut i = 0;
+            let len = ticket.all.length();
+            while (i < len) {
+                let node_id = ticket.all[i];
 
-            // TODO: if there critical mass, reward them, slash the rest
-            let SettlementTicket {
-                id,
-                awaiting: _,
-                completed,
-                stats: _,
-            } = ticket;
-            id.delete();
-        }
-        //
-        // 3.
-        //
-        else {
-            // timeout not reached, not all nodes have submitted, nothing to do
+                if (!ticket.completed.contains(&node_id)) {
+                    // TODO: slash node
+
+                    // sample another node to replace the slashed one
+                    let random_node_index = random_u64(ctx) % nodes_count;
+                    let new_node_id = nodes.borrow(random_node_index);
+                    new_nodes.push_back(*new_node_id);
+                    *ticket.all.borrow_mut(i) = *new_node_id;
+                };
+
+                i = i + 1;
+            };
+
+            ticket.timeout.started_in_epoch = ctx.epoch();
+            ticket.timeout.started_at_epoch_timestamp_ms = ctx.epoch_timestamp_ms();
             return_settlement_ticket(atoma, ticket);
 
-            // TBD: possibly, we could predict whether more nodes are needed by
-            //      finding the most submitted solution and if it's less than
-            //      critical mass minus the number of awaiting nodes, already
-            //      extend the awaiting list
+            // TODO: emit event that publishes info about the new nodes
+        }
+        else {
+            abort ENotReadyToSettle
         }
     }
 
@@ -159,16 +231,21 @@ module atoma::settlement {
     /// 3. The scenario where epoch is more than +1 should not happen bcs of
     ///    the aforementioned 24h epoch period being less than the timeout, but
     ///    for the sake of completeness, we can just return true.
-    fun did_timeout(self: &OperationalStats, ctx: &TxContext): bool {
+    fun did_timeout(self: &SettlementTicket, ctx: &TxContext): bool {
         let current_epoch = ctx.epoch();
+        let TimeoutInfo {
+            timeout_ms,
+            started_in_epoch,
+            started_at_epoch_timestamp_ms,
+        } = self.timeout;
 
         // 1.
-        if (current_epoch == self.started_in_epoch) {
-            ctx.epoch_timestamp_ms() - self.started_at_epoch_timestamp_ms > self.timeout_ms
+        if (current_epoch == started_in_epoch) {
+            ctx.epoch_timestamp_ms() - started_at_epoch_timestamp_ms > timeout_ms
         }
         // 2.
-        else if (current_epoch == self.started_in_epoch + 1) {
-            ctx.epoch_timestamp_ms() > self.timeout_ms
+        else if (current_epoch == started_in_epoch + 1) {
+            ctx.epoch_timestamp_ms() > timeout_ms
         }
         // 3.
         else {

@@ -259,6 +259,13 @@ module atoma::db {
         &model.echelons
     }
 
+    public fun get_model_echelon(
+        self: &mut AtomaDb, model_name: ascii::String, echelon_id: EchelonId,
+    ): &ModelEchelon {
+        let model = self.models.borrow_mut(model_name);
+        get_echelon_mut(&mut model.echelons, echelon_id)
+    }
+
     public fun get_model_echelon_id(echelon: &ModelEchelon): EchelonId {
         echelon.id
     }
