@@ -307,9 +307,18 @@ module atoma::settlement {
             }
         };
 
-        // TODO: reward the oracle node
+        let oracle_reward = sui::math::divide_and_round_up(
+            confiscated_total.value() * atoma.get_permille_for_oracle_on_dispute(),
+        // ----------------------------------------------------------------------
+                                1000
+        );
 
-        // TODO: reward the honest nodes
+        // round down so that in any case it adds up to max the total
+        let honest_nodes_extra_fee =
+            confiscated_total.value() * atoma.get_permille_for_honest_nodes_on_dispute() /
+        // ---------------------------------------------------------------------------
+                                1000
+        ;
 
         atoma.deposit_to_treasury(confiscated_total);
 

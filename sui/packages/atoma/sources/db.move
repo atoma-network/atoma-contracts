@@ -21,6 +21,12 @@ module atoma::db {
     /// If a node does not respond to a prompt within the timeout, it is slashed
     /// by this ‰ amount.
     const InitialPermilleToSlashNodeOnTimeout: u64 = 100;
+    /// How many tokens ‰ from all the confiscated slashed tokens should go to
+    /// the oracle that settled the dispute.
+    const InitialPermilleForOracleOnDispute: u64 = 100;
+    /// Nodes that submitted correct (according to the oracle) results will get
+    /// this ‰ of the slashed tokens.
+    const InitialPermilleForHonestNodesOnDispute: u64 = 200;
 
     const ENodeRegDisabled: u64 = 0;
     const EModelDisabled: u64 = 1;
@@ -30,6 +36,7 @@ module atoma::db {
     const EEchelonNotFound: u64 = 5;
     const EEchelonAlreadyExistsForModel: u64 = 6;
     const ENodeIdNotFound: u64 = 7;
+    const ETotalPermilleMustBeLessThan1000: u64 = 8;
 
     public struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
@@ -102,6 +109,13 @@ module atoma::db {
         /// If a node does not respond to a prompt within the timeout, it is
         /// slashed by this ‰ amount.
         permille_to_slash_node_on_timeout: u64,
+        /// How many tokens ‰ from all the confiscated slashed tokens should go
+        /// to the oracle that settled the dispute.
+        permille_for_oracle_on_dispute: u64,
+        /// Nodes that submitted correct (according to the oracle) results will
+        /// get this ‰ of the slashed tokens.
+        /// This plus `permille_for_oracle_on_dispute` must be less 1000.
+        permille_for_honest_nodes_on_dispute: u64,
     }
 
     /// Field of AtomaDb.
@@ -179,6 +193,9 @@ module atoma::db {
                 InitialCollateralRequiredForRegistration,
             permille_to_slash_node_on_timeout:
                 InitialPermilleToSlashNodeOnTimeout,
+            permille_for_oracle_on_dispute: InitialPermilleForOracleOnDispute,
+            permille_for_honest_nodes_on_dispute:
+                InitialPermilleForHonestNodesOnDispute,
         };
         transfer::share_object(atoma_db);
 
@@ -261,6 +278,14 @@ module atoma::db {
         });
     }
 
+    public fun get_permille_for_oracle_on_dispute(self: &AtomaDb): u64 {
+        self.permille_for_oracle_on_dispute
+    }
+
+    public fun get_permille_for_honest_nodes_on_dispute(self: &AtomaDb): u64 {
+        self.permille_for_honest_nodes_on_dispute
+    }
+
     public fun get_model_echelons_if_enabled(
         self: &AtomaDb, model_name: ascii::String,
     ): &vector<ModelEchelon> {
@@ -321,8 +346,11 @@ module atoma::db {
             balance::zero()
         } else {
             let p = self.permille_to_slash_node_on_timeout;
-            let amount_to_slash =
-                sui::math::divide_and_round_up(collateral * p, 1000);
+            let amount_to_slash = sui::math::divide_and_round_up(
+                   collateral * p,
+            // -------------------
+                       1000
+            );
             node.collateral.split(amount_to_slash)
         }
     }
@@ -591,7 +619,32 @@ module atoma::db {
         new_permille: u64,
         _: &AtomaManagerBadge,
     ) {
+        assert!(new_permille <= 1000, ETotalPermilleMustBeLessThan1000);
         self.permille_to_slash_node_on_timeout = new_permille;
+    }
+
+    public entry fun set_permille_for_oracle_on_dispute(
+        self: &mut AtomaDb,
+        new_permille: u64,
+        _: &AtomaManagerBadge,
+    ) {
+        assert!(
+            new_permille + self.permille_for_honest_nodes_on_dispute <= 1000,
+            ETotalPermilleMustBeLessThan1000,
+        );
+        self.permille_for_oracle_on_dispute = new_permille;
+    }
+
+    public entry fun set_permille_for_honest_nodes_on_dispute(
+        self: &mut AtomaDb,
+        new_permille: u64,
+        _: &AtomaManagerBadge,
+    ) {
+        assert!(
+            new_permille + self.permille_for_oracle_on_dispute <= 1000,
+            ETotalPermilleMustBeLessThan1000,
+        );
+        self.permille_for_honest_nodes_on_dispute = new_permille;
     }
 
     /// The fee is charged per token.
