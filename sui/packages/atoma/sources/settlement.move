@@ -413,7 +413,7 @@ module atoma::settlement {
         atoma: &mut AtomaDb,
         ticket: ID,
     ): &mut SettlementTicket {
-        let uid = atoma.get_uid_mut();
+        let uid = atoma.get_tickets_uid_mut();
         dynamic_object_field::borrow_mut(uid, ticket)
     }
 
@@ -421,7 +421,7 @@ module atoma::settlement {
         atoma: &mut AtomaDb,
         ticket: ID,
     ): SettlementTicket {
-        let uid = atoma.get_uid_mut();
+        let uid = atoma.get_tickets_uid_mut();
         dynamic_object_field::remove(uid, ticket)
     }
 
@@ -429,7 +429,7 @@ module atoma::settlement {
         atoma: &mut AtomaDb,
         ticket: SettlementTicket,
     ) {
-        let uid = atoma.get_uid_mut();
+        let uid = atoma.get_tickets_uid_mut();
         dynamic_object_field::add(uid, object::id(&ticket), ticket)
     }
 }

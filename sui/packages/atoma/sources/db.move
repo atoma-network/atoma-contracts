@@ -86,6 +86,11 @@ module atoma::db {
     /// - O(1) access to model
     public struct AtomaDb has key {
         id: UID,
+        /// Settlement is done via tickets that are associated with the
+        /// database.
+        ///
+        /// We expose UID instead of an object table to avoid cyclic deps.
+        tickets: UID,
         /// We keep track of total registered nodes so that we can generate
         /// SmallId for newly registered nodes as these IDs are sequential.
         next_node_small_id: SmallId,
@@ -183,6 +188,7 @@ module atoma::db {
     fun init(ctx: &mut TxContext) {
         let atoma_db = AtomaDb {
             id: object::new(ctx),
+            tickets: object::new(ctx),
             nodes: table::new(ctx),
             models: object_table::new(ctx),
             treasury: balance::zero(),
@@ -323,8 +329,7 @@ module atoma::db {
 
     public fun get_opaque_inner_id(self: SmallId): u64 { self.inner }
 
-    /// Other modules can take advantage of dynamic fields attached to the UID.
-    public(package) fun get_uid_mut(self: &mut AtomaDb): &mut UID { &mut self.id }
+    public(package) fun get_tickets_uid_mut(self: &mut AtomaDb): &mut UID { &mut self.id }
 
     /// When a node does not respond to a prompt within the timeout, it is
     /// slashed by some ‰ amount.
