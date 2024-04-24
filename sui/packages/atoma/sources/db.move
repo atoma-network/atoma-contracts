@@ -98,8 +98,12 @@ module atoma::db {
         nodes: Table<SmallId, NodeEntry>,
         /// Each model is represented here and stores which nodes support it.
         models: ObjectTable<ascii::String, ModelEntry>,
+        /// All fees and honest node rewards go here.
+        /// We then do book-keeping on NodeEntry objects to calculate how much
+        /// is available for withdrawal by each node.
+        fee_treasury: Balance<TOMA>,
         /// When nodes get slashed, some of the collateral goes here.
-        treasury: Balance<TOMA>,
+        communal_treasury: Balance<TOMA>,
 
         // Configuration
 
@@ -125,7 +129,16 @@ module atoma::db {
 
     /// Field of AtomaDb.
     public struct NodeEntry has store {
+        /// It can get slashed if node is not responding or if it submitted
+        /// results that do not match the oracle's results.
         collateral: Balance<TOMA>,
+        /// What's the epoch number of the last fee settlement.
+        last_fee_epoch: u64,
+        /// These fees have been deposited in epoch `last_fee_epoch`.
+        /// They won't be available for withdrawal until the next epoch.
+        last_fee_epoch_amount: u64,
+        /// These fees are unlocked for the node to collect.
+        available_fee_amount: u64,
     }
 
     /// Object field of AtomaDb.
@@ -191,7 +204,8 @@ module atoma::db {
             tickets: object::new(ctx),
             nodes: table::new(ctx),
             models: object_table::new(ctx),
-            treasury: balance::zero(),
+            fee_treasury: balance::zero(),
+            communal_treasury: balance::zero(),
             // IMPORTANT: we start from 1 because 0 is reserved
             next_node_small_id: SmallId { inner: 1 },
             is_registration_disabled: false,
@@ -243,7 +257,12 @@ module atoma::db {
         let small_id = self.next_node_small_id;
         self.next_node_small_id.inner = self.next_node_small_id.inner + 1;
 
-        let node_entry = NodeEntry { collateral };
+        let node_entry = NodeEntry {
+            collateral,
+            last_fee_epoch: ctx.epoch(),
+            last_fee_epoch_amount: 0,
+            available_fee_amount: 0,
+        };
         self.nodes.add(small_id, node_entry);
 
         let badge_id = object::new(ctx);
@@ -372,9 +391,58 @@ module atoma::db {
         }
     }
 
-    public(package) fun deposit_to_treasury(
+    /// Make sure that the fee has been inserted into the treasury!
+    public(package) fun attribute_fee_to_node(
+        self: &mut AtomaDb,
+        node_id: SmallId,
+        fee_amount: u64,
+        ctx: &TxContext,
+    ) {
+        if (!self.nodes.contains(node_id)) {
+            // this node has been deleted, unlikely scenario but perhaps at
+            // some point possible? better than to error is to simply not give
+            // the fee to anyone
+            return
+        };
+
+        let node = self.nodes.borrow_mut(node_id);
+        let current_epoch = ctx.epoch();
+        if (node.last_fee_epoch == current_epoch) {
+            node.last_fee_epoch_amount =
+                node.last_fee_epoch_amount + fee_amount;
+        } else {
+            // epoch has passed, we can now unlock the previous fee
+            node.available_fee_amount =
+                node.available_fee_amount + node.last_fee_epoch_amount;
+            node.last_fee_epoch_amount = fee_amount;
+            node.last_fee_epoch = current_epoch;
+        };
+    }
+
+    public(package) fun deposit_fee_to_node(
+        self: &mut AtomaDb,
+        node_id: SmallId,
+        fee: Balance<TOMA>,
+        ctx: &TxContext,
+    ) {
+        if (!self.nodes.contains(node_id)) {
+            // this node has been deleted, unlikely scenario but perhaps at
+            // some point possible? better than to error is to simply store
+            // this fee for later
+            self.deposit_to_communal_treasury(fee);
+        } else {
+            self.attribute_fee_to_node(node_id, fee.value(), ctx);
+            self.fee_treasury.join(fee);
+        };
+    }
+
+    public(package) fun deposit_to_communal_treasury(
         self: &mut AtomaDb, wallet: Balance<TOMA>,
-    ) { self.treasury.join(wallet); }
+    ) { self.communal_treasury.join(wallet); }
+
+    public(package) fun deposit_to_fee_treasury(
+        self: &mut AtomaDb, wallet: Balance<TOMA>,
+    ) { self.fee_treasury.join(wallet); }
 
     /// From the given model's echelon, pick a random node.
     /// If the picked node has been slashed, remove it from the echelon and

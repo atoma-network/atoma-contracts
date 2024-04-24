@@ -206,7 +206,7 @@ module atoma::settlement {
 
                 if (!ticket.completed.contains(&node_id)) {
                     let confiscated = atoma.slash_node_on_timeout(node_id);
-                    atoma.deposit_to_treasury(confiscated);
+                    atoma.deposit_to_communal_treasury(confiscated);
 
                     // sample another node to replace the slashed one
                     let mut perhaps_new_node_id = atoma
@@ -269,6 +269,7 @@ module atoma::settlement {
     /// - deposited to the treasury
     public entry fun settle_dispute(
         atoma: &mut AtomaDb,
+        node_badge: &NodeBadge,
         ticket_id: ID,
         oracle_merkle_root: vector<u8>,
         oracle_merkle_leaves: vector<u8>,
@@ -283,6 +284,8 @@ module atoma::settlement {
             merkle_leaves_buffer_len == oracle_merkle_leaves.length(),
             EIncorrectMerkleLeavesBufferLength,
         );
+
+        // TODO: check that the node is an oracle
 
         let mut confiscated_total = balance::zero();
 
@@ -312,6 +315,11 @@ module atoma::settlement {
         // ----------------------------------------------------------------------
                                 1000
         );
+        atoma.deposit_fee_to_node(
+            node_badge.get_node_id(),
+            confiscated_total.split(oracle_reward),
+            ctx,
+        );
 
         // round down so that in any case it adds up to max the total
         let honest_nodes_extra_fee =
@@ -319,8 +327,10 @@ module atoma::settlement {
         // ---------------------------------------------------------------------------
                                 1000
         ;
+        atoma.deposit_to_fee_treasury(confiscated_total.split(honest_nodes_extra_fee));
 
-        atoma.deposit_to_treasury(confiscated_total);
+        // and the rest goes to the community
+        atoma.deposit_to_communal_treasury(confiscated_total);
 
         let SettlementTicket {
             id,
@@ -335,6 +345,8 @@ module atoma::settlement {
             timeout: _,
         } = ticket;
         id.delete();
+
+        // TODO: attribute extra honest_nodes_extra_fee / honest_nodes_len to each
 
         // TODO: https://github.com/atoma-network/atoma-contracts/issues/12
     }
