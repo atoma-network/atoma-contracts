@@ -1,6 +1,6 @@
 module atoma::gate {
-    use atoma::utils::random_u256;
     use atoma::db::{AtomaManagerBadge, SmallId, ModelEchelon, AtomaDb};
+    use atoma::utils::random_u256;
     use std::ascii;
     use std::string;
 

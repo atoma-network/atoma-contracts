@@ -4,7 +4,7 @@ module atoma::db {
 
     use atoma::atoma::ATOMA;
     use std::ascii;
-    use sui::balance::Balance;
+    use sui::balance::{Self, Balance};
     use sui::coin::Coin;
     use sui::object_table::{Self, ObjectTable};
     use sui::package::{Self, Publisher};
@@ -29,6 +29,7 @@ module atoma::db {
     const ERelativePerformanceCannotBeZero: u64 = 4;
     const EEchelonNotFound: u64 = 5;
     const EEchelonAlreadyExistsForModel: u64 = 6;
+    const ENodeIdNotFound: u64 = 7;
 
     public struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
@@ -85,6 +86,8 @@ module atoma::db {
         nodes: Table<SmallId, NodeEntry>,
         /// Each model is represented here and stores which nodes support it.
         models: ObjectTable<ascii::String, ModelEntry>,
+        /// When nodes get slashed, some of the collateral goes here.
+        treasury: Balance<TOMA>,
 
         // Configuration
 
@@ -139,6 +142,9 @@ module atoma::db {
         /// selected to serve a prompt.
         /// Read it as "relative performance compared to other echelons".
         relative_performance: u64,
+        /// Nodes that are elevated to an oracle level.
+        /// These nodes are trusted and can settle disputes.
+        oracles: vector<SmallId>,
         /// Which nodes support this model.
         /// We group nodes by HW and SW specs, because different echelons
         /// might end up having different outputs for the same model due to
@@ -165,6 +171,7 @@ module atoma::db {
             id: object::new(ctx),
             nodes: table::new(ctx),
             models: object_table::new(ctx),
+            treasury: balance::zero(),
             // IMPORTANT: we start from 1 because 0 is reserved
             next_node_small_id: SmallId { inner: 1 },
             is_registration_disabled: false,
@@ -269,9 +276,7 @@ module atoma::db {
         get_echelon_mut(&mut model.echelons, echelon_id)
     }
 
-    public fun get_model_echelon_id(self: &ModelEchelon): EchelonId {
-        self.id
-    }
+    public fun get_model_echelon_id(self: &ModelEchelon): EchelonId { self.id }
 
     public fun get_model_echelon_fee(self: &ModelEchelon): u64 {
         self.fee_in_protocol_token
@@ -289,14 +294,12 @@ module atoma::db {
         self.settlement_timeout_ms
     }
 
-    public fun get_node_id(self: &NodeBadge): SmallId {
-        self.small_id
-    }
+    public fun get_node_id(self: &NodeBadge): SmallId { self.small_id }
+
+    public fun get_opaque_inner_id(self: SmallId): u64 { self.inner }
 
     /// Other modules can take advantage of dynamic fields attached to the UID.
-    public(package) fun get_uid_mut(self: &mut AtomaDb): &mut UID {
-        &mut self.id
-    }
+    public(package) fun get_uid_mut(self: &mut AtomaDb): &mut UID { &mut self.id }
 
     /// When a node does not respond to a prompt within the timeout, it is
     /// slashed by some ‰ amount.
@@ -304,20 +307,41 @@ module atoma::db {
     /// won't participate in new prompts.
     public(package) fun slash_node_on_timeout(
         self: &mut AtomaDb, node_id: SmallId,
-    ) {
+    ): Balance<TOMA> {
+        let has_node = self.nodes.contains(node_id);
+        if (!has_node) {
+            // this node has already been removed
+            return balance::zero()
+        };
+
         let node = self.nodes.borrow_mut(node_id);
         let collateral = node.collateral.value();
         if (collateral == 0) {
-            // node has already been slashed
+            // node has already been slashed, nothing to do
+            balance::zero()
         } else {
             let p = self.permille_to_slash_node_on_timeout;
             let amount_to_slash =
                 sui::math::divide_and_round_up(collateral * p, 1000);
-            let slashed_balance = node.collateral.split(amount_to_slash);
-            // TODO: what to do with the slashed balance?
-            slashed_balance.destroy_zero();
+            node.collateral.split(amount_to_slash)
         }
     }
+
+    /// Takes away all node's collateral.
+    public(package) fun slash_node_on_dispute(
+        self: &mut AtomaDb, node_id: SmallId,
+    ): Balance<TOMA> {
+        if (!self.nodes.contains(node_id)) {
+            // this node has already been removed
+            balance::zero()
+        } else {
+            self.nodes.borrow_mut(node_id).collateral.withdraw_all()
+        }
+    }
+
+    public(package) fun deposit_to_treasury(
+        self: &mut AtomaDb, wallet: Balance<TOMA>,
+    ) { self.treasury.join(wallet); }
 
     /// From the given model's echelon, pick a random node.
     /// If the picked node has been slashed, remove it from the echelon and
@@ -472,6 +496,7 @@ module atoma::db {
             fee_in_protocol_token,
             relative_performance,
             settlement_timeout_ms: InitialSettlementTimeoutMs,
+            oracles: vector::empty(),
             nodes: table_vec::empty(ctx),
         });
     }
@@ -499,6 +524,7 @@ module atoma::db {
                 fee_in_protocol_token: _,
                 relative_performance: _,
                 settlement_timeout_ms: _,
+                oracles: _,
                 nodes,
             } = vector::pop_back(&mut echelons);
             nodes.drop();
@@ -520,6 +546,7 @@ module atoma::db {
             fee_in_protocol_token: _,
             relative_performance: _,
             settlement_timeout_ms: _,
+            oracles: _,
             nodes,
         } = remove_echelon(&mut model.echelons, echelon_id);
         nodes.drop();
@@ -581,6 +608,43 @@ module atoma::db {
         echelon.fee_in_protocol_token = new_fee_in_protocol_token;
     }
 
+    public entry fun add_model_echelon_oracle_node(
+        self: &mut AtomaDb,
+        model_name: ascii::String,
+        echelon: u64,
+        node_small_id: u64,
+        _: &AtomaManagerBadge,
+    ) {
+        let model = self.models.borrow_mut(model_name);
+        let echelon_id = EchelonId { id: echelon };
+        let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
+        echelon.oracles.push_back(SmallId { inner: node_small_id });
+    }
+
+    public entry fun remove_model_echelon_oracle_node(
+        self: &mut AtomaDb,
+        model_name: ascii::String,
+        echelon: u64,
+        node_small_id: u64,
+        _: &AtomaManagerBadge,
+    ) {
+        let model = self.models.borrow_mut(model_name);
+        let echelon_id = EchelonId { id: echelon };
+        let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
+
+        let mut i = 0;
+        let n = echelon.oracles.length();
+        while (i < n) {
+            if (echelon.oracles[i].inner == node_small_id) {
+                echelon.oracles.swap_remove(i);
+                return
+            };
+            i = i + 1;
+        };
+
+        abort ENodeIdNotFound
+    }
+
     public entry fun set_model_echelon_settlement_timeout_ms(
         self: &mut AtomaDb,
         model_name: ascii::String,
@@ -638,7 +702,7 @@ module atoma::db {
         while (i < n) {
             let echelon = echelons.borrow(i);
             if (echelon.id == id) {
-                return echelons.remove(i)
+                return echelons.swap_remove(i)
             };
             i = i + 1;
         };

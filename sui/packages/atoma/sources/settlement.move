@@ -1,12 +1,14 @@
 module atoma::settlement {
     use atoma::db::{EchelonId, SmallId, NodeBadge, AtomaDb};
     use std::ascii;
+    use sui::balance;
     use sui::dynamic_object_field;
 
     const ENotAwaitingCommitment: u64 = 0;
     const EAlreadyCommitted: u64 = 1;
     const ENotReadyToSettle: u64 = 2;
     const EBlake2b256HashMustBe32Bytes: u64 = 3;
+    const EIncorrectMerkleLeavesBufferLength: u64 = 4;
 
     /// Nodes did not agree on the settlement.
     public struct DisputeEvent has copy, drop {
@@ -119,7 +121,7 @@ module atoma::settlement {
         // otherwise set it
         if (ticket.merkle_root.is_empty()) {
             ticket.merkle_root = merkle_root;
-        } else {
+        } else if (ticket.merkle_root != merkle_root) {
             ticket.is_being_disputed = true;
             sui::event::emit(DisputeEvent {
                 ticket_id,
@@ -203,7 +205,8 @@ module atoma::settlement {
                 let node_id = ticket.all[i];
 
                 if (!ticket.completed.contains(&node_id)) {
-                    atoma.slash_node_on_timeout(node_id);
+                    let confiscated = atoma.slash_node_on_timeout(node_id);
+                    atoma.deposit_to_treasury(confiscated);
 
                     // sample another node to replace the slashed one
                     let mut perhaps_new_node_id = atoma
@@ -252,8 +255,79 @@ module atoma::settlement {
     }
 
     /// An oracle node can resolve a disputed ticket.
-    public entry fun settle_dispute() {
-        // TODO
+    ///
+    /// The oracle must provide the merkle root and the leaves.
+    /// If the merkle tree does not agree with the one that's in the ticket,
+    /// the first node that submitted the commitment is slashed.
+    /// Then we go 32 bytes by 32 bytes and check if the leaves agree with
+    /// the oracle.
+    /// Upon disagreement, the node collateral is all slashed.
+    ///
+    /// The confiscated collateral is in parts:
+    /// - given to the oracle node
+    /// - given to the honest nodes
+    /// - deposited to the treasury
+    public entry fun settle_dispute(
+        atoma: &mut AtomaDb,
+        ticket_id: ID,
+        oracle_merkle_root: vector<u8>,
+        oracle_merkle_leaves: vector<u8>,
+        ctx: &mut TxContext,
+    ) {
+        let ticket = remove_settlement_ticket(atoma, ticket_id);
+        assert!(ticket.is_being_disputed, ENotReadyToSettle);
+        assert!(ticket.did_timeout(ctx), ENotReadyToSettle);
+
+        let merkle_leaves_buffer_len = ticket.merkle_leaves.length();
+        assert!(
+            merkle_leaves_buffer_len == oracle_merkle_leaves.length(),
+            EIncorrectMerkleLeavesBufferLength,
+        );
+
+        let mut confiscated_total = balance::zero();
+
+        if (ticket.merkle_root != oracle_merkle_root) {
+            let node_id = ticket.completed[0];
+            confiscated_total.join(atoma.slash_node_on_dispute(node_id));
+        };
+
+        let mut i = 0;
+        while (i < merkle_leaves_buffer_len) {
+            let bytes_agree = oracle_merkle_leaves[i] == ticket.merkle_leaves[i];
+            if (!bytes_agree) {
+                let node_index = i / 32;
+                let node_id = ticket.all[node_index];
+                confiscated_total.join(atoma.slash_node_on_dispute(node_id));
+
+                // skip to the next node
+                i = (node_index + 1) * 32;
+            } else {
+                // check the next byte
+                i = i + 1;
+            }
+        };
+
+        // TODO: reward the oracle node
+
+        // TODO: reward the honest nodes
+
+        atoma.deposit_to_treasury(confiscated_total);
+
+        let SettlementTicket {
+            id,
+            completed,
+
+            model_name: _,
+            echelon_id: _,
+            all: _,
+            merkle_root: _,
+            merkle_leaves: _,
+            is_being_disputed: _,
+            timeout: _,
+        } = ticket;
+        id.delete();
+
+        // TODO: https://github.com/atoma-network/atoma-contracts/issues/12
     }
 
     public(package) fun new_ticket(
