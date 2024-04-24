@@ -18,6 +18,9 @@ module atoma::db {
     /// settle without them.
     /// This is the initial value and can change.
     const InitialSettlementTimeoutMs: u64 = 60_000;
+    /// If a node does not respond to a prompt within the timeout, it is slashed
+    /// by this ‰ amount.
+    const InitialPermilleToSlashNodeOnTimeout: u64 = 100;
 
     const ENodeRegDisabled: u64 = 0;
     const EModelDisabled: u64 = 1;
@@ -93,6 +96,9 @@ module atoma::db {
         /// This setting can change as each node's collateralized balance
         /// is stored in the node's account data.
         registration_collateral_in_protocol_token: u64,
+        /// If a node does not respond to a prompt within the timeout, it is
+        /// slashed by this ‰ amount.
+        permille_to_slash_node_on_timeout: u64,
     }
 
     /// Field of AtomaDb.
@@ -164,6 +170,8 @@ module atoma::db {
             is_registration_disabled: false,
             registration_collateral_in_protocol_token:
                 InitialCollateralRequiredForRegistration,
+            permille_to_slash_node_on_timeout:
+                InitialPermilleToSlashNodeOnTimeout,
         };
         transfer::share_object(atoma_db);
 
@@ -290,6 +298,27 @@ module atoma::db {
         &mut self.id
     }
 
+    /// When a node does not respond to a prompt within the timeout, it is
+    /// slashed by some ‰ amount.
+    /// It's possible that the node is slashed to zero balance, in which case it
+    /// won't participate in new prompts.
+    public(package) fun slash_node_on_timeout(
+        self: &mut AtomaDb, node_id: SmallId,
+    ) {
+        let node = self.nodes.borrow_mut(node_id);
+        let collateral = node.collateral.value();
+        if (collateral == 0) {
+            // node has already been slashed
+        } else {
+            let p = self.permille_to_slash_node_on_timeout;
+            let amount_to_slash =
+                sui::math::divide_and_round_up(collateral * p, 1000);
+            let slashed_balance = node.collateral.split(amount_to_slash);
+            // TODO: what to do with the slashed balance?
+            slashed_balance.destroy_zero();
+        }
+    }
+
     /// From the given model's echelon, pick a random node.
     /// If the picked node has been slashed, remove it from the echelon and
     /// repeat until a valid node is found.
@@ -334,8 +363,13 @@ module atoma::db {
     ): Option<SmallId> {
         loop {
             let nodes_count = echelon.nodes.length();
-
             if (nodes_count == 0) {
+                // Pathological scenario where all nodes have been slashed.
+                // When user samples node, they perform clean up for us.
+                // In a healthy ecosystem with enough nodes per echelon, this
+                // should not happen.
+                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
+                std::debug::print(&b"All echelon nodes have been slashed");
                 break option::none()
             };
 
@@ -346,7 +380,7 @@ module atoma::db {
                 nodes.borrow(node_id).collateral.value() > 0) {
                 break option::some(node_id)
             } else {
-                // The node has been slashed so remove it from the echelon
+                // node has been slashed so remove it from the echelon
                 echelon.nodes.swap_remove(node_index);
             }
         }
@@ -523,6 +557,14 @@ module atoma::db {
         _: &AtomaManagerBadge,
     ) {
         self.registration_collateral_in_protocol_token = new_required_collateral;
+    }
+
+    public entry fun set_permille_to_slash_node_on_timeout(
+        self: &mut AtomaDb,
+        new_permille: u64,
+        _: &AtomaManagerBadge,
+    ) {
+        self.permille_to_slash_node_on_timeout = new_permille;
     }
 
     /// The fee is charged per token.

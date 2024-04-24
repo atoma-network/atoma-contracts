@@ -99,9 +99,10 @@ module atoma::gate {
         let mut selected_nodes = vector::empty();
         let mut iteration = 0;
         while (iteration < nodes_to_sample) {
+            // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
             let node_id = atoma
                 .sample_node_by_echelon_index(params.model, echelon_index, ctx)
-                .extract(); // TODO: all nodes slashed
+                .extract();
 
             if (selected_nodes.contains(&node_id)) {
                 // try again with a different node without incrementing the

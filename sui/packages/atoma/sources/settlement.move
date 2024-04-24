@@ -203,16 +203,29 @@ module atoma::settlement {
                 let node_id = ticket.all[i];
 
                 if (!ticket.completed.contains(&node_id)) {
-                    // TODO: slash node 10%
+                    atoma.slash_node_on_timeout(node_id);
 
                     // sample another node to replace the slashed one
-                    let new_node_id = atoma
+                    let mut perhaps_new_node_id = atoma
                         .sample_node_by_echelon_id(
                             ticket.model_name,
                             ticket.echelon_id,
                             ctx,
-                        )
-                        .extract(); // TODO: all nodes slashed
+                        );
+
+                    // if there are no more nodes to sample in this echelon
+                    // we start a dispute instead
+                    if (perhaps_new_node_id.is_none()) {
+                        ticket.is_being_disputed = true;
+                        return_settlement_ticket(atoma, ticket);
+                        sui::event::emit(DisputeEvent {
+                            ticket_id,
+                            timeout: option::none(),
+                        });
+                        return
+                    };
+
+                    let new_node_id = perhaps_new_node_id.extract();
 
                     new_nodes.push_back(MapNodeToChunk {
                         node_id: new_node_id,
