@@ -2,7 +2,6 @@ module atoma::settlement {
     use atoma::db::{EchelonId, SmallId, NodeBadge, AtomaDb};
     use std::ascii;
     use sui::dynamic_object_field;
-    use atoma::utils::random_u64;
 
     const ENotAwaitingCommitment: u64 = 0;
     const EAlreadyCommitted: u64 = 1;
@@ -197,11 +196,6 @@ module atoma::settlement {
         // 2.
         //
         else if (ticket.did_timeout(ctx)) {
-            let echelon =
-                atoma.get_model_echelon(ticket.model_name, ticket.echelon_id);
-            let nodes = echelon.get_model_echelon_nodes();
-            let nodes_count = nodes.length();
-
             let mut new_nodes = vector::empty();
             let mut i = 0;
             let len = ticket.all.length();
@@ -209,16 +203,22 @@ module atoma::settlement {
                 let node_id = ticket.all[i];
 
                 if (!ticket.completed.contains(&node_id)) {
-                    // TODO: slash node
+                    // TODO: slash node 10%
 
                     // sample another node to replace the slashed one
-                    let random_node_index = random_u64(ctx) % nodes_count;
-                    let new_node_id = nodes.borrow(random_node_index);
+                    let new_node_id = atoma
+                        .sample_node_by_echelon_id(
+                            ticket.model_name,
+                            ticket.echelon_id,
+                            ctx,
+                        )
+                        .extract(); // TODO: all nodes slashed
+
                     new_nodes.push_back(MapNodeToChunk {
-                        node_id: *new_node_id,
+                        node_id: new_node_id,
                         order: i,
                     });
-                    *ticket.all.borrow_mut(i) = *new_node_id;
+                    *ticket.all.borrow_mut(i) = new_node_id;
                 };
 
                 i = i + 1;

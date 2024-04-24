@@ -138,7 +138,9 @@ module atoma::db {
         /// might end up having different outputs for the same model due to
         /// e.g. floating point arithmetics.
         /// Using a vector allows for a random access using an index.
-        nodes: TableVec<SmallId>
+        /// The order of nodes will not be preserved because we use
+        /// `swap_remove` op on table vec.
+        nodes: TableVec<SmallId>,
     }
 
     /// An opaque identifier for an echelon.
@@ -286,6 +288,68 @@ module atoma::db {
     /// Other modules can take advantage of dynamic fields attached to the UID.
     public(package) fun get_uid_mut(self: &mut AtomaDb): &mut UID {
         &mut self.id
+    }
+
+    /// From the given model's echelon, pick a random node.
+    /// If the picked node has been slashed, remove it from the echelon and
+    /// repeat until a valid node is found.
+    ///
+    /// In case all nodes have been slashed returns none.
+    public(package) fun sample_node_by_echelon_id(
+        self: &mut AtomaDb,
+        model_name: ascii::String,
+        echelon_id: EchelonId,
+        ctx: &mut TxContext,
+    ): Option<SmallId> {
+        let model = self.models.borrow_mut(model_name);
+        let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
+        sample_node(&self.nodes, echelon, ctx)
+    }
+
+    /// From the given model's echelon, pick a random node.
+    /// If the picked node has been slashed, remove it from the echelon and
+    /// repeat until a valid node is found.
+    ///
+    /// In case all nodes have been slashed returns none.
+    public(package) fun sample_node_by_echelon_index(
+        self: &mut AtomaDb,
+        model_name: ascii::String,
+        echelon_index: u64,
+        ctx: &mut TxContext,
+    ): Option<SmallId> {
+        let model = self.models.borrow_mut(model_name);
+        let echelon = model.echelons.borrow_mut(echelon_index);
+        sample_node(&self.nodes, echelon, ctx)
+    }
+
+    /// From the given model's echelon, pick a random node.
+    /// If the picked node has been slashed, remove it from the echelon and
+    /// repeat until a valid node is found.
+    ///
+    /// In case all nodes have been slashed returns none.
+    fun sample_node(
+        nodes: &Table<SmallId, NodeEntry>,
+        echelon: &mut ModelEchelon,
+        ctx: &mut TxContext,
+    ): Option<SmallId> {
+        loop {
+            let nodes_count = echelon.nodes.length();
+
+            if (nodes_count == 0) {
+                break option::none()
+            };
+
+            let node_index = atoma::utils::random_u64(ctx) % nodes_count;
+            let node_id = *echelon.nodes.borrow(node_index);
+            let has_node = nodes.contains(node_id);
+            if (has_node &&
+                nodes.borrow(node_id).collateral.value() > 0) {
+                break option::some(node_id)
+            } else {
+                // The node has been slashed so remove it from the echelon
+                echelon.nodes.swap_remove(node_index);
+            }
+        }
     }
 
     // =========================================================================

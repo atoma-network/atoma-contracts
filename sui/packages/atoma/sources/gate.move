@@ -1,6 +1,6 @@
 module atoma::gate {
-    use atoma::utils::{random_u64, random_u256};
-    use atoma::db::{Self, AtomaManagerBadge, SmallId, ModelEchelon, AtomaDb};
+    use atoma::utils::random_u256;
+    use atoma::db::{AtomaManagerBadge, SmallId, ModelEchelon, AtomaDb};
     use std::ascii;
     use std::string;
 
@@ -84,35 +84,36 @@ module atoma::gate {
         let echelons = atoma.get_model_echelons_if_enabled(params.model);
 
         // 2.
-        let echelon = select_eligible_echelon_at_random(
+        let echelon_index = select_eligible_echelon_at_random(
             echelons,
             nodes_to_sample,
             max_fee_per_token,
-            // ideally we'd pass the context, but move is dumb and thinks that
-            // because we return a reference, we could still be using the
-            // context, which we need to access mutably later on
-            random_u256(ctx),
+            ctx,
         );
+        let echelon = echelons.borrow(echelon_index);
+        let echelon_id = echelon.get_model_echelon_id();
+        let echelon_settlement_timeout_ms =
+            echelon.get_model_echelon_settlement_timeout_ms();
 
         // 3.
-        let nodes = echelon.get_model_echelon_nodes();
-        let nodes_count = nodes.length();
         let mut selected_nodes = vector::empty();
         let mut iteration = 0;
         while (iteration < nodes_to_sample) {
-            let node_index = random_u64(ctx) % nodes_count;
-            let node_id = nodes.borrow(node_index);
+            let node_id = atoma
+                .sample_node_by_echelon_index(params.model, echelon_index, ctx)
+                .extract(); // TODO: all nodes slashed
 
-            if (selected_nodes.contains(node_id)) {
+            if (selected_nodes.contains(&node_id)) {
                 // try again with a different node without incrementing the
                 // iteration counter
                 //
                 // we won't get stuck because we're guaranteed to have enough
                 // nodes in the echelon
+                // TODO: this no longer holds true because of slashed nodes
                 continue
             };
 
-            selected_nodes.push_back(*node_id);
+            selected_nodes.push_back(node_id);
             iteration = iteration + 1;
         };
 
@@ -120,9 +121,9 @@ module atoma::gate {
         let ticket_id = atoma::settlement::new_ticket(
             atoma,
             params.model,
-            echelon.get_model_echelon_id(),
+            echelon_id,
             selected_nodes,
-            echelon.get_model_echelon_settlement_timeout_ms(),
+            echelon_settlement_timeout_ms,
             ctx
         );
 
@@ -162,6 +163,8 @@ module atoma::gate {
     ///   have enough nodes.
     /// 2. Randomly pick one of the echelons.
     ///
+    /// We return an index into the `echelons` vector.
+    ///
     /// # Algorithm
     /// TODO: https://github.com/atoma-network/atoma-contracts/issues/3
     ///
@@ -192,8 +195,8 @@ module atoma::gate {
         echelons: &vector<ModelEchelon>,
         nodes_to_sample: u64,
         max_fee_per_token: u64,
-        random_u256: u256,
-    ): &ModelEchelon {
+        ctx: &mut TxContext,
+    ): u64 {
         //
         // 1.
         //
@@ -205,13 +208,13 @@ module atoma::gate {
         while (index < echelon_count) {
             let echelon = echelons.borrow(index);
 
-            let fee = db::get_model_echelon_fee(echelon);
+            let fee = echelon.get_model_echelon_fee();
             if (fee > max_fee_per_token) {
                 index = index + 1;
                 continue
             };
 
-            let nodes = db::get_model_echelon_nodes(echelon);
+            let nodes = echelon.get_model_echelon_nodes();
             let node_count = nodes.length();
             if (node_count < nodes_to_sample) {
                 index = index + 1;
@@ -219,7 +222,7 @@ module atoma::gate {
             };
 
             let performance =
-                (db::get_model_echelon_performance(echelon) as u256)
+                (echelon.get_model_echelon_performance() as u256)
                 *
                 (node_count as u256);
             total_performance = total_performance + performance; // A
@@ -236,7 +239,7 @@ module atoma::gate {
         // 2.
         //
 
-        let goal = 1 + random_u256 % total_performance; // B
+        let goal = 1 + random_u256(ctx) % total_performance; // B
 
         let mut remaining_performance = total_performance;
         loop {
@@ -248,7 +251,7 @@ module atoma::gate {
             remaining_performance = remaining_performance - performance; // C
 
             if (goal > remaining_performance) {
-                return echelons.borrow(index) // D
+                return index // D
             };
         }
     }
