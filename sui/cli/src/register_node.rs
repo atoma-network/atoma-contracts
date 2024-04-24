@@ -32,7 +32,8 @@ pub(crate) async fn command(
         .next()
         .ok_or_else(|| anyhow::anyhow!("No TOMA wallet found for the package"))?;
 
-    // TODO: we could also filter by the required collateral amount
+    // we could also filter by the required collateral amount to even more
+    // specific before needing to implement pagination
 
     let tx = client
         .transaction_builder()

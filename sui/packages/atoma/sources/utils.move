@@ -1,5 +1,4 @@
 module atoma::utils {
-    /// TODO: https://github.com/atoma-network/atoma-contracts/issues/4
     public fun random_u64(ctx: &mut TxContext): u64 {
         let mut buffer = sui::address::to_bytes(
             tx_context::fresh_object_address(ctx)
@@ -16,7 +15,6 @@ module atoma::utils {
         result
     }
 
-    /// TODO: https://github.com/atoma-network/atoma-contracts/issues/4
     public fun random_u256(ctx: &mut TxContext): u256 {
         let mut buffer = sui::address::to_bytes(
             tx_context::fresh_object_address(ctx)

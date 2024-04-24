@@ -167,7 +167,6 @@ module atoma::gate {
     /// We return an index into the `echelons` vector.
     ///
     /// # Algorithm
-    /// TODO: https://github.com/atoma-network/atoma-contracts/issues/3
     ///
     /// A) total performance is a sum of all eligible echelons'
     /// performances
