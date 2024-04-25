@@ -114,13 +114,10 @@ echo "Package: ${package}"
 
 echo "Sending test text prompt"
 
-echo "What should be my next travel destination ?" >/tmp/atoma-test-prompt.txt
 ./cli --wallet ~/.sui/sui_config/client.yaml \
-    gate submit-example-text-prompt \
+    gate submit-tell-me-a-joke-prompt \
     --package "${package}" \
-    --model-name "llama" \
-    --prompt-path /tmp/atoma-test-prompt.txt \
-    --nodes-to-sample 1
+    --model-name "llama"
 
 # leave the caller where they started
 cd $entrance_dir

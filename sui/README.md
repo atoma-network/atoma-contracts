@@ -93,11 +93,9 @@ Now that the network has a model, echelon and a node, we can send a test prompt:
 
 ```sh
 ./cli --wallet ~/.sui/sui_config/client.yaml \
-    gate submit-example-text-prompt \
+    gate submit-tell-me-a-joke-prompt \
     --package "your package id can be found when publishing" \
-    --model-name "llama" \
-    --prompt-path "path/to/text/file" \
-    --nodes-to-sample 1
+    --model-name "llama"
 ```
 
 ## `TOMA` token

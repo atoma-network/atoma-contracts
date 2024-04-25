@@ -55,7 +55,7 @@ module atoma::prompts {
             params,
             max_fee_per_token,
             tokens_count,
-            option::none(), // default nodes to sample
+            option::some(1), // default nodes to sample
             ctx,
         );
     }
