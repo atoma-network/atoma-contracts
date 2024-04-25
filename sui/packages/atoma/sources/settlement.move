@@ -77,6 +77,10 @@ module atoma::settlement {
         /// with zeros.
         /// Those will be overwritten when each node submits the hash of the chunk.
         merkle_leaves: vector<u8>,
+        /// The fee that was collected from the user.
+        /// It will be distributed to the nodes that participated in the
+        /// evaluation.
+        collected_fee_in_protocol_token: u64,
         /// If any node does not agree with the first hash, the settlement is
         /// being disputed.
         ///
@@ -170,9 +174,12 @@ module atoma::settlement {
         if (ticket.completed.length() == ticket.all.length()) {
             let computed_mroot = sui::hash::blake2b256(&ticket.merkle_leaves);
             if (computed_mroot == ticket.merkle_root) {
+                // happy path
+
                 let SettlementTicket {
                     id,
-                    completed,
+                    mut completed,
+                    collected_fee_in_protocol_token,
 
                     model_name: _,
                     echelon_id: _,
@@ -184,7 +191,13 @@ module atoma::settlement {
                 } = ticket;
                 id.delete();
 
-                // TODO: https://github.com/atoma-network/atoma-contracts/issues/12
+                let reward_per_node =
+                    collected_fee_in_protocol_token / completed.length();
+
+                while (!completed.is_empty()) {
+                    let node_id = completed.pop_back();
+                    atoma.attribute_fee_to_node(node_id, reward_per_node, ctx);
+                }
             } else {
                 ticket.is_being_disputed = true;
                 return_settlement_ticket(atoma, ticket);
@@ -336,6 +349,7 @@ module atoma::settlement {
             id,
             completed,
 
+            collected_fee_in_protocol_token: _,
             model_name: _,
             echelon_id: _,
             all: _,
@@ -356,6 +370,7 @@ module atoma::settlement {
         model_name: ascii::String,
         echelon_id: EchelonId,
         nodes: vector<SmallId>,
+        collected_fee_in_protocol_token: u64,
         timeout_ms: u64,
         ctx: &mut TxContext,
     ): ID {
@@ -368,6 +383,7 @@ module atoma::settlement {
             merkle_root: vector::empty(),
             merkle_leaves: vector::empty(),
             is_being_disputed: false,
+            collected_fee_in_protocol_token,
             timeout: TimeoutInfo {
                 timeout_ms,
                 started_in_epoch: ctx.epoch(),

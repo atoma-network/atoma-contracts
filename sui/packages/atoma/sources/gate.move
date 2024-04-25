@@ -1,8 +1,11 @@
 module atoma::gate {
+    use toma::toma::TOMA;
     use atoma::db::{AtomaManagerBadge, SmallId, ModelEchelon, AtomaDb};
     use atoma::utils::random_u256;
     use std::ascii;
     use std::string;
+    use sui::balance::Balance;
+    use sui::coin::Coin;
 
     const ENoEligibleEchelons: u64 = 0;
 
@@ -41,6 +44,7 @@ module atoma::gate {
     /// TODO: Temporary function that showcases the contract.
     public entry fun submit_example_text_prompt(
         atoma: &mut AtomaDb,
+        wallet: &mut Coin<TOMA>,
         model: ascii::String,
         prompt: string::String,
         nodes_to_sample: u64,
@@ -52,14 +56,15 @@ module atoma::gate {
             max_tokens: 100,
             temperature: 0,
         };
-        let max_fee_per_token = 18_446_744_073_709_551_615;
+        let max_fee_per_character = 18_446_744_073_709_551_615;
         let badge = PromptBadge { id: object::new(ctx) };
         submit_text_prompt(
             atoma,
+            &badge,
+            wallet.balance_mut(),
             params,
             nodes_to_sample,
-            max_fee_per_token,
-            &badge,
+            max_fee_per_character,
             ctx,
         );
         destroy_prompt_badge(badge);
@@ -70,14 +75,16 @@ module atoma::gate {
     /// 1. Get the model echelons from the database.
     /// 2. Randomly pick one of the echelons.
     /// 3. Sample the required number of nodes from the echelon.
-    /// 4. Create a new settlement ticket in the database.
-    /// 5. Emit TextPromptEvent.
+    /// 4. Collect the total fee that's going to be split among the nodes.
+    /// 5. Create a new settlement ticket in the database.
+    /// 6. Emit TextPromptEvent.
     public fun submit_text_prompt(
         atoma: &mut AtomaDb,
+        _:& PromptBadge,
+        wallet: &mut Balance<TOMA>,
         params: TextPromptParams,
         nodes_to_sample: u64,
-        max_fee_per_token: u64,
-        _:& PromptBadge,
+        max_fee_per_character: u64,
         ctx: &mut TxContext,
     ) {
         // 1.
@@ -87,13 +94,14 @@ module atoma::gate {
         let echelon_index = select_eligible_echelon_at_random(
             echelons,
             nodes_to_sample,
-            max_fee_per_token,
+            max_fee_per_character,
             ctx,
         );
         let echelon = echelons.borrow(echelon_index);
         let echelon_id = echelon.get_model_echelon_id();
         let echelon_settlement_timeout_ms =
             echelon.get_model_echelon_settlement_timeout_ms();
+        let echelon_fee_per_character = echelon.get_model_echelon_fee();
 
         // 3.
         let mut selected_nodes = vector::empty();
@@ -119,16 +127,22 @@ module atoma::gate {
         };
 
         // 4.
+        // we must fit into u64
+        let collected_fee = echelon_fee_per_character * params.prompt.length();
+        atoma.deposit_to_fee_treasury(wallet.split(collected_fee));
+
+        // 5.
         let ticket_id = atoma::settlement::new_ticket(
             atoma,
             params.model,
             echelon_id,
             selected_nodes,
+            collected_fee,
             echelon_settlement_timeout_ms,
-            ctx
+            ctx,
         );
 
-        // 5.
+        // 6.
         sui::event::emit(TextPromptEvent {
             params,
             ticket_id,
@@ -194,7 +208,7 @@ module atoma::gate {
     fun select_eligible_echelon_at_random(
         echelons: &vector<ModelEchelon>,
         nodes_to_sample: u64,
-        max_fee_per_token: u64,
+        max_fee_per_character: u64,
         ctx: &mut TxContext,
     ): u64 {
         //
@@ -209,7 +223,7 @@ module atoma::gate {
             let echelon = echelons.borrow(index);
 
             let fee = echelon.get_model_echelon_fee();
-            if (fee > max_fee_per_token) {
+            if (fee > max_fee_per_character) {
                 index = index + 1;
                 continue
             };

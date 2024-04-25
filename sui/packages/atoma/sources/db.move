@@ -168,7 +168,7 @@ module atoma::db {
         /// If settlement is not done within this time, we attempt to settle
         /// without waiting for nodes that did not respond.
         settlement_timeout_ms: u64,
-        /// How much per token is charged by nodes in this group.
+        /// How much per character is charged by nodes in this group.
         fee_in_protocol_token: u64,
         /// The higher this number, the more likely this echelon is to be
         /// selected to serve a prompt.
@@ -348,6 +348,11 @@ module atoma::db {
 
     public fun get_opaque_inner_id(self: SmallId): u64 { self.inner }
 
+    // =========================================================================
+    //                          Package only functions
+    // =========================================================================
+
+    /// Settlement tickets are dynamic objects of this UID.
     public(package) fun get_tickets_uid_mut(self: &mut AtomaDb): &mut UID { &mut self.id }
 
     /// When a node does not respond to a prompt within the timeout, it is
@@ -476,41 +481,6 @@ module atoma::db {
         sample_node(&self.nodes, echelon, ctx)
     }
 
-    /// From the given model's echelon, pick a random node.
-    /// If the picked node has been slashed, remove it from the echelon and
-    /// repeat until a valid node is found.
-    ///
-    /// In case all nodes have been slashed returns none.
-    fun sample_node(
-        nodes: &Table<SmallId, NodeEntry>,
-        echelon: &mut ModelEchelon,
-        ctx: &mut TxContext,
-    ): Option<SmallId> {
-        loop {
-            let nodes_count = echelon.nodes.length();
-            if (nodes_count == 0) {
-                // Pathological scenario where all nodes have been slashed.
-                // When user samples node, they perform clean up for us.
-                // In a healthy ecosystem with enough nodes per echelon, this
-                // should not happen.
-                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
-                std::debug::print(&b"All echelon nodes have been slashed");
-                break option::none()
-            };
-
-            let node_index = atoma::utils::random_u64(ctx) % nodes_count;
-            let node_id = *echelon.nodes.borrow(node_index);
-            let has_node = nodes.contains(node_id);
-            if (has_node &&
-                nodes.borrow(node_id).collateral.value() > 0) {
-                break option::some(node_id)
-            } else {
-                // node has been slashed so remove it from the echelon
-                echelon.nodes.swap_remove(node_index);
-            }
-        }
-    }
-
     // =========================================================================
     //                          Admin functions
     // =========================================================================
@@ -560,7 +530,7 @@ module atoma::db {
         }
     }
 
-    /// The fee is charged per token.
+    /// The fee is charged per character.
     public entry fun add_model_echelon_entry(
         self: &mut AtomaDb,
         model_name: ascii::String,
@@ -576,7 +546,7 @@ module atoma::db {
         )
     }
 
-    /// The fee is charged per token.
+    /// The fee is charged per character.
     public fun add_model_echelon(
         model: &mut ModelEntry,
         echelon: u64,
@@ -720,7 +690,7 @@ module atoma::db {
         self.permille_for_honest_nodes_on_dispute = new_permille;
     }
 
-    /// The fee is charged per token.
+    /// The fee is charged per character.
     public entry fun set_model_echelon_fee(
         self: &mut AtomaDb,
         model_name: ascii::String,
@@ -834,5 +804,40 @@ module atoma::db {
         };
 
         abort EEchelonNotFound
+    }
+
+    /// From the given model's echelon, pick a random node.
+    /// If the picked node has been slashed, remove it from the echelon and
+    /// repeat until a valid node is found.
+    ///
+    /// In case all nodes have been slashed returns none.
+    fun sample_node(
+        nodes: &Table<SmallId, NodeEntry>,
+        echelon: &mut ModelEchelon,
+        ctx: &mut TxContext,
+    ): Option<SmallId> {
+        loop {
+            let nodes_count = echelon.nodes.length();
+            if (nodes_count == 0) {
+                // Pathological scenario where all nodes have been slashed.
+                // When user samples node, they perform clean up for us.
+                // In a healthy ecosystem with enough nodes per echelon, this
+                // should not happen.
+                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
+                std::debug::print(&b"All echelon nodes have been slashed");
+                break option::none()
+            };
+
+            let node_index = atoma::utils::random_u64(ctx) % nodes_count;
+            let node_id = *echelon.nodes.borrow(node_index);
+            let has_node = nodes.contains(node_id);
+            if (has_node &&
+                nodes.borrow(node_id).collateral.value() > 0) {
+                break option::some(node_id)
+            } else {
+                // node has been slashed so remove it from the echelon
+                echelon.nodes.swap_remove(node_index);
+            }
+        }
     }
 }

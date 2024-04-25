@@ -66,9 +66,9 @@ enum DbCmds {
         model_name: String,
         #[arg(short, long)]
         echelon: u64,
-        /// Max fee per token
+        /// Max fee per character in protocol token.
         #[arg(short, long)]
-        fee_in_protocol_token: u64,
+        fee_in_protocol_character: u64,
         #[arg(short, long)]
         relative_performance: u64,
     },
@@ -137,7 +137,7 @@ async fn main() -> Result<(), anyhow::Error> {
             package,
             model_name,
             echelon,
-            fee_in_protocol_token,
+            fee_in_protocol_character,
             relative_performance,
         })) => {
             let digest = add_model_echelon::command(
@@ -145,7 +145,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 &package,
                 &model_name,
                 echelon,
-                fee_in_protocol_token,
+                fee_in_protocol_character,
                 relative_performance,
                 cli.gas_budget.unwrap_or(1_000_000_000),
             )
