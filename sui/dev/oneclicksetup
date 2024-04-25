@@ -40,7 +40,10 @@ json=$(
 
 # if last command failed, print the error
 if [ $? -ne 0 ]; then
+    echo "Failed to publish the package:\n\n"
     echo "${json}"
+    echo
+    echo "If you need gas, try running: sui client faucet"
     exit 1
 fi
 
@@ -63,13 +66,15 @@ if [ -z "${treasury}" ] || [[ ! "${treasury}" =~ ^0x ]]; then
     exit 1
 fi
 
-echo "Minting some TOMA tokens so that we can deposit collateral"
+echo "Minting some TOMA tokens for collateral and fees"
 
 sui client call \
     --package "0x2" --module "coin" --function "mint_and_transfer" \
     --gas-budget 10000000 \
-    --args "${treasury}" 1000000 $(sui client active-address) \
+    --args "${treasury}" 10000000 $(sui client active-address) \
     --type-args "${package}::toma::TOMA" || exit 1
+
+set -e
 
 cd $root_dir/sui/dev
 
