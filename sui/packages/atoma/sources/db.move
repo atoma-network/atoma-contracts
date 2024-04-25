@@ -10,6 +10,7 @@ module atoma::db {
     use sui::package::{Self, Publisher};
     use sui::table_vec::{Self, TableVec};
     use sui::table::{Self, Table};
+    use sui::vec_set::{Self, VecSet};
     use toma::toma::TOMA;
 
     /// How much collateral is required at the time of package publication.
@@ -35,9 +36,8 @@ module atoma::db {
     const ERelativePerformanceCannotBeZero: u64 = 4;
     const EEchelonNotFound: u64 = 5;
     const EEchelonAlreadyExistsForModel: u64 = 6;
-    const ENodeIdNotFound: u64 = 7;
-    const ETotalPermilleMustBeLessThan1000: u64 = 8;
-    const ENothingToWithdraw: u64 = 9;
+    const ETotalPermilleMustBeLessThan1000: u64 = 7;
+    const ENothingToWithdraw: u64 = 8;
 
     public struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
@@ -177,7 +177,7 @@ module atoma::db {
         relative_performance: u64,
         /// Nodes that are elevated to an oracle level.
         /// These nodes are trusted and can settle disputes.
-        oracles: vector<SmallId>,
+        oracles: VecSet<SmallId>,
         /// Which nodes support this model.
         /// We group nodes by HW and SW specs, because different echelons
         /// might end up having different outputs for the same model due to
@@ -604,7 +604,7 @@ module atoma::db {
             fee_in_protocol_token,
             relative_performance,
             settlement_timeout_ms: InitialSettlementTimeoutMs,
-            oracles: vector::empty(),
+            oracles: vec_set::empty(),
             nodes: table_vec::empty(ctx),
         });
     }
@@ -751,7 +751,8 @@ module atoma::db {
         let model = self.models.borrow_mut(model_name);
         let echelon_id = EchelonId { id: echelon };
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
-        echelon.oracles.push_back(SmallId { inner: node_small_id });
+        let node_id = SmallId { inner: node_small_id };
+        echelon.oracles.insert(node_id);
     }
 
     public entry fun remove_model_echelon_oracle_node(
@@ -764,18 +765,7 @@ module atoma::db {
         let model = self.models.borrow_mut(model_name);
         let echelon_id = EchelonId { id: echelon };
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
-
-        let mut i = 0;
-        let n = echelon.oracles.length();
-        while (i < n) {
-            if (echelon.oracles[i].inner == node_small_id) {
-                echelon.oracles.swap_remove(i);
-                return
-            };
-            i = i + 1;
-        };
-
-        abort ENodeIdNotFound
+        echelon.oracles.remove(&SmallId { inner: node_small_id });
     }
 
     public entry fun set_model_echelon_settlement_timeout_ms(
