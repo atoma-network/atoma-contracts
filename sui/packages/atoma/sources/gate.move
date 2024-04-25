@@ -22,12 +22,22 @@ module atoma::gate {
     #[allow(unused_field)]
     /// Serves as an input to the `submit_text_prompt` function.
     /// Is also included with the emitted `TextPromptEvent`.
+    ///
+    /// Float numbers are converted into u32 with
+    /// `u32::from_le_bytes(xxx_f32.to_le_bytes())`
     public struct TextPromptParams has store, copy, drop {
+        max_tokens: u64,
         model: ascii::String,
         prompt: string::String,
-        max_tokens: u64,
-        /// Represents a floating point number between 0 and 1, big endian.
+        random_seed: u64,
+        repeat_last_n: u64,
+        /// Represents a floating point number, little endian.
+        repeat_penalty: u32,
+        /// Represents a floating point number, little endian.
         temperature: u32,
+        top_k: u64,
+        /// Represents a floating point number, little endian.
+        top_p: u32,
     }
 
     #[allow(unused_field)]
@@ -139,17 +149,28 @@ module atoma::gate {
         id.delete();
     }
 
+    /// Arguments to `TextPromptParams` in alphabetical order.
     public fun create_text_prompt_params(
+        max_tokens: u64,
         model: ascii::String,
         prompt: string::String,
-        max_tokens: u64,
+        random_seed: u64,
+        repeat_last_n: u64,
+        repeat_penalty: u32,
         temperature: u32,
+        top_k: u64,
+        top_p: u32,
     ): TextPromptParams {
         TextPromptParams {
+            max_tokens,
             model,
             prompt,
-            max_tokens,
+            random_seed,
+            repeat_last_n,
+            repeat_penalty,
             temperature,
+            top_k,
+            top_p,
         }
     }
 

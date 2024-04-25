@@ -28,13 +28,25 @@ module atoma::prompts {
         ctx: &mut TxContext,
     ) {
         let tokens_count = 64;
+
         let max_tokens = 64;
-        let temperature = 0;
+        let prompt = string::utf8(b"Tell me a joke please");
+        let random_seed = atoma::utils::random_u64(ctx);
+        let repeat_last_n = 1;
+        let repeat_penalty = 1065353216; // 1.0
+        let temperature = 1048576000; // 0.25
+        let top_k = 1;
+        let top_p = 1063675494; // 0.9
         let params = atoma::gate::create_text_prompt_params(
-            model,
-            string::utf8(b"Tell me a joke please"),
             max_tokens,
+            model,
+            prompt,
+            random_seed,
+            repeat_last_n,
+            repeat_penalty,
             temperature,
+            top_k,
+            top_p,
         );
         atoma::gate::submit_text_prompt(
             atoma,
