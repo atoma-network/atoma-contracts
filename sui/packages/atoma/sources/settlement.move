@@ -288,6 +288,8 @@ module atoma::settlement {
         oracle_merkle_leaves: vector<u8>,
         ctx: &mut TxContext,
     ) {
+        let oracle_node_id = node_badge.get_node_id();
+
         let ticket = remove_settlement_ticket(atoma, ticket_id);
         assert!(ticket.is_being_disputed, ENotReadyToSettle);
         assert!(ticket.did_timeout(ctx), ENotReadyToSettle);
@@ -301,19 +303,28 @@ module atoma::settlement {
         // TODO: check that the node is an oracle
 
         let mut confiscated_total = balance::zero();
+        let mut slashed_nodes = vector::empty();
 
-        if (ticket.merkle_root != oracle_merkle_root) {
+        let mut i = if (ticket.merkle_root != oracle_merkle_root) {
             let node_id = ticket.completed[0];
             confiscated_total.join(atoma.slash_node_on_dispute(node_id));
+            slashed_nodes.push_back(node_id);
+
+            // first node is slashed, no need to check its leaves
+            1
+        } else {
+            // first node provided the correct merkle root, check its leaves
+            0
         };
 
-        let mut i = 0;
         while (i < merkle_leaves_buffer_len) {
             let bytes_agree = oracle_merkle_leaves[i] == ticket.merkle_leaves[i];
             if (!bytes_agree) {
                 let node_index = i / 32;
                 let node_id = ticket.all[node_index];
                 confiscated_total.join(atoma.slash_node_on_dispute(node_id));
+                // the first node won't be added twice bcs we skip it if slashed
+                slashed_nodes.push_back(node_id);
 
                 // skip to the next node
                 i = (node_index + 1) * 32;
@@ -329,7 +340,7 @@ module atoma::settlement {
                                 1000
         );
         atoma.deposit_fee_to_node(
-            node_badge.get_node_id(),
+            oracle_node_id,
             confiscated_total.split(oracle_reward),
             ctx,
         );
@@ -347,9 +358,9 @@ module atoma::settlement {
 
         let SettlementTicket {
             id,
-            completed,
+            mut completed,
+            collected_fee_in_protocol_token,
 
-            collected_fee_in_protocol_token: _,
             model_name: _,
             echelon_id: _,
             all: _,
@@ -360,9 +371,22 @@ module atoma::settlement {
         } = ticket;
         id.delete();
 
-        // TODO: attribute extra honest_nodes_extra_fee / honest_nodes_len to each
+        let total_fee = collected_fee_in_protocol_token + honest_nodes_extra_fee;
+        let honest_nodes_len = completed.length() - slashed_nodes.length();
 
-        // TODO: https://github.com/atoma-network/atoma-contracts/issues/12
+        if (honest_nodes_len == 0) {
+            // all nodes messed up, give everything to the oracle
+            atoma.attribute_fee_to_node(oracle_node_id, total_fee, ctx);
+        } else {
+            let reward_per_node = total_fee / honest_nodes_len;
+
+            while (!completed.is_empty()) {
+                let node_id = completed.pop_back();
+                if (!slashed_nodes.contains(&node_id)) {
+                    atoma.attribute_fee_to_node(node_id, reward_per_node, ctx);
+                }
+            }
+        };
     }
 
     public(package) fun new_ticket(
