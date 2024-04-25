@@ -10,6 +10,7 @@ module atoma::settlement {
     const EBlake2b256HashMustBe32Bytes: u64 = 3;
     const EIncorrectMerkleLeavesBufferLength: u64 = 4;
     const ENotAnOracle: u64 = 5;
+    const ETicketMustHaveNodes: u64 = 6;
 
     /// Nodes did not agree on the settlement.
     public struct DisputeEvent has copy, drop {
@@ -102,6 +103,11 @@ module atoma::settlement {
         started_at_epoch_timestamp_ms: u64,
     }
 
+    /// Find the ticket ID in the emitted prompt event.
+    /// Based on the node's order in the list of nodes that must submit
+    /// commitment, the node will know which chunk to submit.
+    ///
+    /// We use Blake2b-256 for hashing the chunks.
     public entry fun submit_commitment(
         atoma: &mut AtomaDb,
         badge: &NodeBadge,
@@ -255,6 +261,7 @@ module atoma::settlement {
                 i = i + 1;
             };
 
+            // TODO: https://github.com/atoma-network/atoma-contracts/issues/17
             ticket.timeout.started_in_epoch = ctx.epoch();
             ticket.timeout.started_at_epoch_timestamp_ms = ctx.epoch_timestamp_ms();
             return_settlement_ticket(atoma, ticket);
@@ -407,6 +414,8 @@ module atoma::settlement {
         timeout_ms: u64,
         ctx: &mut TxContext,
     ): ID {
+        assert!(!nodes.is_empty(), ETicketMustHaveNodes);
+
         let ticket = SettlementTicket {
             id: object::new(ctx),
             model_name,
