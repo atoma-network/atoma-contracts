@@ -9,6 +9,7 @@ module atoma::settlement {
     const ENotReadyToSettle: u64 = 2;
     const EBlake2b256HashMustBe32Bytes: u64 = 3;
     const EIncorrectMerkleLeavesBufferLength: u64 = 4;
+    const ENotAnOracle: u64 = 5;
 
     /// Nodes did not agree on the settlement.
     public struct DisputeEvent has copy, drop {
@@ -228,6 +229,7 @@ module atoma::settlement {
                             ticket.echelon_id,
                             ctx,
                         );
+                    // TBD: should we try to sample again if node already in the list?
 
                     // if there are no more nodes to sample in this echelon
                     // we start a dispute instead
@@ -300,7 +302,14 @@ module atoma::settlement {
             EIncorrectMerkleLeavesBufferLength,
         );
 
-        // TODO: check that the node is an oracle
+        assert!(
+            atoma.is_oracle(
+                ticket.model_name,
+                ticket.echelon_id,
+                oracle_node_id,
+            ),
+            ENotAnOracle,
+        );
 
         let mut confiscated_total = balance::zero();
         let mut slashed_nodes = vector::empty();

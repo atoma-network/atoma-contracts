@@ -329,6 +329,17 @@ module atoma::db {
         transfer::public_transfer(wallet, ctx.sender());
     }
 
+    public fun is_oracle(
+        self: &AtomaDb,
+        model_name: ascii::String,
+        echelon_id: EchelonId,
+        node_id: SmallId,
+    ): bool {
+        let model = self.models.borrow(model_name);
+        let echelon = get_echelon(&model.echelons, echelon_id);
+        echelon.oracles.contains(&node_id)
+    }
+
     public fun get_permille_for_oracle_on_dispute(self: &AtomaDb): u64 {
         self.permille_for_oracle_on_dispute
     }
@@ -346,10 +357,10 @@ module atoma::db {
     }
 
     public fun get_model_echelon(
-        self: &mut AtomaDb, model_name: ascii::String, echelon_id: EchelonId,
+        self: &AtomaDb, model_name: ascii::String, echelon_id: EchelonId,
     ): &ModelEchelon {
-        let model = self.models.borrow_mut(model_name);
-        get_echelon_mut(&mut model.echelons, echelon_id)
+        let model = self.models.borrow(model_name);
+        get_echelon(&model.echelons, echelon_id)
     }
 
     public fun get_model_echelon_id(self: &ModelEchelon): EchelonId { self.id }
@@ -791,6 +802,22 @@ module atoma::db {
         let n = echelons.length();
         while (i < n) {
             let echelon = echelons.borrow_mut(i);
+            if (echelon.id == id) {
+                return echelon
+            };
+            i = i + 1;
+        };
+
+        abort EEchelonNotFound
+    }
+
+    fun get_echelon(
+        echelons: &vector<ModelEchelon>, id: EchelonId
+    ): &ModelEchelon {
+        let mut i = 0;
+        let n = echelons.length();
+        while (i < n) {
+            let echelon = echelons.borrow(i);
             if (echelon.id == id) {
                 return echelon
             };

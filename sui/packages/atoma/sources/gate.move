@@ -107,9 +107,11 @@ module atoma::gate {
         let mut selected_nodes = vector::empty();
         let mut iteration = 0;
         while (iteration < nodes_to_sample) {
-            // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
             let node_id = atoma
                 .sample_node_by_echelon_index(params.model, echelon_index, ctx)
+                // unwraps if no unslashed nodes
+                // TBD: should we try another echelon?
+                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
                 .extract();
 
             iteration = iteration + 1;
