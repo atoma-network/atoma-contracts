@@ -289,7 +289,7 @@ async fn get_publish_tx_created_object(
             }
         })
         .ok_or_else(|| {
-            anyhow::anyhow!("No {DB_TYPE_NAME} found for the package")
+            anyhow::anyhow!("No {module}::{name} found for the package")
         })
 }
 
