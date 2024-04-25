@@ -36,6 +36,9 @@ module atoma::db {
     const ERelativePerformanceCannotBeZero: u64 = 4;
     const EEchelonNotFound: u64 = 5;
     const EEchelonAlreadyExistsForModel: u64 = 6;
+    /// One cannot distribute more than 1000 ‰ of the total slashed collateral.
+    /// So the ‰ that goes to the oracle plus the ‰ that goes to the honest
+    /// nodes cannot be more than 1000 ‰.
     const ETotalPermilleMustBeLessThan1000: u64 = 7;
     const ENothingToWithdraw: u64 = 8;
 
