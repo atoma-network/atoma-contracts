@@ -112,22 +112,18 @@ module atoma::gate {
                 .sample_node_by_echelon_index(params.model, echelon_index, ctx)
                 .extract();
 
-            if (selected_nodes.contains(&node_id)) {
-                // try again with a different node without incrementing the
-                // iteration counter
-                //
-                // we won't get stuck because we're guaranteed to have enough
-                // nodes in the echelon
-                // TODO: this no longer holds true because of slashed nodes
-                continue
-            };
-
-            selected_nodes.push_back(node_id);
             iteration = iteration + 1;
+            if (!selected_nodes.contains(&node_id)) {
+                // we can end up with less nodes than requested, but no
+                // duplicates
+                //
+                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
+                selected_nodes.push_back(node_id);
+            };
         };
 
         // 4.
-        // we must fit into u64
+        // we must fit into u64 bcs that's the limit of Balance
         let collected_fee = echelon_fee_per_character * params.prompt.length();
         atoma.deposit_to_fee_treasury(wallet.split(collected_fee));
 
