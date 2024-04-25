@@ -5,9 +5,10 @@ mod register_node;
 mod set_required_registration_collateral;
 mod submit_example_text_prompt;
 
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 use clap::{Parser, Subcommand};
+use move_core_types::language_storage::StructTag;
 use sui_sdk::{
     rpc_types::{
         ObjectChange, Page, SuiObjectDataFilter, SuiObjectDataOptions, SuiObjectResponseQuery,
@@ -16,6 +17,7 @@ use sui_sdk::{
     types::{
         base_types::{ObjectID, ObjectType, SuiAddress},
         object::Owner,
+        TypeTag,
     },
     wallet_context::WalletContext,
     SuiClient,
@@ -66,6 +68,7 @@ enum DbCmds {
         model_name: String,
         #[arg(short, long)]
         echelon: u64,
+        /// Max fee per character in protocol token.
         #[arg(short, long)]
         fee_in_protocol_token: u64,
         #[arg(short, long)]
@@ -353,4 +356,43 @@ async fn get_node_badge(
             }
         })
         .ok_or_else(|| anyhow::anyhow!("No {DB_NODE_TYPE_NAME} found for the package"))
+}
+
+async fn find_toma_token_wallets(
+    client: &SuiClient,
+    package: ObjectID,
+    active_address: SuiAddress,
+) -> Result<impl Iterator<Item = ObjectID>, anyhow::Error> {
+    let type_ = StructTag {
+        address: SuiAddress::from_str(
+            "0x0000000000000000000000000000000000000000000000000000000000000002",
+        )
+        .unwrap()
+        .into(),
+        module: FromStr::from_str("coin")?,
+        name: FromStr::from_str("Coin")?,
+        type_params: vec![TypeTag::Struct(Box::new(StructTag {
+            address: package.into(),
+            module: FromStr::from_str("toma")?,
+            name: FromStr::from_str("TOMA")?,
+            type_params: vec![],
+        }))],
+    };
+
+    let Page { data, .. } = client
+        .read_api()
+        .get_owned_objects(
+            active_address,
+            Some(SuiObjectResponseQuery {
+                filter: Some(SuiObjectDataFilter::StructType(type_)),
+                options: None,
+            }),
+            None,
+            None,
+        )
+        .await?;
+
+    Ok(data
+        .into_iter()
+        .filter_map(|resp| Some(resp.data?.object_id)))
 }
