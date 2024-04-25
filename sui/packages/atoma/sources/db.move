@@ -5,7 +5,7 @@ module atoma::db {
     use atoma::atoma::ATOMA;
     use std::ascii;
     use sui::balance::{Self, Balance};
-    use sui::coin::Coin;
+    use sui::coin::{Self, Coin};
     use sui::object_table::{Self, ObjectTable};
     use sui::package::{Self, Publisher};
     use sui::table_vec::{Self, TableVec};
@@ -37,6 +37,7 @@ module atoma::db {
     const EEchelonAlreadyExistsForModel: u64 = 6;
     const ENodeIdNotFound: u64 = 7;
     const ETotalPermilleMustBeLessThan1000: u64 = 8;
+    const ENothingToWithdraw: u64 = 9;
 
     public struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
@@ -301,6 +302,31 @@ module atoma::db {
             node_small_id: node_badge.small_id,
             model_name,
         });
+    }
+
+    /// Transfers a coin object to the sender if there are some fees to be
+    /// claimed for this node.
+    /// Aborts if there are no fees to be claimed.
+    public entry fun withdraw_fees(
+        self: &mut AtomaDb,
+        node_badge: &NodeBadge,
+        ctx: &mut TxContext,
+    ) {
+        let node_id = node_badge.small_id;
+        // This is a hack that moves all fees that can be withdrawn to the
+        // available balance.
+        // Attributing 0 fee doesn't otherwise do anything.
+        self.attribute_fee_to_node(node_id, 0, ctx);
+
+        let node = self.nodes.borrow_mut(node_id);
+        let amount = node.available_fee_amount;
+        if (amount == 0) {
+            abort ENothingToWithdraw
+        };
+
+        node.available_fee_amount = 0;
+        let wallet = coin::from_balance(self.fee_treasury.split(amount), ctx);
+        transfer::public_transfer(wallet, ctx.sender());
     }
 
     public fun get_permille_for_oracle_on_dispute(self: &AtomaDb): u64 {
