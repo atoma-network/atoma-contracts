@@ -1,13 +1,16 @@
 module atoma::gate {
-    use toma::toma::TOMA;
     use atoma::db::{AtomaManagerBadge, SmallId, ModelEchelon, AtomaDb};
     use atoma::utils::random_u256;
     use std::ascii;
     use std::string;
     use sui::balance::Balance;
-    use sui::coin::Coin;
+    use toma::toma::TOMA;
+
+    const DefaultNodesToSample: u64 = 10;
+    const MaxNodesToSample: u64 = 256;
 
     const ENoEligibleEchelons: u64 = 0;
+    const ETooManyNodesToSample: u64 = 1;
 
     /// Stored or owned object.
     ///
@@ -19,12 +22,22 @@ module atoma::gate {
     #[allow(unused_field)]
     /// Serves as an input to the `submit_text_prompt` function.
     /// Is also included with the emitted `TextPromptEvent`.
+    ///
+    /// Float numbers are converted into u32 with
+    /// `u32::from_le_bytes(xxx_f32.to_le_bytes())`
     public struct TextPromptParams has store, copy, drop {
+        max_tokens: u64,
         model: ascii::String,
         prompt: string::String,
-        max_tokens: u64,
-        /// Represents a floating point number between 0 and 1, big endian.
+        random_seed: u64,
+        repeat_last_n: u64,
+        /// Represents a floating point number, little endian.
+        repeat_penalty: u32,
+        /// Represents a floating point number, little endian.
         temperature: u32,
+        top_k: u64,
+        /// Represents a floating point number, little endian.
+        top_p: u32,
     }
 
     #[allow(unused_field)]
@@ -41,35 +54,6 @@ module atoma::gate {
         nodes: vector<SmallId>,
     }
 
-    /// TODO: Temporary function that showcases the contract.
-    public entry fun submit_example_text_prompt(
-        atoma: &mut AtomaDb,
-        wallet: &mut Coin<TOMA>,
-        model: ascii::String,
-        prompt: string::String,
-        nodes_to_sample: u64,
-        ctx: &mut TxContext,
-    ) {
-        let params = TextPromptParams {
-            model,
-            prompt,
-            max_tokens: 100,
-            temperature: 0,
-        };
-        let max_fee_per_character = 18_446_744_073_709_551_615;
-        let badge = PromptBadge { id: object::new(ctx) };
-        submit_text_prompt(
-            atoma,
-            &badge,
-            wallet.balance_mut(),
-            params,
-            nodes_to_sample,
-            max_fee_per_character,
-            ctx,
-        );
-        destroy_prompt_badge(badge);
-    }
-
     /// The fee is per input token.
     ///
     /// 1. Get the model echelons from the database.
@@ -83,25 +67,29 @@ module atoma::gate {
         _:& PromptBadge,
         wallet: &mut Balance<TOMA>,
         params: TextPromptParams,
-        nodes_to_sample: u64,
-        max_fee_per_character: u64,
+        max_fee_per_token: u64,
+        tokens_count: u64,
+        nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
     ) {
         // 1.
         let echelons = atoma.get_model_echelons_if_enabled(params.model);
 
         // 2.
+        let nodes_to_sample =
+            nodes_to_sample.get_with_default(DefaultNodesToSample);
+        assert!(nodes_to_sample <= MaxNodesToSample, ETooManyNodesToSample);
         let echelon_index = select_eligible_echelon_at_random(
             echelons,
             nodes_to_sample,
-            max_fee_per_character,
+            max_fee_per_token,
             ctx,
         );
         let echelon = echelons.borrow(echelon_index);
         let echelon_id = echelon.get_model_echelon_id();
         let echelon_settlement_timeout_ms =
             echelon.get_model_echelon_settlement_timeout_ms();
-        let echelon_fee_per_character = echelon.get_model_echelon_fee();
+        let echelon_fee_per_token = echelon.get_model_echelon_fee();
 
         // 3.
         let mut selected_nodes = vector::empty();
@@ -126,7 +114,7 @@ module atoma::gate {
 
         // 4.
         // we must fit into u64 bcs that's the limit of Balance
-        let collected_fee = echelon_fee_per_character * params.prompt.length();
+        let collected_fee = echelon_fee_per_token * tokens_count;
         atoma.deposit_to_fee_treasury(wallet.split(collected_fee));
 
         // 5.
@@ -161,6 +149,39 @@ module atoma::gate {
         id.delete();
     }
 
+    /// Arguments to `TextPromptParams` in alphabetical order.
+    public fun create_text_prompt_params(
+        max_tokens: u64,
+        model: ascii::String,
+        prompt: string::String,
+        random_seed: u64,
+        repeat_last_n: u64,
+        repeat_penalty: u32,
+        temperature: u32,
+        top_k: u64,
+        top_p: u32,
+    ): TextPromptParams {
+        TextPromptParams {
+            max_tokens,
+            model,
+            prompt,
+            random_seed,
+            repeat_last_n,
+            repeat_penalty,
+            temperature,
+            top_k,
+            top_p,
+        }
+    }
+
+    // =========================================================================
+    //                              Package private functions
+    // =========================================================================
+
+    public(package) fun create_prompt_badge_(ctx: &mut TxContext): PromptBadge {
+        let id = object::new(ctx);
+        PromptBadge { id }
+    }
 
     // =========================================================================
     //                              Helpers
@@ -206,7 +227,7 @@ module atoma::gate {
     fun select_eligible_echelon_at_random(
         echelons: &vector<ModelEchelon>,
         nodes_to_sample: u64,
-        max_fee_per_character: u64,
+        max_fee_per_token: u64,
         ctx: &mut TxContext,
     ): u64 {
         //
@@ -221,7 +242,7 @@ module atoma::gate {
             let echelon = echelons.borrow(index);
 
             let fee = echelon.get_model_echelon_fee();
-            if (fee > max_fee_per_character) {
+            if (fee > max_fee_per_token) {
                 index = index + 1;
                 continue
             };

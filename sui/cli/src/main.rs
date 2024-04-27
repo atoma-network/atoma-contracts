@@ -3,7 +3,7 @@ mod add_model_echelon;
 mod add_node_to_model;
 mod register_node;
 mod set_required_registration_collateral;
-mod submit_example_text_prompt;
+mod submit_tell_me_a_joke_prompt;
 
 use std::{path::PathBuf, str::FromStr};
 
@@ -11,20 +11,21 @@ use clap::{Parser, Subcommand};
 use move_core_types::language_storage::StructTag;
 use sui_sdk::{
     rpc_types::{
-        ObjectChange, Page, SuiObjectDataFilter, SuiObjectDataOptions, SuiObjectResponseQuery,
-        SuiTransactionBlockResponseOptions, SuiTransactionBlockResponseQuery, TransactionFilter,
+        ObjectChange, Page, SuiObjectDataFilter, SuiObjectDataOptions,
+        SuiObjectResponseQuery, SuiTransactionBlockResponseOptions,
+        SuiTransactionBlockResponseQuery, TransactionFilter,
     },
     types::{
         base_types::{ObjectID, ObjectType, SuiAddress},
-        object::Owner,
         TypeTag,
     },
     wallet_context::WalletContext,
     SuiClient,
 };
 
-const GATE_MODULE_NAME: &str = "gate";
 const DB_MODULE_NAME: &str = "db";
+const PROMPTS_MODULE_NAME: &str = "prompts";
+const PROMPTS_TYPE_NAME: &str = "AtomaPrompts";
 const DB_MANAGER_TYPE_NAME: &str = "AtomaManagerBadge";
 const DB_NODE_TYPE_NAME: &str = "NodeBadge";
 const DB_TYPE_NAME: &str = "AtomaDb";
@@ -96,15 +97,13 @@ enum DbCmds {
 
 #[derive(Subcommand)]
 enum GateCmds {
-    SubmitExampleTextPrompt {
+    SubmitTellMeAJokePrompt {
         #[arg(short, long)]
         package: String,
         #[arg(short, long)]
         model_name: String,
-        #[arg(long)]
-        prompt_path: PathBuf,
-        #[arg(short, long)]
-        nodes_to_sample: u64,
+        #[arg(long, default_value_t = 1_000)]
+        max_fee_per_token: u64,
     },
 }
 
@@ -195,18 +194,16 @@ async fn main() -> Result<(), anyhow::Error> {
 
             println!("{digest}");
         }
-        Some(Cmds::Gate(GateCmds::SubmitExampleTextPrompt {
+        Some(Cmds::Gate(GateCmds::SubmitTellMeAJokePrompt {
             package,
             model_name,
-            prompt_path,
-            nodes_to_sample,
+            max_fee_per_token,
         })) => {
-            let digest = submit_example_text_prompt::command(
+            let digest = submit_tell_me_a_joke_prompt::command(
                 &mut wallet,
                 &package,
                 &model_name,
-                &prompt_path,
-                nodes_to_sample,
+                max_fee_per_token,
                 cli.gas_budget.unwrap_or(2_000_000_000),
             )
             .await?;
@@ -219,7 +216,34 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-async fn get_atoma_db(client: &SuiClient, package: ObjectID) -> Result<ObjectID, anyhow::Error> {
+async fn get_atoma_db(
+    client: &SuiClient,
+    package: ObjectID,
+) -> Result<ObjectID, anyhow::Error> {
+    get_publish_tx_created_object(client, package, DB_MODULE_NAME, DB_TYPE_NAME)
+        .await
+}
+
+/// This object is a necessary input for atoma prompt standards.
+async fn get_prompts(
+    client: &SuiClient,
+    package: ObjectID,
+) -> Result<ObjectID, anyhow::Error> {
+    get_publish_tx_created_object(
+        client,
+        package,
+        PROMPTS_MODULE_NAME,
+        PROMPTS_TYPE_NAME,
+    )
+    .await
+}
+
+async fn get_publish_tx_created_object(
+    client: &SuiClient,
+    package: ObjectID,
+    module: &str,
+    name: &str,
+) -> Result<ObjectID, anyhow::Error> {
     let Page {
         data,
         has_next_page,
@@ -248,14 +272,13 @@ async fn get_atoma_db(client: &SuiClient, package: ObjectID) -> Result<ObjectID,
         .into_iter()
         .find_map(|change| {
             if let ObjectChange::Created {
-                owner: Owner::Shared { .. },
                 object_type,
                 object_id,
                 ..
             } = change
             {
-                if object_type.module.as_str() == DB_MODULE_NAME
-                    && object_type.name.as_str() == DB_TYPE_NAME
+                if object_type.module.as_str() == module
+                    && object_type.name.as_str() == name
                 {
                     Some(object_id)
                 } else {
@@ -265,7 +288,9 @@ async fn get_atoma_db(client: &SuiClient, package: ObjectID) -> Result<ObjectID,
                 None
             }
         })
-        .ok_or_else(|| anyhow::anyhow!("No {DB_TYPE_NAME} found for the package"))
+        .ok_or_else(|| {
+            anyhow::anyhow!("No {module}::{name} found for the package")
+        })
 }
 
 async fn get_db_manager_badge(
@@ -310,7 +335,9 @@ async fn get_db_manager_badge(
                 None
             }
         })
-        .ok_or_else(|| anyhow::anyhow!("No {DB_MANAGER_TYPE_NAME} found for the package"))
+        .ok_or_else(|| {
+            anyhow::anyhow!("No {DB_MANAGER_TYPE_NAME} found for the package")
+        })
 }
 
 async fn get_node_badge(
@@ -355,7 +382,9 @@ async fn get_node_badge(
                 None
             }
         })
-        .ok_or_else(|| anyhow::anyhow!("No {DB_NODE_TYPE_NAME} found for the package"))
+        .ok_or_else(|| {
+            anyhow::anyhow!("No {DB_NODE_TYPE_NAME} found for the package")
+        })
 }
 
 async fn find_toma_token_wallets(
