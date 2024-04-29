@@ -112,7 +112,7 @@ module atoma::settlement {
         atoma: &mut AtomaDb,
         badge: &NodeBadge,
         ticket_id: ID,
-        merkle_root: vector<u8>, // TODO: change to only a slice of the root
+        merkle_root: vector<u8>,
         chunk_hash: vector<u8>,
     ) {
         assert!(merkle_root.length() == 32, EBlake2b256HashMustBe32Bytes);
