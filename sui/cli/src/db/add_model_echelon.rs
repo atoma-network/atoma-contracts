@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use crate::{get_atoma_db, get_db_manager_badge, prelude::*, DB_MODULE_NAME};
 
 const ENDPOINT_NAME: &str = "add_model_echelon_entry";

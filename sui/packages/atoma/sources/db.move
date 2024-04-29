@@ -393,7 +393,7 @@ module atoma::db {
     // =========================================================================
 
     /// Settlement tickets are dynamic objects of this UID.
-    public(package) fun get_tickets_uid_mut(self: &mut AtomaDb): &mut UID { &mut self.id }
+    public(package) fun get_tickets_uid_mut(self: &mut AtomaDb): &mut UID { &mut self.tickets }
 
     /// When a node does not respond to a prompt within the timeout, it is
     /// slashed by some ‰ amount.

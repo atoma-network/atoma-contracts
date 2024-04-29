@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use crate::{get_atoma_db, get_node_badge, prelude::*, DB_MODULE_NAME};
 
 const ENDPOINT_NAME: &str = "add_node_to_model";

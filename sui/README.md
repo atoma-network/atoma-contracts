@@ -43,8 +43,7 @@ sui client publish \
 Use the CLI tool to add a model to the previously published package.
 
 ```sh
-./cli --wallet ~/.sui/sui_config/client.yaml \
-    db add-model \
+./cli db add-model \
     --package "your package id can be found in publish tx digest" \
     --model-name "llama"
 ```
@@ -53,8 +52,7 @@ And then add an echelon to the model.
 See the contract documentation for more information on what these parameters mean.
 
 ```sh
-./cli --wallet ~/.sui/sui_config/client.yaml \
-    db add-model-echelon \
+./cli db add-model-echelon \
     --package "your package id can be found when publishing" \
     --model-name "llama" \
     --echelon 1 \
@@ -65,8 +63,7 @@ See the contract documentation for more information on what these parameters mea
 We can change the required collateral for node registration.
 
 ```sh
-./cli --wallet ~/.sui/sui_config/client.yaml \
-    db set-required-registration-toma-collateral \
+./cli db set-required-registration-toma-collateral \
     --package "your package id can be found when publishing" \
     --new-amount 1
 ```
@@ -74,16 +71,14 @@ We can change the required collateral for node registration.
 Now let's mint some [`TOMA`](#toma-token) tokens and register a new node for the model we created above.
 
 ```sh
-./cli --wallet ~/.sui/sui_config/client.yaml \
-    db register-node \
+./cli db register-node \
     --package "your package id can be found when publishing"
 ```
 
 And let's use the echelon we created above.
 
 ```sh
-./cli --wallet ~/.sui/sui_config/client.yaml \
-    db add-node-to-model \
+./cli db add-node-to-model \
     --package "your package id can be found when publishing" \
     --model-name "llama" \
     --echelon 1
@@ -92,8 +87,7 @@ And let's use the echelon we created above.
 Now that the network has a model, echelon and a node, we can send a test prompt:
 
 ```sh
-./cli --wallet ~/.sui/sui_config/client.yaml \
-    gate submit-tell-me-a-joke-prompt \
+./cli gate submit-tell-me-a-joke-prompt \
     --package "your package id can be found when publishing" \
     --model-name "llama"
 ```

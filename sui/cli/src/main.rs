@@ -3,15 +3,16 @@ mod gate;
 mod prelude;
 mod settle;
 
-use std::{path::PathBuf, str::FromStr};
+use std::{collections::BTreeMap, io::Read, path::PathBuf, str::FromStr};
 
 use clap::{Parser, Subcommand};
 use move_core_types::language_storage::StructTag;
 use sui_sdk::{
     rpc_types::{
-        ObjectChange, Page, SuiObjectDataFilter, SuiObjectDataOptions,
-        SuiObjectResponseQuery, SuiTransactionBlockResponseOptions,
-        SuiTransactionBlockResponseQuery, TransactionFilter,
+        ObjectChange, Page, SuiMoveStruct, SuiMoveValue, SuiObjectDataFilter,
+        SuiObjectDataOptions, SuiObjectResponseQuery, SuiParsedData,
+        SuiTransactionBlockResponseOptions, SuiTransactionBlockResponseQuery,
+        TransactionFilter,
     },
     types::{
         base_types::{ObjectID, ObjectType, SuiAddress},
@@ -236,6 +237,45 @@ async fn get_atoma_db(
         .await
 }
 
+async fn get_atoma_db_id_and_fields(
+    client: &SuiClient,
+    package: ObjectID,
+) -> Result<(ObjectID, BTreeMap<String, SuiMoveValue>), anyhow::Error> {
+    let atoma_id = get_atoma_db(&client, package).await?;
+
+    let SuiParsedData::MoveObject(atoma) = client
+        .read_api()
+        .get_object_with_options(
+            atoma_id,
+            SuiObjectDataOptions {
+                show_content: true,
+                ..Default::default()
+            },
+        )
+        .await?
+        .data
+        .ok_or_else(|| anyhow!("Cannot fetch AtomaDb data"))?
+        .content
+        .ok_or_else(|| anyhow!("AtomaDb has no content"))?
+    else {
+        return Err(anyhow!("AtomaDb must be a Move object"));
+    };
+
+    if atoma.type_.module.as_str() != DB_MODULE_NAME
+        || atoma.type_.name.as_str() != DB_TYPE_NAME
+    {
+        return Err(anyhow!(
+            "AtomaDb must be of type {DB_MODULE_NAME}.{DB_TYPE_NAME}",
+        ));
+    }
+
+    let SuiMoveStruct::WithFields(fields) = atoma.fields else {
+        return Err(anyhow!("AtomaDb must have fields"));
+    };
+
+    Ok((atoma_id, fields))
+}
+
 /// This object is a necessary input for atoma prompt standards.
 async fn get_prompts(
     client: &SuiClient,
@@ -275,7 +315,7 @@ async fn get_publish_tx_created_object(
             false,
         )
         .await?;
-    assert_eq!(1, data.len());
+    assert_eq!(1, data.len(), "Did you select right package ID?");
     assert!(!has_next_page);
 
     let changes = data.into_iter().next().unwrap().object_changes.unwrap();
@@ -436,4 +476,17 @@ async fn find_toma_token_wallets(
     Ok(data
         .into_iter()
         .filter_map(|resp| Some(resp.data?.object_id)))
+}
+
+/// Waits for the user to confirm an action.
+fn wait_for_user_confirm() -> bool {
+    loop {
+        let mut input = [0];
+        let _ = std::io::stdin().read(&mut input);
+        match input[0] as char {
+            'y' | 'Y' => return true,
+            'n' | 'N' => return false,
+            _ => println!("y/n only please."),
+        }
+    }
 }
