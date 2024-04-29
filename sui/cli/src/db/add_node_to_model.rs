@@ -13,7 +13,8 @@ pub(crate) async fn command(
     let active_address = wallet.active_address()?;
     let package = FromStr::from_str(package)?;
     let atoma_db = get_atoma_db(&client, package).await?;
-    let node_badge = get_node_badge(&client, package, active_address).await?;
+    let (node_badge, _) =
+        get_node_badge(&client, package, active_address).await?;
 
     let tx = client
         .transaction_builder()

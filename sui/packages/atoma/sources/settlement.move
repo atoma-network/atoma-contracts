@@ -143,7 +143,7 @@ module atoma::settlement {
         let starts_at = node_order * 32;
         let ends_at = starts_at + 31;
         // pad the leaves if needed
-        while (ends_at > ticket.merkle_leaves.length()) {
+        while (ends_at >= ticket.merkle_leaves.length()) {
             ticket.merkle_leaves.push_back(0);
         };
         // copy the hash to its place
