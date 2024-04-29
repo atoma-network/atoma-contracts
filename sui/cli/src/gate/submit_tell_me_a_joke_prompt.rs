@@ -1,12 +1,8 @@
 use std::str::FromStr;
 
-use sui_sdk::{
-    json::SuiJsonValue, types::digests::TransactionDigest,
-    wallet_context::WalletContext,
-};
-
 use crate::{
-    find_toma_token_wallets, get_atoma_db, get_prompts, PROMPTS_MODULE_NAME,
+    find_toma_token_wallets, get_atoma_db, get_prompts, prelude::*,
+    PROMPTS_MODULE_NAME,
 };
 
 const ENDPOINT_NAME: &str = "tell_me_a_joke";
