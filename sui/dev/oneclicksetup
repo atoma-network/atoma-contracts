@@ -35,7 +35,7 @@ json=$(
         --skip-dependency-verification \
         --gas-budget 1000000000 \
         --json \
-        packages/atoma
+        "${root_dir}/sui/packages/atoma"
 )
 
 # if last command failed, print the error

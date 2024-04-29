@@ -112,7 +112,7 @@ module atoma::settlement {
         atoma: &mut AtomaDb,
         badge: &NodeBadge,
         ticket_id: ID,
-        merkle_root: vector<u8>,
+        merkle_root: vector<u8>, // TODO: change to only a slice of the root
         chunk_hash: vector<u8>,
     ) {
         assert!(merkle_root.length() == 32, EBlake2b256HashMustBe32Bytes);
@@ -143,7 +143,7 @@ module atoma::settlement {
         let starts_at = node_order * 32;
         let ends_at = starts_at + 31;
         // pad the leaves if needed
-        while (ends_at > ticket.merkle_leaves.length()) {
+        while (ends_at >= ticket.merkle_leaves.length()) {
             ticket.merkle_leaves.push_back(0);
         };
         // copy the hash to its place

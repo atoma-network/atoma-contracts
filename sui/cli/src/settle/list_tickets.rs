@@ -26,7 +26,7 @@ pub(crate) async fn command(
             next_cursor,
         } = client
             .read_api()
-            .get_dynamic_fields(*tickets_root, cursor, Some(1))
+            .get_dynamic_fields(*tickets_root, cursor, None)
             .await?;
         cursor = next_cursor;
 

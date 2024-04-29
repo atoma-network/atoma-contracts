@@ -20,12 +20,12 @@ module atoma::gate {
     }
 
     #[allow(unused_field)]
-    /// Serves as an input to the `submit_text_prompt` function.
-    /// Is also included with the emitted `TextPromptEvent`.
+    /// Serves as an input to the `submit_text2text_prompt` function.
+    /// Is also included with the emitted `Text2TextPromptEvent`.
     ///
     /// Float numbers are converted into u32 with
     /// `u32::from_le_bytes(xxx_f32.to_le_bytes())`
-    public struct TextPromptParams has store, copy, drop {
+    public struct Text2TextPromptParams has store, copy, drop {
         max_tokens: u64,
         model: ascii::String,
         prompt: string::String,
@@ -41,12 +41,44 @@ module atoma::gate {
     }
 
     #[allow(unused_field)]
-    /// This event is emitted when the text prompt is submitted.
-    public struct TextPromptEvent has copy, drop {
+    /// This event is emitted when the text prompt is submitted to produce text.
+    public struct Text2TextPromptEvent has copy, drop {
         /// The ID of the settlement object.
         ticket_id: ID,
         /// The parameters of the prompt that nodes must evaluate.
-        params: TextPromptParams,
+        params: Text2TextPromptParams,
+        /// This might not be the final list of nodes that will be used to
+        /// evaluate the prompt.
+        /// If nodes don't agree on the output or not enough nodes provide
+        /// the output in time, extra nodes will be sampled.
+        nodes: vector<SmallId>,
+    }
+
+    #[allow(unused_field)]
+    /// Serves as an input to the `submit_text2image_prompt` function.
+    /// Is also included with the emitted `Text2TePromptEvent`.
+    ///
+    /// Float numbers are converted into u32 with
+    /// `u32::from_le_bytes(xxx_f32.to_le_bytes())`
+    public struct Text2ImagePromptParams has store, copy, drop {
+        /// Represents a floating point number, little endian.
+        guidance_scale: u32,
+        height: u64,
+        model: ascii::String,
+        n_steps: u64,
+        num_samples: u64,
+        prompt: string::String,
+        random_seed: u64,
+        width: u64,
+    }
+
+    #[allow(unused_field)]
+    /// This event is emitted when the text prompt is submitted to produce image.
+    public struct Text2ImagePromptEvent has copy, drop {
+        /// The ID of the settlement object.
+        ticket_id: ID,
+        /// The parameters of the prompt that nodes must evaluate.
+        params: Text2ImagePromptParams,
         /// This might not be the final list of nodes that will be used to
         /// evaluate the prompt.
         /// If nodes don't agree on the output or not enough nodes provide
@@ -61,12 +93,12 @@ module atoma::gate {
     /// 3. Sample the required number of nodes from the echelon.
     /// 4. Collect the total fee that's going to be split among the nodes.
     /// 5. Create a new settlement ticket in the database.
-    /// 6. Emit TextPromptEvent.
-    public fun submit_text_prompt(
+    /// 6. Emit Text2TePromptEvent.
+    public fun submit_text2text_prompt(
         atoma: &mut AtomaDb,
         _:& PromptBadge,
         wallet: &mut Balance<TOMA>,
-        params: TextPromptParams,
+        params: Text2TextPromptParams,
         max_fee_per_token: u64,
         tokens_count: u64,
         nodes_to_sample: Option<u64>,
@@ -129,7 +161,7 @@ module atoma::gate {
         );
 
         // 6.
-        sui::event::emit(TextPromptEvent {
+        sui::event::emit(Text2TePromptEvent {
             params,
             ticket_id,
             nodes: selected_nodes,
@@ -149,7 +181,7 @@ module atoma::gate {
         id.delete();
     }
 
-    /// Arguments to `TextPromptParams` in alphabetical order.
+    /// Arguments to `Text2TextPromptParams` in alphabetical order.
     public fun create_text_prompt_params(
         max_tokens: u64,
         model: ascii::String,
@@ -160,8 +192,8 @@ module atoma::gate {
         temperature: u32,
         top_k: u64,
         top_p: u32,
-    ): TextPromptParams {
-        TextPromptParams {
+    ): Text2TextPromptParams {
+        Text2TextPromptParams {
             max_tokens,
             model,
             prompt,

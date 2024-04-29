@@ -9,10 +9,10 @@ use clap::{Parser, Subcommand};
 use move_core_types::language_storage::StructTag;
 use sui_sdk::{
     rpc_types::{
-        ObjectChange, Page, SuiMoveStruct, SuiMoveValue, SuiObjectDataFilter,
-        SuiObjectDataOptions, SuiObjectResponseQuery, SuiParsedData,
-        SuiTransactionBlockResponseOptions, SuiTransactionBlockResponseQuery,
-        TransactionFilter,
+        ObjectChange, Page, SuiData, SuiMoveStruct, SuiMoveValue,
+        SuiObjectDataFilter, SuiObjectDataOptions, SuiObjectResponseQuery,
+        SuiParsedData, SuiTransactionBlockResponseOptions,
+        SuiTransactionBlockResponseQuery, TransactionFilter,
     },
     types::{
         base_types::{ObjectID, ObjectType, SuiAddress},
@@ -29,6 +29,8 @@ const PROMPTS_TYPE_NAME: &str = "AtomaPrompts";
 const DB_MANAGER_TYPE_NAME: &str = "AtomaManagerBadge";
 const DB_NODE_TYPE_NAME: &str = "NodeBadge";
 const DB_TYPE_NAME: &str = "AtomaDb";
+const SETTLEMENT_MODULE_NAME: &str = "settlement";
+const SETTLEMENT_TICKET_TYPE_NAME: &str = "SettlementTicket";
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -114,6 +116,12 @@ enum SettlementCmds {
     ListTickets {
         #[arg(short, long)]
         package: String,
+    },
+    SubmitCommitment {
+        #[arg(short, long)]
+        ticket_id: String,
+        #[arg(short, long)]
+        output: String,
     },
 }
 
@@ -222,6 +230,20 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         Some(Cmds::Settle(SettlementCmds::ListTickets { package })) => {
             settle::list_tickets(&mut wallet, &package).await?;
+        }
+        Some(Cmds::Settle(SettlementCmds::SubmitCommitment {
+            ticket_id,
+            output,
+        })) => {
+            let digest = settle::submit_commitment(
+                &mut wallet,
+                &ticket_id,
+                &output,
+                cli.gas_budget.unwrap_or(2_000_000_000),
+            )
+            .await?;
+
+            println!("{digest}");
         }
         None => {}
     }
@@ -392,11 +414,12 @@ async fn get_db_manager_badge(
         })
 }
 
+/// Returns the ID of the node badge and the small ID of the node.
 async fn get_node_badge(
     client: &SuiClient,
     package: ObjectID,
     active_address: SuiAddress,
-) -> Result<ObjectID, anyhow::Error> {
+) -> Result<(ObjectID, u64), anyhow::Error> {
     let Page {
         data,
         has_next_page,
@@ -409,6 +432,7 @@ async fn get_node_badge(
                 filter: Some(SuiObjectDataFilter::Package(package)),
                 options: Some(SuiObjectDataOptions {
                     show_type: true,
+                    show_content: true,
                     ..Default::default()
                 }),
             }),
@@ -429,7 +453,17 @@ async fn get_node_badge(
             if type_.module().as_str() == DB_MODULE_NAME
                 && type_.name().as_str() == DB_NODE_TYPE_NAME
             {
-                Some(object.object_id)
+                let id = object
+                    .content?
+                    .try_as_move()?
+                    .clone()
+                    .fields
+                    .to_json_value();
+
+                Some((
+                    object.object_id,
+                    id["small_id"]["inner"].as_str()?.parse().ok()?,
+                ))
             } else {
                 None
             }

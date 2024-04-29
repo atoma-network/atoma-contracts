@@ -48,7 +48,7 @@ module atoma::prompts {
             top_k,
             top_p,
         );
-        atoma::gate::submit_text_prompt(
+        atoma::gate::submit_text2text_prompt(
             atoma,
             &prompts.badge,
             wallet.balance_mut(),
