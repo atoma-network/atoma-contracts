@@ -80,30 +80,25 @@ cd $root_dir/sui/dev
 
 # These commands follow the README.md
 
-./cli --wallet ~/.sui/sui_config/client.yaml \
-    db add-model \
+./cli db add-model \
     --package "${package}" \
     --model-name "llama"
 
-./cli --wallet ~/.sui/sui_config/client.yaml \
-    db add-model-echelon \
+./cli db add-model-echelon \
     --package "${package}" \
     --model-name "llama" \
     --echelon 1 \
     --fee-in-protocol-token 1 \
     --relative-performance 100
 
-./cli --wallet ~/.sui/sui_config/client.yaml \
-    db set-required-registration-toma-collateral \
+./cli db set-required-registration-toma-collateral \
     --package "${package}" \
     --new-amount 1
 
-./cli --wallet ~/.sui/sui_config/client.yaml \
-    db register-node \
+./cli db register-node \
     --package "${package}"
 
-./cli --wallet ~/.sui/sui_config/client.yaml \
-    db add-node-to-model \
+./cli db add-node-to-model \
     --package "${package}" \
     --model-name "llama" \
     --echelon 1
@@ -114,8 +109,7 @@ echo "Package: ${package}"
 
 echo "Sending test text prompt"
 
-./cli --wallet ~/.sui/sui_config/client.yaml \
-    gate submit-tell-me-a-joke-prompt \
+./cli gate submit-tell-me-a-joke-prompt \
     --package "${package}" \
     --model-name "llama"
 

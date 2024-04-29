@@ -25,7 +25,7 @@ entrance_dir=$(pwd)
 root_dir=$(abs_path_to_git_root_dir)
 
 cd $root_dir/sui/cli
-cargo run -- $@
+cargo run -- --wallet ~/.sui/sui_config/client.yaml $@
 
 # leave the caller where they started
 cd $entrance_dir

@@ -1,27 +1,27 @@
-mod add_model;
-mod add_model_echelon;
-mod add_node_to_model;
-mod register_node;
-mod set_required_registration_collateral;
-mod submit_tell_me_a_joke_prompt;
+mod db;
+mod gate;
+mod prelude;
+mod settle;
 
-use std::{path::PathBuf, str::FromStr};
+use std::{collections::BTreeMap, io::Read, path::PathBuf, str::FromStr};
 
 use clap::{Parser, Subcommand};
 use move_core_types::language_storage::StructTag;
 use sui_sdk::{
     rpc_types::{
-        ObjectChange, Page, SuiObjectDataFilter, SuiObjectDataOptions,
-        SuiObjectResponseQuery, SuiTransactionBlockResponseOptions,
-        SuiTransactionBlockResponseQuery, TransactionFilter,
+        ObjectChange, Page, SuiMoveStruct, SuiMoveValue, SuiObjectDataFilter,
+        SuiObjectDataOptions, SuiObjectResponseQuery, SuiParsedData,
+        SuiTransactionBlockResponseOptions, SuiTransactionBlockResponseQuery,
+        TransactionFilter,
     },
     types::{
         base_types::{ObjectID, ObjectType, SuiAddress},
         TypeTag,
     },
-    wallet_context::WalletContext,
     SuiClient,
 };
+
+use crate::prelude::*;
 
 const DB_MODULE_NAME: &str = "db";
 const PROMPTS_MODULE_NAME: &str = "prompts";
@@ -52,6 +52,8 @@ enum Cmds {
     Db(DbCmds),
     #[command(subcommand)]
     Gate(GateCmds),
+    #[command(subcommand)]
+    Settle(SettlementCmds),
 }
 
 #[derive(Subcommand)]
@@ -107,6 +109,14 @@ enum GateCmds {
     },
 }
 
+#[derive(Subcommand)]
+enum SettlementCmds {
+    ListTickets {
+        #[arg(short, long)]
+        package: String,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
@@ -124,7 +134,7 @@ async fn main() -> Result<(), anyhow::Error> {
             package,
             model_name,
         })) => {
-            let digest = add_model::command(
+            let digest = db::add_model(
                 &mut wallet,
                 &package,
                 &model_name,
@@ -141,7 +151,7 @@ async fn main() -> Result<(), anyhow::Error> {
             fee_in_protocol_token,
             relative_performance,
         })) => {
-            let digest = add_model_echelon::command(
+            let digest = db::add_model_echelon(
                 &mut wallet,
                 &package,
                 &model_name,
@@ -158,7 +168,7 @@ async fn main() -> Result<(), anyhow::Error> {
             package,
             new_amount,
         })) => {
-            let digest = set_required_registration_collateral::command(
+            let digest = db::set_required_registration_collateral(
                 &mut wallet,
                 &package,
                 new_amount,
@@ -169,7 +179,7 @@ async fn main() -> Result<(), anyhow::Error> {
             println!("{digest}");
         }
         Some(Cmds::Db(DbCmds::RegisterNode { package })) => {
-            let digest = register_node::command(
+            let digest = db::register_node(
                 &mut wallet,
                 &package,
                 cli.gas_budget.unwrap_or(1_000_000_000),
@@ -183,7 +193,7 @@ async fn main() -> Result<(), anyhow::Error> {
             model_name,
             echelon,
         })) => {
-            let digest = add_node_to_model::command(
+            let digest = db::add_node_to_model(
                 &mut wallet,
                 &package,
                 &model_name,
@@ -199,7 +209,7 @@ async fn main() -> Result<(), anyhow::Error> {
             model_name,
             max_fee_per_token,
         })) => {
-            let digest = submit_tell_me_a_joke_prompt::command(
+            let digest = gate::submit_tell_me_a_joke_prompt(
                 &mut wallet,
                 &package,
                 &model_name,
@@ -209,6 +219,9 @@ async fn main() -> Result<(), anyhow::Error> {
             .await?;
 
             println!("{digest}");
+        }
+        Some(Cmds::Settle(SettlementCmds::ListTickets { package })) => {
+            settle::list_tickets(&mut wallet, &package).await?;
         }
         None => {}
     }
@@ -222,6 +235,45 @@ async fn get_atoma_db(
 ) -> Result<ObjectID, anyhow::Error> {
     get_publish_tx_created_object(client, package, DB_MODULE_NAME, DB_TYPE_NAME)
         .await
+}
+
+async fn get_atoma_db_id_and_fields(
+    client: &SuiClient,
+    package: ObjectID,
+) -> Result<(ObjectID, BTreeMap<String, SuiMoveValue>), anyhow::Error> {
+    let atoma_id = get_atoma_db(&client, package).await?;
+
+    let SuiParsedData::MoveObject(atoma) = client
+        .read_api()
+        .get_object_with_options(
+            atoma_id,
+            SuiObjectDataOptions {
+                show_content: true,
+                ..Default::default()
+            },
+        )
+        .await?
+        .data
+        .ok_or_else(|| anyhow!("Cannot fetch AtomaDb data"))?
+        .content
+        .ok_or_else(|| anyhow!("AtomaDb has no content"))?
+    else {
+        return Err(anyhow!("AtomaDb must be a Move object"));
+    };
+
+    if atoma.type_.module.as_str() != DB_MODULE_NAME
+        || atoma.type_.name.as_str() != DB_TYPE_NAME
+    {
+        return Err(anyhow!(
+            "AtomaDb must be of type {DB_MODULE_NAME}.{DB_TYPE_NAME}",
+        ));
+    }
+
+    let SuiMoveStruct::WithFields(fields) = atoma.fields else {
+        return Err(anyhow!("AtomaDb must have fields"));
+    };
+
+    Ok((atoma_id, fields))
 }
 
 /// This object is a necessary input for atoma prompt standards.
@@ -263,7 +315,7 @@ async fn get_publish_tx_created_object(
             false,
         )
         .await?;
-    assert_eq!(1, data.len());
+    assert_eq!(1, data.len(), "Did you select right package ID?");
     assert!(!has_next_page);
 
     let changes = data.into_iter().next().unwrap().object_changes.unwrap();
@@ -424,4 +476,17 @@ async fn find_toma_token_wallets(
     Ok(data
         .into_iter()
         .filter_map(|resp| Some(resp.data?.object_id)))
+}
+
+/// Waits for the user to confirm an action.
+fn wait_for_user_confirm() -> bool {
+    loop {
+        let mut input = [0];
+        let _ = std::io::stdin().read(&mut input);
+        match input[0] as char {
+            'y' | 'Y' => return true,
+            'n' | 'N' => return false,
+            _ => println!("y/n only please."),
+        }
+    }
 }

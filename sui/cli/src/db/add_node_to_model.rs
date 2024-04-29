@@ -1,24 +1,19 @@
-use std::str::FromStr;
+use crate::{get_atoma_db, get_node_badge, prelude::*, DB_MODULE_NAME};
 
-use sui_sdk::{
-    json::SuiJsonValue, types::digests::TransactionDigest, wallet_context::WalletContext,
-};
-
-use crate::{get_atoma_db, get_db_manager_badge, DB_MODULE_NAME};
-
-const ENDPOINT_NAME: &str = "set_required_registration_toma_collateral";
+const ENDPOINT_NAME: &str = "add_node_to_model";
 
 pub(crate) async fn command(
     wallet: &mut WalletContext,
     package: &str,
-    new_required_collateral_amount: u64,
+    model_name: &str,
+    echelon: u64,
     gas_budget: u64,
 ) -> Result<TransactionDigest, anyhow::Error> {
     let client = wallet.get_client().await?;
     let active_address = wallet.active_address()?;
     let package = FromStr::from_str(package)?;
     let atoma_db = get_atoma_db(&client, package).await?;
-    let manager_badge = get_db_manager_badge(&client, package, active_address).await?;
+    let node_badge = get_node_badge(&client, package, active_address).await?;
 
     let tx = client
         .transaction_builder()
@@ -30,8 +25,9 @@ pub(crate) async fn command(
             vec![],
             vec![
                 SuiJsonValue::from_object_id(atoma_db),
-                SuiJsonValue::new(new_required_collateral_amount.to_string().into())?,
-                SuiJsonValue::from_object_id(manager_badge),
+                SuiJsonValue::new(model_name.into())?,
+                SuiJsonValue::new(echelon.to_string().into())?,
+                SuiJsonValue::from_object_id(node_badge),
             ],
             None,
             gas_budget,
