@@ -7,6 +7,8 @@
 #
 # When this script is done, we will have a model named "llama" with one echelon
 # ID 1, and a node registered to that model echelon.
+# Also, it will create .env file in the sui directory with configuration that
+# this script generated.
 #
 
 function abs_path_to_git_root_dir() {
@@ -95,8 +97,7 @@ cd $root_dir/sui/dev
     --package "${package}" \
     --new-amount 1
 
-./cli db register-node \
-    --package "${package}"
+./cli db register-node --package "${package}"
 
 ./cli db add-node-to-model \
     --package "${package}" \
@@ -107,11 +108,18 @@ echo
 echo
 echo "Package: ${package}"
 
+echo
+echo
 echo "Sending test text prompt"
 
 ./cli gate submit-tell-me-a-joke-prompt \
     --package "${package}" \
     --model-name "llama"
+
+echo
+echo
+echo "Storing IDs into .env file in the sui directory"
+./cli db print-node-configuration --package "${package}" >"${root_dir}/sui/.env"
 
 # leave the caller where they started
 cd $entrance_dir

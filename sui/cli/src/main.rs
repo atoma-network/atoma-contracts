@@ -97,6 +97,12 @@ enum DbCmds {
         #[arg(short, long)]
         echelon: u64,
     },
+    /// Prints env vars in .env format that contain some important IDs for
+    /// the network.
+    PrintNodeConfiguration {
+        #[arg(short, long)]
+        package: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -131,17 +137,25 @@ enum SettlementCmds {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    env_logger::init();
+
     let cli = Cli::parse();
 
+    // TODO: read wallet, package and other IDs from an .env if it exists and
+    // contains the necessary fields
     if !cli.wallet.exists() {
         return Err(anyhow::anyhow!("Wallet path does not exist"));
     }
 
     let mut wallet = WalletContext::new(&cli.wallet, None, None)?;
     let active_address = wallet.active_address()?;
-    println!("Active address: {active_address}");
+    info!("Active address: {active_address}");
 
     match cli.command {
+        Some(Cmds::Db(DbCmds::PrintNodeConfiguration { package })) => {
+            db::print_node_configuration(&mut wallet, &cli.wallet, &package)
+                .await?;
+        }
         Some(Cmds::Db(DbCmds::AddModel {
             package,
             model_name,
