@@ -339,11 +339,26 @@ module atoma::settlement {
             ENotAnOracle,
         );
 
+        let SettlementTicket {
+            id,
+            mut completed,
+            all,
+            collected_fee_in_protocol_token,
+            merkle_root: ticket_merkle_root,
+            merkle_leaves: ticket_merkle_leaves,
+
+            model_name: _,
+            echelon_id: _,
+            is_being_disputed: _,
+            timeout: _,
+        } = ticket;
+        id.delete();
+
         let mut confiscated_total = balance::zero();
         let mut slashed_nodes = vector::empty();
 
-        let mut i = if (ticket.merkle_root != oracle_merkle_root) {
-            let node_id = ticket.completed[0];
+        let mut i = if (ticket_merkle_root != oracle_merkle_root) {
+            let node_id = completed[0];
             confiscated_total.join(atoma.slash_node_on_dispute(node_id));
             slashed_nodes.push_back(node_id);
 
@@ -355,14 +370,21 @@ module atoma::settlement {
         };
 
         while (i < merkle_leaves_buffer_len) {
-            let bytes_agree = oracle_merkle_leaves[i] == ticket.merkle_leaves[i];
+            let bytes_agree = oracle_merkle_leaves[i] == ticket_merkle_leaves[i];
             if (!bytes_agree) {
                 let node_index = i / 32;
-                let node_id = ticket.all[node_index];
-                confiscated_total.join(atoma.slash_node_on_dispute(node_id));
+                let node_id = all[node_index];
+                let confiscated_from_node = if (!completed.contains(&node_id)) {
+                    // the node did not submit the commitment in time
+                    atoma.slash_node_on_timeout(node_id)
+                } else {
+                    // the node submitted wrong commitment
+                    atoma.slash_node_on_dispute(node_id)
+                };
+                confiscated_total.join(confiscated_from_node);
+
                 // the first node won't be added twice bcs we skip it if slashed
                 slashed_nodes.push_back(node_id);
-
                 // skip to the next node
                 i = (node_index + 1) * 32;
             } else {
@@ -392,21 +414,6 @@ module atoma::settlement {
 
         // and the rest goes to the community
         atoma.deposit_to_communal_treasury(confiscated_total);
-
-        let SettlementTicket {
-            id,
-            mut completed,
-            collected_fee_in_protocol_token,
-
-            model_name: _,
-            echelon_id: _,
-            all: _,
-            merkle_root: _,
-            merkle_leaves: _,
-            is_being_disputed: _,
-            timeout: _,
-        } = ticket;
-        id.delete();
 
         let total_fee = collected_fee_in_protocol_token + honest_nodes_extra_fee;
         let honest_nodes_len = completed.length() - slashed_nodes.length();
