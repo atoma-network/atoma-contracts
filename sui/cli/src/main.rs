@@ -141,6 +141,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let cli = Cli::parse();
 
+    // TODO: read wallet, package and other IDs from an .env if it exists and
+    // contains the necessary fields
     if !cli.wallet.exists() {
         return Err(anyhow::anyhow!("Wallet path does not exist"));
     }

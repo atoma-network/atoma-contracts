@@ -25,6 +25,7 @@ entrance_dir=$(pwd)
 root_dir=$(abs_path_to_git_root_dir)
 
 cd $root_dir/sui/cli
+# TODO: read wallet from .env file if it exists
 cargo run -- --wallet ~/.sui/sui_config/client.yaml $@
 
 # leave the caller where they started
