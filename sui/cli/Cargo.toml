@@ -7,9 +7,9 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0"
 clap = "4.5"
-env_logger = "0.11.3"
-fastcrypto = "0.1.8"
-log = "0.4.21"
+env_logger = "0.11"
+fastcrypto = "0.1"
+log = "0.4"
 tokio = { version = "1.2", features = ["full"] }
 
 [dependencies.sui-sdk]
