@@ -123,6 +123,10 @@ enum SettlementCmds {
         #[arg(short, long)]
         output: String,
     },
+    TryToSettle {
+        #[arg(short, long)]
+        ticket_id: String,
+    },
 }
 
 #[tokio::main]
@@ -239,6 +243,16 @@ async fn main() -> Result<(), anyhow::Error> {
                 &mut wallet,
                 &ticket_id,
                 &output,
+                cli.gas_budget.unwrap_or(2_000_000_000),
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Settle(SettlementCmds::TryToSettle { ticket_id })) => {
+            let digest = settle::try_to_settle(
+                &mut wallet,
+                &ticket_id,
                 cli.gas_budget.unwrap_or(2_000_000_000),
             )
             .await?;
