@@ -4,3 +4,5 @@ build
 target
 # ignore temporary files and directories
 .tmp
+# ignore environment configs
+.env
