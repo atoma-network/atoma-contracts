@@ -114,6 +114,7 @@ module atoma::settlement {
         ticket_id: ID,
         merkle_root: vector<u8>,
         chunk_hash: vector<u8>,
+        ctx: &mut TxContext,
     ) {
         assert!(merkle_root.length() == 32, EBlake2b256HashMustBe32Bytes);
         assert!(chunk_hash.length() == 32, EBlake2b256HashMustBe32Bytes);
@@ -154,8 +155,20 @@ module atoma::settlement {
         };
 
         ticket.completed.push_back(node_id);
+
+        // if we are ready to settle, do it
+        try_to_settle(atoma, ticket_id, ctx);
     }
 
+    /// Permission-less endpoint.
+    ///
+    /// It won't panic if the ticket is not ready to settle, rather a no-op.
+    /// This allows for these patterns:
+    /// - We try to settle on commitment submission.
+    /// - Each node along with submitting the commitment tries to settle.
+    /// - Some arbitrary party calls this at the appropriate time.
+    ///
+    /// # Two paths
     /// 1. All nodes have submitted their commitment, check if the expected
     ///    merkle root matches the hash of the leaves.
     ///    If it does, the ticket is settled.
@@ -164,6 +177,7 @@ module atoma::settlement {
     ///    their commitment.
     ///    In this case, we slash the nodes that have not submitted their
     ///    commitment and sample other nodes that must do so in their stead.
+    ///    If the ticket is already being disputed, skip this step.
     public entry fun try_to_settle(
         atoma: &mut AtomaDb,
         ticket_id: ID,
@@ -217,7 +231,7 @@ module atoma::settlement {
         //
         // 2.
         //
-        else if (ticket.did_timeout(ctx)) {
+        else if (ticket.did_timeout(ctx) && !ticket.is_being_disputed) {
             let mut new_nodes = vector::empty();
             let mut i = 0;
             let len = ticket.all.length();
@@ -272,7 +286,8 @@ module atoma::settlement {
             });
         }
         else {
-            abort ENotReadyToSettle
+            // nothing to do, but exit with a success code anyway
+            return_settlement_ticket(atoma, ticket);
         }
     }
 
@@ -300,6 +315,12 @@ module atoma::settlement {
         let oracle_node_id = node_badge.get_node_id();
 
         let ticket = remove_settlement_ticket(atoma, ticket_id);
+        // we do DISPUTED && TIMEOUT because:
+        // - disputed alone is not enough, we want to give the appropriate time
+        // to all the nodes to submit their commitment, otherwise they'd be
+        // unjustly slashed.
+        // - timeout alone is not enough because we might want to pick another
+        // node to submit the commitment instead
         assert!(ticket.is_being_disputed, ENotReadyToSettle);
         assert!(ticket.did_timeout(ctx), ENotReadyToSettle);
 

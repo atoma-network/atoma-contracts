@@ -87,13 +87,6 @@ module atoma::gate {
     }
 
     /// The fee is per input token.
-    ///
-    /// 1. Get the model echelons from the database.
-    /// 2. Randomly pick one of the echelons.
-    /// 3. Sample the required number of nodes from the echelon.
-    /// 4. Collect the total fee that's going to be split among the nodes.
-    /// 5. Create a new settlement ticket in the database.
-    /// 6. Emit Text2TePromptEvent.
     public fun submit_text2text_prompt(
         atoma: &mut AtomaDb,
         _:& PromptBadge,
@@ -104,85 +97,53 @@ module atoma::gate {
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
     ) {
-        // 1.
-        let echelons = atoma.get_model_echelons_if_enabled(params.model);
-
-        // 2.
-        let nodes_to_sample =
-            nodes_to_sample.get_with_default(DefaultNodesToSample);
-        assert!(nodes_to_sample <= MaxNodesToSample, ETooManyNodesToSample);
-        let echelon_index = select_eligible_echelon_at_random(
-            echelons,
-            nodes_to_sample,
-            max_fee_per_token,
-            ctx,
-        );
-        let echelon = echelons.borrow(echelon_index);
-        let echelon_id = echelon.get_model_echelon_id();
-        let echelon_settlement_timeout_ms =
-            echelon.get_model_echelon_settlement_timeout_ms();
-        let echelon_fee_per_token = echelon.get_model_echelon_fee();
-
-        // 3.
-        let mut selected_nodes = vector::empty();
-        let mut iteration = 0;
-        while (iteration < nodes_to_sample) {
-            let node_id = atoma
-                .sample_node_by_echelon_index(params.model, echelon_index, ctx)
-                // unwraps if no unslashed nodes
-                // TBD: should we try another echelon?
-                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
-                .extract();
-
-            iteration = iteration + 1;
-            if (!selected_nodes.contains(&node_id)) {
-                // we can end up with less nodes than requested, but no
-                // duplicates
-                //
-                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
-                selected_nodes.push_back(node_id);
-            };
-        };
-
-        // 4.
-        // we must fit into u64 bcs that's the limit of Balance
-        let collected_fee = echelon_fee_per_token * tokens_count;
-        atoma.deposit_to_fee_treasury(wallet.split(collected_fee));
-
-        // 5.
-        let ticket_id = atoma::settlement::new_ticket(
+        let (ticket_id, selected_nodes) = submit_prompt(
             atoma,
+            wallet,
             params.model,
-            echelon_id,
-            selected_nodes,
-            collected_fee,
-            echelon_settlement_timeout_ms,
+            max_fee_per_token,
+            tokens_count,
+            nodes_to_sample,
             ctx,
         );
 
-        // 6.
-        sui::event::emit(Text2TePromptEvent {
+        sui::event::emit(Text2TextPromptEvent {
             params,
             ticket_id,
             nodes: selected_nodes,
         });
     }
 
-    public fun create_prompt_badge(
-        _: &AtomaManagerBadge,
+    /// The fee is per input token.
+    public fun submit_text2image_prompt(
+        atoma: &mut AtomaDb,
+        _:& PromptBadge,
+        wallet: &mut Balance<TOMA>,
+        params: Text2ImagePromptParams,
+        max_fee_per_token: u64,
+        tokens_count: u64,
+        nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
-    ): PromptBadge {
-        let id = object::new(ctx);
-        PromptBadge { id }
-    }
+    ) {
+        let (ticket_id, selected_nodes) = submit_prompt(
+            atoma,
+            wallet,
+            params.model,
+            max_fee_per_token,
+            tokens_count,
+            nodes_to_sample,
+            ctx,
+        );
 
-    public fun destroy_prompt_badge(badge: PromptBadge) {
-        let PromptBadge { id } = badge;
-        id.delete();
+        sui::event::emit(Text2ImagePromptEvent {
+            params,
+            ticket_id,
+            nodes: selected_nodes,
+        });
     }
 
     /// Arguments to `Text2TextPromptParams` in alphabetical order.
-    public fun create_text_prompt_params(
+    public fun create_text2text_prompt_params(
         max_tokens: u64,
         model: ascii::String,
         prompt: string::String,
@@ -206,6 +167,42 @@ module atoma::gate {
         }
     }
 
+    /// Arguments to `Text2ImagePromptParams` in alphabetical order.
+    public fun create_text2image_prompt_params(
+        guidance_scale: u32,
+        height: u64,
+        model: ascii::String,
+        n_steps: u64,
+        num_samples: u64,
+        prompt: string::String,
+        random_seed: u64,
+        width: u64,
+    ): Text2ImagePromptParams {
+        Text2ImagePromptParams {
+            guidance_scale,
+            height,
+            model,
+            n_steps,
+            num_samples,
+            prompt,
+            random_seed,
+            width,
+        }
+    }
+
+    public fun create_prompt_badge(
+        _: &AtomaManagerBadge,
+        ctx: &mut TxContext,
+    ): PromptBadge {
+        let id = object::new(ctx);
+        PromptBadge { id }
+    }
+
+    public fun destroy_prompt_badge(badge: PromptBadge) {
+        let PromptBadge { id } = badge;
+        id.delete();
+    }
+
     // =========================================================================
     //                              Package private functions
     // =========================================================================
@@ -218,6 +215,81 @@ module atoma::gate {
     // =========================================================================
     //                              Helpers
     // =========================================================================
+
+    /// The fee is per input token.
+    ///
+    /// 1. Get the model echelons from the database.
+    /// 2. Randomly pick one of the echelons.
+    /// 3. Sample the required number of nodes from the echelon.
+    /// 4. Collect the total fee that's going to be split among the nodes.
+    /// 5. Create a new settlement ticket in the database.
+    fun submit_prompt(
+        atoma: &mut AtomaDb,
+        wallet: &mut Balance<TOMA>,
+        model: ascii::String,
+        max_fee_per_token: u64,
+        tokens_count: u64,
+        nodes_to_sample: Option<u64>,
+        ctx: &mut TxContext,
+    ): (ID, vector<SmallId>) {
+        // 1.
+        let echelons = atoma.get_model_echelons_if_enabled(model);
+
+        // 2.
+        let nodes_to_sample =
+            nodes_to_sample.get_with_default(DefaultNodesToSample);
+        assert!(nodes_to_sample <= MaxNodesToSample, ETooManyNodesToSample);
+        let echelon_index = select_eligible_echelon_at_random(
+            echelons,
+            nodes_to_sample,
+            max_fee_per_token,
+            ctx,
+        );
+        let echelon = echelons.borrow(echelon_index);
+        let echelon_id = echelon.get_model_echelon_id();
+        let echelon_settlement_timeout_ms =
+            echelon.get_model_echelon_settlement_timeout_ms();
+        let echelon_fee_per_token = echelon.get_model_echelon_fee();
+
+        // 3.
+        let mut sampled_nodes = vector::empty();
+        let mut iteration = 0;
+        while (iteration < nodes_to_sample) {
+            let node_id = atoma
+                .sample_node_by_echelon_index(model, echelon_index, ctx)
+                // unwraps if no unslashed nodes
+                // TBD: should we try another echelon?
+                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
+                .extract();
+
+            iteration = iteration + 1;
+            if (!sampled_nodes.contains(&node_id)) {
+                // we can end up with less nodes than requested, but no
+                // duplicates
+                //
+                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
+                sampled_nodes.push_back(node_id);
+            };
+        };
+
+        // 4.
+        // we must fit into u64 bcs that's the limit of Balance
+        let collected_fee = echelon_fee_per_token * tokens_count;
+        atoma.deposit_to_fee_treasury(wallet.split(collected_fee));
+
+        // 5.
+        let ticket_id = atoma::settlement::new_ticket(
+            atoma,
+            model,
+            echelon_id,
+            sampled_nodes,
+            collected_fee,
+            echelon_settlement_timeout_ms,
+            ctx,
+        );
+
+        (ticket_id, sampled_nodes)
+    }
 
     public struct EchelonIdAndPerformance has drop {
         /// Index within the echelons vector.
