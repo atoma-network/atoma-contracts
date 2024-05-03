@@ -12,6 +12,12 @@ module atoma::settlement {
     const ENotAnOracle: u64 = 5;
     const ETicketMustHaveNodes: u64 = 6;
 
+    /// Node is the first to submit a commitment for a given ticket
+    public struct FirstSubmission has copy, drop { 
+        ticket_id: ID,
+        is_first_submission: bool,
+    }
+
     /// Nodes did not agree on the settlement.
     public struct DisputeEvent has copy, drop {
         ticket_id: ID,
@@ -128,6 +134,15 @@ module atoma::settlement {
         // check that the node is in the all list
         let (contains, node_order) = ticket.all.index_of(&node_id);
         assert!(contains, ENotAwaitingCommitment);
+
+        // if node is submitting a commitment for the first time,
+        // emit an event informing it should manage output
+        if (ticket.completed.is_empty()) { 
+            sui::event::emit(FirstSubmission {
+                ticket_id,
+                is_first_submission: true,
+            })
+        }
 
         // if merkle root is not empty, check that it matches
         // otherwise set it
