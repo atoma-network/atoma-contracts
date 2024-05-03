@@ -142,7 +142,7 @@ module atoma::settlement {
                 ticket_id,
                 is_first_submission: true,
             })
-        }
+        };
 
         // if merkle root is not empty, check that it matches
         // otherwise set it
