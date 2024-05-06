@@ -101,7 +101,7 @@ enum DbCmds {
     },
     /// Prints env vars in .env format that contain some important IDs for
     /// the network.
-    PrintNodeConfiguration {
+    PrintEnv {
         #[arg(short, long)]
         package: Option<String>,
     },
@@ -172,11 +172,9 @@ async fn main() -> Result<(), anyhow::Error> {
     };
 
     match cli.command {
-        Some(Cmds::Db(DbCmds::PrintNodeConfiguration { package })) => {
-            db::print_node_configuration(
-                &mut context.with_optional_package_id(package),
-            )
-            .await?;
+        Some(Cmds::Db(DbCmds::PrintEnv { package })) => {
+            db::print_env(&mut context.with_optional_package_id(package))
+                .await?;
         }
         Some(Cmds::Db(DbCmds::AddModel {
             package,

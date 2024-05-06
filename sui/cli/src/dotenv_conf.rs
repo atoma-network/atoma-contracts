@@ -20,6 +20,7 @@ pub(crate) const NODE_BADGE_ID: &str = "NODE_BADGE_ID";
 pub(crate) const NODE_ID: &str = "NODE_ID";
 pub(crate) const PROMPT_STANDARDS_ID: &str = "PROMPT_STANDARDS_ID";
 pub(crate) const TOMA_WALLET_ID: &str = "TOMA_WALLET_ID";
+pub(crate) const GAS_BUDGET: &str = "GAS_BUDGET";
 
 pub(crate) struct Context {
     pub(crate) conf: DotenvConf,
@@ -40,7 +41,31 @@ pub(crate) struct DotenvConf {
 
 impl DotenvConf {
     pub(crate) fn from_env() -> Self {
-        todo!()
+        Self {
+            wallet_path: std::env::var(WALLET_PATH).ok().map(PathBuf::from),
+            package_id: std::env::var(PACKAGE_ID)
+                .ok()
+                .map(|s| ObjectID::from_str(&s).unwrap()),
+            atoma_db_id: std::env::var(ATOMA_DB_ID)
+                .ok()
+                .map(|s| ObjectID::from_str(&s).unwrap()),
+            manager_badge_id: std::env::var(MANAGER_BADGE_ID)
+                .ok()
+                .map(|s| ObjectID::from_str(&s).unwrap()),
+            node_badge_id: std::env::var(NODE_BADGE_ID)
+                .ok()
+                .map(|s| ObjectID::from_str(&s).unwrap()),
+            node_id: std::env::var(NODE_ID).ok().map(|s| s.parse().unwrap()),
+            prompt_standards_id: std::env::var(PROMPT_STANDARDS_ID)
+                .ok()
+                .map(|s| ObjectID::from_str(&s).unwrap()),
+            toma_wallet_id: std::env::var(TOMA_WALLET_ID)
+                .ok()
+                .map(|s| ObjectID::from_str(&s).unwrap()),
+            gas_budget: std::env::var(GAS_BUDGET)
+                .ok()
+                .map(|s| s.parse().unwrap()),
+        }
     }
 }
 

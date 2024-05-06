@@ -12,7 +12,35 @@ There's a [`check` shell script](dev/check) that builds all packages.
 
 As of right now we don't use `localnet` for testing because the Sui CLI support for faucet is broken.
 
-## Useful commands
+## CLI
+
+### Env
+
+The CLI loads values from environment variables.
+You can set these in your shell or in a `.env` file in the root of the repository.
+
+If any value is not provided, the CLI does best effort to figure it out from the context.
+For example, if you provide package ID but not atoma DB object ID, the CLI will query Sui to find it.
+
+```text
+WALLET_PATH=
+PACKAGE_ID=
+ATOMA_DB_ID=
+MANAGER_BADGE_ID=
+NODE_BADGE_ID=
+NODE_ID=
+PROMPT_STANDARDS_ID=
+TOMA_WALLET_ID=
+GAS_BUDGET=
+```
+
+You can also generate these values by running the following command:
+
+```sh
+./cli db print-env --package "YOUR PACKAGE ID"
+```
+
+### Examples
 
 These commands should get you started once you have the Sui binary installed.
 
