@@ -2,6 +2,15 @@ module atoma::prompts {
     //! This module provides some default prompts by Atoma.
     //! However, patterns in this module can be reused by any partnered contract
     //! that was authorized with PromptBadge.
+    //!
+    //! To convert 1.0 to 1065353216, you can use this snippet:
+    //! ```rust
+    //! fn main() {
+    //!     let float = 1.0_f32;
+    //!     let int = u32::from_le_bytes(float.to_le_bytes());
+    //!     println!("{int}");
+    //! }
+    //! ```
 
     use atoma::db::AtomaDb;
     use atoma::gate::PromptBadge;
@@ -33,7 +42,7 @@ module atoma::prompts {
         let prompt = string::utf8(b"Tell me a joke please");
         let random_seed = atoma::utils::random_u64(ctx);
         let repeat_last_n = 1;
-        let repeat_penalty = 1065353216; // 1.0
+        let repeat_penalty = 1066192077; // 1.1
         let temperature = 1048576000; // 0.25
         let top_k = 1;
         let top_p = 1063675494; // 0.9

@@ -1,22 +1,20 @@
-use crate::{get_atoma_db, get_node_badge, prelude::*, DB_MODULE_NAME};
+use crate::{prelude::*, DB_MODULE_NAME};
 
 const ENDPOINT_NAME: &str = "add_node_to_model";
 
 pub(crate) async fn command(
-    wallet: &mut WalletContext,
-    package: &str,
+    context: &mut Context,
     model_name: &str,
     echelon: u64,
-    gas_budget: u64,
 ) -> Result<TransactionDigest, anyhow::Error> {
-    let client = wallet.get_client().await?;
-    let active_address = wallet.active_address()?;
-    let package = FromStr::from_str(package)?;
-    let atoma_db = get_atoma_db(&client, package).await?;
-    let (node_badge, _) =
-        get_node_badge(&client, package, active_address).await?;
+    let active_address = context.wallet.active_address()?;
+    let package = context.unwrap_package_id();
+    let atoma_db = context.get_or_load_atoma_db().await?;
+    let (node_badge, _) = context.get_or_load_node_badge().await?;
 
-    let tx = client
+    let tx = context
+        .get_client()
+        .await?
         .transaction_builder()
         .move_call(
             active_address,
@@ -31,11 +29,11 @@ pub(crate) async fn command(
                 SuiJsonValue::from_object_id(node_badge),
             ],
             None,
-            gas_budget,
+            context.gas_budget(),
         )
         .await?;
 
-    let tx = wallet.sign_transaction(&tx);
-    let resp = wallet.execute_transaction_must_succeed(tx).await;
+    let tx = context.wallet.sign_transaction(&tx);
+    let resp = context.wallet.execute_transaction_must_succeed(tx).await;
     Ok(resp.digest)
 }

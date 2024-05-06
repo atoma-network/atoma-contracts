@@ -119,7 +119,8 @@ echo "Sending test text prompt"
 echo
 echo
 echo "Storing IDs into .env file in the sui directory"
-./cli db print-node-configuration --package "${package}" >"${root_dir}/sui/.env"
+./cli db print-env --package "${package}" >"${root_dir}/sui/.env"
+cat "${root_dir}/sui/.env"
 
 # leave the caller where they started
 cd $entrance_dir

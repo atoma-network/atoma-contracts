@@ -1,61 +1,21 @@
 use fastcrypto::hash::{Blake2b256, HashFunction};
-use sui_sdk::{
-    rpc_types::{SuiObjectDataOptions, SuiParsedData},
-    types::base_types::{ObjectID, ObjectType},
-};
 
-use crate::{
-    get_atoma_db, get_node_badge, prelude::*, SETTLEMENT_MODULE_NAME,
-    SETTLEMENT_TICKET_TYPE_NAME,
-};
+use crate::{prelude::*, SETTLEMENT_MODULE_NAME};
 
 const ENDPOINT_NAME: &str = "submit_commitment";
 
 pub(crate) async fn command(
-    wallet: &mut WalletContext,
+    context: &mut Context,
     ticket_id: &str,
     prompt_output: &str,
-    gas_budget: u64,
 ) -> Result<TransactionDigest, anyhow::Error> {
-    let client = wallet.get_client().await?;
+    let active_address = context.wallet.active_address()?;
+    let (node_badge, node_id) = context.get_or_load_node_badge().await?;
 
     let ticket_id = FromStr::from_str(ticket_id)?;
-    let ticket = client
-        .read_api()
-        .get_object_with_options(
-            ticket_id,
-            SuiObjectDataOptions {
-                show_type: true,
-                show_content: true,
-                ..Default::default()
-            },
-        )
-        .await?
-        .data
-        .ok_or_else(|| anyhow!("Ticket not found"))?;
+    let (package, ticket) =
+        context.ticket_package_and_fields(ticket_id).await?;
 
-    let ObjectType::Struct(ticket_type) = ticket.type_.unwrap() else {
-        return Err(anyhow!("Ticket type must be Struct"));
-    };
-    if ticket_type.module().as_str() != SETTLEMENT_MODULE_NAME
-        || ticket_type.name().as_str() != SETTLEMENT_TICKET_TYPE_NAME
-    {
-        return Err(anyhow!(
-            "Expected type \
-            {SETTLEMENT_MODULE_NAME}::{SETTLEMENT_TICKET_TYPE_NAME}, \
-            got {ticket_type:?}"
-        ));
-    };
-    let package: ObjectID = ticket_type.address().into();
-
-    let active_address = wallet.active_address()?;
-    let (node_badge, node_id) =
-        get_node_badge(&client, package, active_address).await?;
-
-    let SuiParsedData::MoveObject(ticket) = ticket.content.unwrap() else {
-        return Err(anyhow!("Ticket content must be MoveObject"));
-    };
-    let ticket = ticket.fields.to_json_value();
     let all = ticket["all"].as_array().unwrap();
     let chunk_position = all
         .iter()
@@ -72,15 +32,16 @@ pub(crate) async fn command(
     let merkle_leaves: Vec<u8> = prompt_output
         .as_bytes()
         .chunks(chunk_size)
-        .map(|chunk| Blake2b256::digest(chunk).digest.into_iter())
-        .flatten()
+        .flat_map(|chunk| Blake2b256::digest(chunk).digest.into_iter())
         .collect();
     let merkle_root = Blake2b256::digest(&merkle_leaves).digest;
     let chunk_hash =
         merkle_leaves[chunk_position * 32..(chunk_position + 1) * 32].to_vec();
 
-    let atoma_db = get_atoma_db(&client, package).await?;
-    let tx = client
+    let atoma_db = context.get_or_load_atoma_db().await?;
+    let tx = context
+        .get_client()
+        .await?
         .transaction_builder()
         .move_call(
             active_address,
@@ -96,11 +57,11 @@ pub(crate) async fn command(
                 SuiJsonValue::new(chunk_hash.to_vec().into())?,
             ],
             None,
-            gas_budget,
+            context.gas_budget(),
         )
         .await?;
 
-    let tx = wallet.sign_transaction(&tx);
-    let resp = wallet.execute_transaction_must_succeed(tx).await;
+    let tx = context.wallet.sign_transaction(&tx);
+    let resp = context.wallet.execute_transaction_must_succeed(tx).await;
     Ok(resp.digest)
 }
