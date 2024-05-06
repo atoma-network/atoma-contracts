@@ -1,21 +1,19 @@
-use crate::{get_db_manager_badge, prelude::*, DB_MODULE_NAME};
+use crate::{prelude::*, DB_MODULE_NAME};
 
 const ENDPOINT_NAME: &str = "add_model_echelon_entry";
 
 pub(crate) async fn command(
-    conf: &DotenvConf,
-    wallet: &mut WalletContext,
+    context: &mut Context,
     model_name: &str,
     echelon: u64,
     fee_in_protocol_token: u64,
     relative_performance: u64,
 ) -> Result<TransactionDigest, anyhow::Error> {
-    let client = wallet.get_client().await?;
-    let active_address = wallet.active_address()?;
-    let package = conf.unwrap_package_id();
-    let atoma_db = conf.get_or_load_atoma_db(&client).await?;
-    let manager_badge =
-        get_db_manager_badge(&client, package, active_address).await?;
+    let client = context.wallet.get_client().await?;
+    let active_address = context.wallet.active_address()?;
+    let package = context.unwrap_package_id();
+    let atoma_db = context.get_or_load_atoma_db(&client).await?;
+    let manager_badge = context.get_or_load_db_manager_badge(&client).await?;
 
     let tx = client
         .transaction_builder()
@@ -34,11 +32,11 @@ pub(crate) async fn command(
                 SuiJsonValue::from_object_id(manager_badge),
             ],
             None,
-            conf.gas_budget(),
+            context.gas_budget(),
         )
         .await?;
 
-    let tx = wallet.sign_transaction(&tx);
-    let resp = wallet.execute_transaction_must_succeed(tx).await;
+    let tx = context.wallet.sign_transaction(&tx);
+    let resp = context.wallet.execute_transaction_must_succeed(tx).await;
     Ok(resp.digest)
 }

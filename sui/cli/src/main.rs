@@ -154,20 +154,27 @@ async fn main() -> Result<(), anyhow::Error> {
         dotenv_conf.gas_budget = cli.gas_budget;
     }
 
-    if !dotenv_conf.unwrap_wallet_path().exists() {
-        return Err(anyhow::anyhow!("Wallet path does not exist"));
-    }
+    let wallet = {
+        let p = dotenv_conf.wallet_path.as_ref().unwrap();
+        if !dotenv_conf.wallet_path.as_ref().unwrap().exists() {
+            return Err(anyhow::anyhow!("Wallet path does not exist"));
+        }
 
-    let mut wallet =
-        WalletContext::new(dotenv_conf.unwrap_wallet_path(), None, None)?;
-    let active_address = wallet.active_address()?;
-    info!("Active address: {active_address}");
+        let mut wallet = WalletContext::new(p, None, None)?;
+        let active_address = wallet.active_address()?;
+        info!("Active address: {active_address}");
+        wallet
+    };
+
+    let mut context = Context {
+        conf: dotenv_conf,
+        wallet,
+    };
 
     match cli.command {
         Some(Cmds::Db(DbCmds::PrintNodeConfiguration { package })) => {
             db::print_node_configuration(
-                &dotenv_conf.with_optional_package_id(package),
-                &mut wallet,
+                &mut context.with_optional_package_id(package),
             )
             .await?;
         }
@@ -176,8 +183,7 @@ async fn main() -> Result<(), anyhow::Error> {
             model_name,
         })) => {
             let digest = db::add_model(
-                &dotenv_conf.with_optional_package_id(package),
-                &mut wallet,
+                &mut context.with_optional_package_id(package),
                 &model_name,
             )
             .await?;
@@ -192,8 +198,7 @@ async fn main() -> Result<(), anyhow::Error> {
             relative_performance,
         })) => {
             let digest = db::add_model_echelon(
-                &dotenv_conf.with_optional_package_id(package),
-                &mut wallet,
+                &mut context.with_optional_package_id(package),
                 &model_name,
                 echelon,
                 fee_in_protocol_token,
@@ -208,8 +213,7 @@ async fn main() -> Result<(), anyhow::Error> {
             new_amount,
         })) => {
             let digest = db::set_required_registration_collateral(
-                &dotenv_conf.with_optional_package_id(package),
-                &mut wallet,
+                &mut context.with_optional_package_id(package),
                 new_amount,
             )
             .await?;
@@ -218,8 +222,7 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         Some(Cmds::Db(DbCmds::RegisterNode { package })) => {
             let digest = db::register_node(
-                &dotenv_conf.with_optional_package_id(package),
-                &mut wallet,
+                &mut context.with_optional_package_id(package),
             )
             .await?;
 
@@ -231,8 +234,7 @@ async fn main() -> Result<(), anyhow::Error> {
             echelon,
         })) => {
             let digest = db::add_node_to_model(
-                &dotenv_conf.with_optional_package_id(package),
-                &mut wallet,
+                &mut context.with_optional_package_id(package),
                 &model_name,
                 echelon,
             )
@@ -246,8 +248,7 @@ async fn main() -> Result<(), anyhow::Error> {
             max_fee_per_token,
         })) => {
             let digest = gate::submit_tell_me_a_joke_prompt(
-                &dotenv_conf.with_optional_package_id(package),
-                &mut wallet,
+                &mut context.with_optional_package_id(package),
                 &model_name,
                 max_fee_per_token,
             )
@@ -257,8 +258,7 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         Some(Cmds::Settle(SettlementCmds::ListTickets { package })) => {
             settle::list_tickets(
-                &dotenv_conf.with_optional_package_id(package),
-                &mut wallet,
+                &mut context.with_optional_package_id(package),
             )
             .await?;
         }
@@ -266,20 +266,15 @@ async fn main() -> Result<(), anyhow::Error> {
             ticket_id,
             output,
         })) => {
-            let digest = settle::submit_commitment(
-                &dotenv_conf,
-                &mut wallet,
-                &ticket_id,
-                &output,
-            )
-            .await?;
+            let digest =
+                settle::submit_commitment(&mut context, &ticket_id, &output)
+                    .await?;
 
             println!("{digest}");
         }
         Some(Cmds::Settle(SettlementCmds::TryToSettle { ticket_id })) => {
             let digest =
-                settle::try_to_settle(&dotenv_conf, &mut wallet, &ticket_id)
-                    .await?;
+                settle::try_to_settle(&mut context, &ticket_id).await?;
 
             println!("{digest}");
         }

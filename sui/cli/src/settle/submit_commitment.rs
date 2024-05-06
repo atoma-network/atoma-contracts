@@ -4,20 +4,16 @@ use sui_sdk::{
     types::base_types::{ObjectID, ObjectType},
 };
 
-use crate::{
-    get_node_badge, prelude::*, SETTLEMENT_MODULE_NAME,
-    SETTLEMENT_TICKET_TYPE_NAME,
-};
+use crate::{prelude::*, SETTLEMENT_MODULE_NAME, SETTLEMENT_TICKET_TYPE_NAME};
 
 const ENDPOINT_NAME: &str = "submit_commitment";
 
 pub(crate) async fn command(
-    conf: &DotenvConf,
-    wallet: &mut WalletContext,
+    context: &mut Context,
     ticket_id: &str,
     prompt_output: &str,
 ) -> Result<TransactionDigest, anyhow::Error> {
-    let client = wallet.get_client().await?;
+    let client = context.wallet.get_client().await?;
 
     let ticket_id = FromStr::from_str(ticket_id)?;
     let ticket = client
@@ -47,17 +43,10 @@ pub(crate) async fn command(
         ));
     };
     let package: ObjectID = ticket_type.address().into();
-    if let Some(conf_package) = conf.package_id() {
-        assert!(
-            package == conf_package,
-            "Ticket package {package} mismatches \
-            configured package {conf_package}"
-        );
-    }
+    context.assert_or_store_package_id(package);
 
-    let active_address = wallet.active_address()?;
-    let (node_badge, node_id) =
-        get_node_badge(&client, package, active_address).await?;
+    let active_address = context.wallet.active_address()?;
+    let (node_badge, node_id) = context.get_or_load_node_badge(&client).await?;
 
     let SuiParsedData::MoveObject(ticket) = ticket.content.unwrap() else {
         return Err(anyhow!("Ticket content must be MoveObject"));
@@ -86,7 +75,7 @@ pub(crate) async fn command(
     let chunk_hash =
         merkle_leaves[chunk_position * 32..(chunk_position + 1) * 32].to_vec();
 
-    let atoma_db = conf.get_or_load_atoma_db(&client).await?;
+    let atoma_db = context.get_or_load_atoma_db(&client).await?;
     let tx = client
         .transaction_builder()
         .move_call(
@@ -103,11 +92,11 @@ pub(crate) async fn command(
                 SuiJsonValue::new(chunk_hash.to_vec().into())?,
             ],
             None,
-            conf.gas_budget(),
+            context.gas_budget(),
         )
         .await?;
 
-    let tx = wallet.sign_transaction(&tx);
-    let resp = wallet.execute_transaction_must_succeed(tx).await;
+    let tx = context.wallet.sign_transaction(&tx);
+    let resp = context.wallet.execute_transaction_must_succeed(tx).await;
     Ok(resp.digest)
 }

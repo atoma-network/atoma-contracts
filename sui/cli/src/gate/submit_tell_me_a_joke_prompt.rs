@@ -1,27 +1,18 @@
-use crate::{
-    find_toma_token_wallets, get_prompts, prelude::*, PROMPTS_MODULE_NAME,
-};
+use crate::{prelude::*, PROMPTS_MODULE_NAME};
 
 const ENDPOINT_NAME: &str = "tell_me_a_joke";
 
 pub(crate) async fn command(
-    conf: &DotenvConf,
-    wallet: &mut WalletContext,
+    context: &mut Context,
     model_name: &str,
     max_fee_per_token: u64,
 ) -> Result<TransactionDigest, anyhow::Error> {
-    let client = wallet.get_client().await?;
-    let active_address = wallet.active_address()?;
-    let package = conf.unwrap_package_id();
-    let atoma_db = conf.get_or_load_atoma_db(&client).await?;
-    let prompts = get_prompts(&client, package).await?;
-
-    let toma_wallet = find_toma_token_wallets(&client, package, active_address)
-        .await?
-        .next()
-        .ok_or_else(|| {
-            anyhow::anyhow!("No TOMA wallet found for the package")
-        })?;
+    let client = context.wallet.get_client().await?;
+    let active_address = context.wallet.active_address()?;
+    let package = context.unwrap_package_id();
+    let atoma_db = context.get_or_load_atoma_db(&client).await?;
+    let prompts = context.get_or_load_prompts(&client).await?;
+    let toma_wallet = context.get_or_load_toma_wallet(&client).await?;
 
     let tx = client
         .transaction_builder()
@@ -39,11 +30,11 @@ pub(crate) async fn command(
                 SuiJsonValue::new(max_fee_per_token.to_string().into())?,
             ],
             None,
-            conf.gas_budget(),
+            context.gas_budget(),
         )
         .await?;
 
-    let tx = wallet.sign_transaction(&tx);
-    let resp = wallet.execute_transaction_must_succeed(tx).await;
+    let tx = context.wallet.sign_transaction(&tx);
+    let resp = context.wallet.execute_transaction_must_succeed(tx).await;
     Ok(resp.digest)
 }

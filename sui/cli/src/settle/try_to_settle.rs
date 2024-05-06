@@ -8,13 +8,13 @@ use crate::{prelude::*, SETTLEMENT_MODULE_NAME, SETTLEMENT_TICKET_TYPE_NAME};
 const ENDPOINT_NAME: &str = "try_to_settle";
 
 pub(crate) async fn command(
-    conf: &DotenvConf,
-    wallet: &mut WalletContext,
+    context: &mut Context,
     ticket_id: &str,
 ) -> Result<TransactionDigest, anyhow::Error> {
-    let client = wallet.get_client().await?;
+    let client = context.wallet.get_client().await?;
 
     let ticket_id = FromStr::from_str(ticket_id)?;
+    // TODO: dedup
     let ticket = client
         .read_api()
         .get_object_with_options(
@@ -42,16 +42,10 @@ pub(crate) async fn command(
         ));
     };
     let package: ObjectID = ticket_type.address().into();
-    if let Some(conf_package) = conf.package_id() {
-        assert!(
-            package == conf_package,
-            "Ticket package {package} mismatches \
-            configured package {conf_package}"
-        );
-    }
-    let active_address = wallet.active_address()?;
+    context.assert_or_store_package_id(package);
+    let active_address = context.wallet.active_address()?;
 
-    let atoma_db = conf.get_or_load_atoma_db(&client).await?;
+    let atoma_db = context.get_or_load_atoma_db(&client).await?;
     let tx = client
         .transaction_builder()
         .move_call(
@@ -65,11 +59,11 @@ pub(crate) async fn command(
                 SuiJsonValue::from_object_id(ticket_id),
             ],
             None,
-            conf.gas_budget(),
+            context.gas_budget(),
         )
         .await?;
 
-    let tx = wallet.sign_transaction(&tx);
-    let resp = wallet.execute_transaction_must_succeed(tx).await;
+    let tx = context.wallet.sign_transaction(&tx);
+    let resp = context.wallet.execute_transaction_must_succeed(tx).await;
     Ok(resp.digest)
 }

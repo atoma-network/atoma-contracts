@@ -7,4 +7,4 @@ pub(crate) use sui_sdk::{
     wallet_context::WalletContext,
 };
 
-pub(crate) use crate::dotenv_conf::DotenvConf;
+pub(crate) use crate::dotenv_conf::Context;
