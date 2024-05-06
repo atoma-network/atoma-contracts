@@ -3,10 +3,10 @@ use sui_sdk::rpc_types::{Page, SuiData, SuiMoveValue, SuiObjectDataOptions};
 use crate::{get_atoma_db_id_and_fields, prelude::*, wait_for_user_confirm};
 
 pub(crate) async fn command(
+    conf: &DotenvConf,
     wallet: &mut WalletContext,
-    package: &str,
 ) -> Result<(), anyhow::Error> {
-    let package = FromStr::from_str(package)?;
+    let package = conf.unwrap_package_id();
 
     let client = wallet.get_client().await?;
     let (_, fields) = get_atoma_db_id_and_fields(&client, package).await?;

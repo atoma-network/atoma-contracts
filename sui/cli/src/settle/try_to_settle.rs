@@ -3,17 +3,14 @@ use sui_sdk::{
     types::base_types::{ObjectID, ObjectType},
 };
 
-use crate::{
-    get_atoma_db, prelude::*, SETTLEMENT_MODULE_NAME,
-    SETTLEMENT_TICKET_TYPE_NAME,
-};
+use crate::{prelude::*, SETTLEMENT_MODULE_NAME, SETTLEMENT_TICKET_TYPE_NAME};
 
 const ENDPOINT_NAME: &str = "try_to_settle";
 
 pub(crate) async fn command(
+    conf: &DotenvConf,
     wallet: &mut WalletContext,
     ticket_id: &str,
-    gas_budget: u64,
 ) -> Result<TransactionDigest, anyhow::Error> {
     let client = wallet.get_client().await?;
 
@@ -45,9 +42,16 @@ pub(crate) async fn command(
         ));
     };
     let package: ObjectID = ticket_type.address().into();
+    if let Some(conf_package) = conf.package_id() {
+        assert!(
+            package == conf_package,
+            "Ticket package {package} mismatches \
+            configured package {conf_package}"
+        );
+    }
     let active_address = wallet.active_address()?;
 
-    let atoma_db = get_atoma_db(&client, package).await?;
+    let atoma_db = conf.get_or_load_atoma_db(&client).await?;
     let tx = client
         .transaction_builder()
         .move_call(
@@ -61,7 +65,7 @@ pub(crate) async fn command(
                 SuiJsonValue::from_object_id(ticket_id),
             ],
             None,
-            gas_budget,
+            conf.gas_budget(),
         )
         .await?;
 

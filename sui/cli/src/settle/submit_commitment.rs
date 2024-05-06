@@ -5,17 +5,17 @@ use sui_sdk::{
 };
 
 use crate::{
-    get_atoma_db, get_node_badge, prelude::*, SETTLEMENT_MODULE_NAME,
+    get_node_badge, prelude::*, SETTLEMENT_MODULE_NAME,
     SETTLEMENT_TICKET_TYPE_NAME,
 };
 
 const ENDPOINT_NAME: &str = "submit_commitment";
 
 pub(crate) async fn command(
+    conf: &DotenvConf,
     wallet: &mut WalletContext,
     ticket_id: &str,
     prompt_output: &str,
-    gas_budget: u64,
 ) -> Result<TransactionDigest, anyhow::Error> {
     let client = wallet.get_client().await?;
 
@@ -47,6 +47,13 @@ pub(crate) async fn command(
         ));
     };
     let package: ObjectID = ticket_type.address().into();
+    if let Some(conf_package) = conf.package_id() {
+        assert!(
+            package == conf_package,
+            "Ticket package {package} mismatches \
+            configured package {conf_package}"
+        );
+    }
 
     let active_address = wallet.active_address()?;
     let (node_badge, node_id) =
@@ -79,7 +86,7 @@ pub(crate) async fn command(
     let chunk_hash =
         merkle_leaves[chunk_position * 32..(chunk_position + 1) * 32].to_vec();
 
-    let atoma_db = get_atoma_db(&client, package).await?;
+    let atoma_db = conf.get_or_load_atoma_db(&client).await?;
     let tx = client
         .transaction_builder()
         .move_call(
@@ -96,7 +103,7 @@ pub(crate) async fn command(
                 SuiJsonValue::new(chunk_hash.to_vec().into())?,
             ],
             None,
-            gas_budget,
+            conf.gas_budget(),
         )
         .await?;
 

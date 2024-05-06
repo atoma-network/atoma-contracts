@@ -1,4 +1,5 @@
 mod db;
+mod dotenv_conf;
 mod gate;
 mod prelude;
 mod settle;
@@ -6,6 +7,7 @@ mod settle;
 use std::{collections::BTreeMap, io::Read, path::PathBuf, str::FromStr};
 
 use clap::{Parser, Subcommand};
+use dotenvy::dotenv;
 use move_core_types::language_storage::StructTag;
 use sui_sdk::{
     rpc_types::{
@@ -21,7 +23,7 @@ use sui_sdk::{
     SuiClient,
 };
 
-use crate::prelude::*;
+use crate::{dotenv_conf::DotenvConf, prelude::*};
 
 const DB_MODULE_NAME: &str = "db";
 const PROMPTS_MODULE_NAME: &str = "prompts";
@@ -35,17 +37,17 @@ const SETTLEMENT_TICKET_TYPE_NAME: &str = "SettlementTicket";
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Cmds>,
+
     /// Some operations require a budget to be set.
     /// We also provide sensible default values for this.
     #[arg(short, long)]
     gas_budget: Option<u64>,
-
     /// Where to find the config for the wallet keystore.
+    /// Loaded from WALLET_PATH env var if not provided.
     #[arg(short, long)]
-    wallet: PathBuf,
-
-    #[command(subcommand)]
-    command: Option<Cmds>,
+    wallet: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -62,13 +64,13 @@ enum Cmds {
 enum DbCmds {
     AddModel {
         #[arg(short, long)]
-        package: String,
+        package: Option<String>,
         #[arg(short, long)]
         model_name: String,
     },
     AddModelEchelon {
         #[arg(short, long)]
-        package: String,
+        package: Option<String>,
         #[arg(short, long)]
         model_name: String,
         #[arg(short, long)]
@@ -81,17 +83,17 @@ enum DbCmds {
     },
     SetRequiredRegistrationTomaCollateral {
         #[arg(short, long)]
-        package: String,
+        package: Option<String>,
         #[arg(short, long)]
         new_amount: u64,
     },
     RegisterNode {
         #[arg(short, long)]
-        package: String,
+        package: Option<String>,
     },
     AddNodeToModel {
         #[arg(short, long)]
-        package: String,
+        package: Option<String>,
         #[arg(short, long)]
         model_name: String,
         #[arg(short, long)]
@@ -101,7 +103,7 @@ enum DbCmds {
     /// the network.
     PrintNodeConfiguration {
         #[arg(short, long)]
-        package: String,
+        package: Option<String>,
     },
 }
 
@@ -109,7 +111,7 @@ enum DbCmds {
 enum GateCmds {
     SubmitTellMeAJokePrompt {
         #[arg(short, long)]
-        package: String,
+        package: Option<String>,
         #[arg(short, long)]
         model_name: String,
         #[arg(long, default_value_t = 1_000)]
@@ -121,7 +123,7 @@ enum GateCmds {
 enum SettlementCmds {
     ListTickets {
         #[arg(short, long)]
-        package: String,
+        package: Option<String>,
     },
     SubmitCommitment {
         #[arg(short, long)]
@@ -137,34 +139,46 @@ enum SettlementCmds {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    dotenv().ok();
     env_logger::init();
+
+    let mut dotenv_conf = DotenvConf::from_env();
 
     let cli = Cli::parse();
 
-    // TODO: read wallet, package and other IDs from an .env if it exists and
-    // contains the necessary fields
-    if !cli.wallet.exists() {
+    if cli.wallet.is_some() {
+        dotenv_conf.wallet_path = cli.wallet;
+    }
+
+    if cli.gas_budget.is_some() {
+        dotenv_conf.gas_budget = cli.gas_budget;
+    }
+
+    if !dotenv_conf.unwrap_wallet_path().exists() {
         return Err(anyhow::anyhow!("Wallet path does not exist"));
     }
 
-    let mut wallet = WalletContext::new(&cli.wallet, None, None)?;
+    let mut wallet =
+        WalletContext::new(dotenv_conf.unwrap_wallet_path(), None, None)?;
     let active_address = wallet.active_address()?;
     info!("Active address: {active_address}");
 
     match cli.command {
         Some(Cmds::Db(DbCmds::PrintNodeConfiguration { package })) => {
-            db::print_node_configuration(&mut wallet, &cli.wallet, &package)
-                .await?;
+            db::print_node_configuration(
+                &dotenv_conf.with_optional_package_id(package),
+                &mut wallet,
+            )
+            .await?;
         }
         Some(Cmds::Db(DbCmds::AddModel {
             package,
             model_name,
         })) => {
             let digest = db::add_model(
+                &dotenv_conf.with_optional_package_id(package),
                 &mut wallet,
-                &package,
                 &model_name,
-                cli.gas_budget.unwrap_or(1_000_000_000),
             )
             .await?;
 
@@ -178,13 +192,12 @@ async fn main() -> Result<(), anyhow::Error> {
             relative_performance,
         })) => {
             let digest = db::add_model_echelon(
+                &dotenv_conf.with_optional_package_id(package),
                 &mut wallet,
-                &package,
                 &model_name,
                 echelon,
                 fee_in_protocol_token,
                 relative_performance,
-                cli.gas_budget.unwrap_or(1_000_000_000),
             )
             .await?;
 
@@ -195,10 +208,9 @@ async fn main() -> Result<(), anyhow::Error> {
             new_amount,
         })) => {
             let digest = db::set_required_registration_collateral(
+                &dotenv_conf.with_optional_package_id(package),
                 &mut wallet,
-                &package,
                 new_amount,
-                cli.gas_budget.unwrap_or(1_000_000_000),
             )
             .await?;
 
@@ -206,9 +218,8 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         Some(Cmds::Db(DbCmds::RegisterNode { package })) => {
             let digest = db::register_node(
+                &dotenv_conf.with_optional_package_id(package),
                 &mut wallet,
-                &package,
-                cli.gas_budget.unwrap_or(1_000_000_000),
             )
             .await?;
 
@@ -220,11 +231,10 @@ async fn main() -> Result<(), anyhow::Error> {
             echelon,
         })) => {
             let digest = db::add_node_to_model(
+                &dotenv_conf.with_optional_package_id(package),
                 &mut wallet,
-                &package,
                 &model_name,
                 echelon,
-                cli.gas_budget.unwrap_or(1_000_000_000),
             )
             .await?;
 
@@ -236,40 +246,40 @@ async fn main() -> Result<(), anyhow::Error> {
             max_fee_per_token,
         })) => {
             let digest = gate::submit_tell_me_a_joke_prompt(
+                &dotenv_conf.with_optional_package_id(package),
                 &mut wallet,
-                &package,
                 &model_name,
                 max_fee_per_token,
-                cli.gas_budget.unwrap_or(2_000_000_000),
             )
             .await?;
 
             println!("{digest}");
         }
         Some(Cmds::Settle(SettlementCmds::ListTickets { package })) => {
-            settle::list_tickets(&mut wallet, &package).await?;
+            settle::list_tickets(
+                &dotenv_conf.with_optional_package_id(package),
+                &mut wallet,
+            )
+            .await?;
         }
         Some(Cmds::Settle(SettlementCmds::SubmitCommitment {
             ticket_id,
             output,
         })) => {
             let digest = settle::submit_commitment(
+                &dotenv_conf,
                 &mut wallet,
                 &ticket_id,
                 &output,
-                cli.gas_budget.unwrap_or(2_000_000_000),
             )
             .await?;
 
             println!("{digest}");
         }
         Some(Cmds::Settle(SettlementCmds::TryToSettle { ticket_id })) => {
-            let digest = settle::try_to_settle(
-                &mut wallet,
-                &ticket_id,
-                cli.gas_budget.unwrap_or(2_000_000_000),
-            )
-            .await?;
+            let digest =
+                settle::try_to_settle(&dotenv_conf, &mut wallet, &ticket_id)
+                    .await?;
 
             println!("{digest}");
         }

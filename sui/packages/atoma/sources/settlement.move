@@ -33,6 +33,13 @@ module atoma::settlement {
         order: u64,
     }
 
+    /// When a prompt is settled, this event is emitted.
+    public struct SettledEvent has copy, drop {
+        ticket_id: ID,
+        /// If there was a dispute, this is the oracle that resolved it.
+        oracle_node_id: Option<SmallId>,
+    }
+
     /// Dynamic object field of atoma db.
     ///
     /// Ticket that's created when user submits a new prompt.
@@ -218,7 +225,12 @@ module atoma::settlement {
                 while (!completed.is_empty()) {
                     let node_id = completed.pop_back();
                     atoma.attribute_fee_to_node(node_id, reward_per_node, ctx);
-                }
+                };
+
+                sui::event::emit(SettledEvent {
+                    ticket_id,
+                    oracle_node_id: option::none(),
+                });
             } else {
                 ticket.is_being_disputed = true;
                 return_settlement_ticket(atoma, ticket);
@@ -431,6 +443,11 @@ module atoma::settlement {
                 }
             }
         };
+
+        sui::event::emit(SettledEvent {
+            ticket_id,
+            oracle_node_id: option::some(oracle_node_id),
+        });
     }
 
     public(package) fun new_ticket(
