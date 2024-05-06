@@ -120,6 +120,7 @@ echo
 echo
 echo "Storing IDs into .env file in the sui directory"
 ./cli db print-env --package "${package}" >"${root_dir}/sui/.env"
+cat "${root_dir}/sui/.env"
 
 # leave the caller where they started
 cd $entrance_dir

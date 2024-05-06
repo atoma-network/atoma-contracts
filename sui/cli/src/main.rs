@@ -294,7 +294,7 @@ async fn get_atoma_db_id_and_fields(
     client: &SuiClient,
     package: ObjectID,
 ) -> Result<(ObjectID, BTreeMap<String, SuiMoveValue>), anyhow::Error> {
-    let atoma_id = get_atoma_db(&client, package).await?;
+    let atoma_id = get_atoma_db(client, package).await?;
 
     let SuiParsedData::MoveObject(atoma) = client
         .read_api()

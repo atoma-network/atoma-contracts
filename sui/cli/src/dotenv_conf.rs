@@ -71,7 +71,7 @@ impl DotenvConf {
 
 impl Context {
     pub(crate) async fn get_client(&self) -> Result<SuiClient, anyhow::Error> {
-        Ok(self.wallet.get_client().await?)
+        self.wallet.get_client().await
     }
 
     pub(crate) fn with_optional_package_id(
@@ -100,7 +100,6 @@ impl Context {
     pub(crate) fn unwrap_package_id(&self) -> ObjectID {
         self.conf
             .package_id
-            .clone()
             .unwrap_or_else(|| panic!("{} is not set", PACKAGE_ID))
     }
 

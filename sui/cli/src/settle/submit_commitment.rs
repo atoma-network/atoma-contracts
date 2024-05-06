@@ -32,8 +32,7 @@ pub(crate) async fn command(
     let merkle_leaves: Vec<u8> = prompt_output
         .as_bytes()
         .chunks(chunk_size)
-        .map(|chunk| Blake2b256::digest(chunk).digest.into_iter())
-        .flatten()
+        .flat_map(|chunk| Blake2b256::digest(chunk).digest.into_iter())
         .collect();
     let merkle_root = Blake2b256::digest(&merkle_leaves).digest;
     let chunk_hash =
