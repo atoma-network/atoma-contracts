@@ -8,7 +8,7 @@ pub(crate) async fn command(
     context: &mut Context,
     ticket_id: &str,
     prompt_output: &str,
-) -> Result<TransactionDigest, anyhow::Error> {
+) -> Result<TransactionDigest> {
     let active_address = context.wallet.active_address()?;
     let (node_badge, node_id) = context.get_or_load_node_badge().await?;
 

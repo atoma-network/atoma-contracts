@@ -8,3 +8,5 @@ pub(crate) use sui_sdk::{
 };
 
 pub(crate) use crate::dotenv_conf::Context;
+
+pub(crate) type Result<T, E = anyhow::Error> = std::result::Result<T, E>;

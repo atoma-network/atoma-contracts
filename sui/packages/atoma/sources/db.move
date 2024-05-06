@@ -295,14 +295,14 @@ module atoma::db {
     /// type.
     public entry fun add_node_to_model(
         self: &mut AtomaDb,
+        node_badge: &mut NodeBadge,
         model_name: ascii::String,
         echelon: u64,
-        node_badge: &mut NodeBadge,
     ) {
         let model = self.models.borrow_mut(model_name);
         assert!(!model.is_disabled, EModelDisabled);
 
-        // a node can be subscribed to a model only once
+        // a node can be subscribed to a model only once irrespective of echelon
         assert!(
             !dynamic_field::exists_(&node_badge.id, model_name),
             ENodeAlreadySubscribedToModel,
@@ -334,9 +334,9 @@ module atoma::db {
     /// index).
     public entry fun remove_node_from_model(
         self: &mut AtomaDb,
+        node_badge: &mut NodeBadge,
         model_name: ascii::String,
         node_index: u64,
-        node_badge: &mut NodeBadge,
     ) {
         let mut perhaps_echelon_id =
             dynamic_field::remove_if_exists(&mut node_badge.id, model_name);
@@ -345,6 +345,7 @@ module atoma::db {
 
         let model = self.models.borrow_mut(model_name);
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
+        assert!(echelon.nodes.length() > node_index, ENodeIndexMismatch);
         let removed_id = echelon.nodes.swap_remove(node_index);
         // as per the endpoint docs, there's a legitimate reason for this error
         // in some circumstances
@@ -585,8 +586,8 @@ module atoma::db {
 
     public entry fun add_model_entry(
         self: &mut AtomaDb,
-        model_name: ascii::String,
         badge: &AtomaManagerBadge,
+        model_name: ascii::String,
         ctx: &mut TxContext,
     ) {
         let model = create_model(model_name, badge, ctx);
@@ -617,11 +618,11 @@ module atoma::db {
     /// The fee is charged per character.
     public entry fun add_model_echelon_entry(
         self: &mut AtomaDb,
+        badge: &AtomaManagerBadge,
         model_name: ascii::String,
         echelon: u64,
         fee_in_protocol_token: u64,
         relative_performance: u64,
-        badge: &AtomaManagerBadge,
         ctx: &mut TxContext,
     ) {
         let model = self.models.borrow_mut(model_name);

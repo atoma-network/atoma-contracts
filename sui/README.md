@@ -73,7 +73,7 @@ Use the CLI tool to add a model to the previously published package.
 ```sh
 ./cli db add-model \
     --package "your package id can be found in publish tx digest" \
-    --model-name "llama"
+    --name "llama"
 ```
 
 And then add an echelon to the model.
@@ -82,7 +82,7 @@ See the contract documentation for more information on what these parameters mea
 ```sh
 ./cli db add-model-echelon \
     --package "your package id can be found when publishing" \
-    --model-name "llama" \
+    --model "llama" \
     --echelon 1 \
     --fee-in-protocol-token 1000 \
     --relative-performance 100
@@ -108,7 +108,7 @@ And let's use the echelon we created above.
 ```sh
 ./cli db add-node-to-model \
     --package "your package id can be found when publishing" \
-    --model-name "llama" \
+    --model "llama" \
     --echelon 1
 ```
 
@@ -117,7 +117,7 @@ Now that the network has a model, echelon and a node, we can send a test prompt:
 ```sh
 ./cli gate submit-tell-me-a-joke-prompt \
     --package "your package id can be found when publishing" \
-    --model-name "llama"
+    --model "llama"
 ```
 
 ## `TOMA` token

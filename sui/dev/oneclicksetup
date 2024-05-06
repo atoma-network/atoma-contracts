@@ -84,11 +84,11 @@ cd $root_dir/sui/dev
 
 ./cli db add-model \
     --package "${package}" \
-    --model-name "llama"
+    --name "llama"
 
 ./cli db add-model-echelon \
     --package "${package}" \
-    --model-name "llama" \
+    --model "llama" \
     --echelon 1 \
     --fee-in-protocol-token 1 \
     --relative-performance 100
@@ -101,7 +101,7 @@ cd $root_dir/sui/dev
 
 ./cli db add-node-to-model \
     --package "${package}" \
-    --model-name "llama" \
+    --model "llama" \
     --echelon 1
 
 echo
@@ -114,7 +114,7 @@ echo "Sending test text prompt"
 
 ./cli gate submit-tell-me-a-joke-prompt \
     --package "${package}" \
-    --model-name "llama"
+    --model "llama"
 
 echo
 echo
