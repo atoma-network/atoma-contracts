@@ -6,13 +6,14 @@ pub(crate) async fn command(
     context: &mut Context,
     model_name: &str,
 ) -> Result<TransactionDigest, anyhow::Error> {
-    let client = context.wallet.get_client().await?;
     let active_address = context.wallet.active_address()?;
     let package = context.unwrap_package_id();
-    let atoma_db = context.get_or_load_atoma_db(&client).await?;
-    let manager_badge = context.get_or_load_db_manager_badge(&client).await?;
+    let atoma_db = context.get_or_load_atoma_db().await?;
+    let manager_badge = context.get_or_load_db_manager_badge().await?;
 
-    let tx = client
+    let tx = context
+        .get_client()
+        .await?
         .transaction_builder()
         .move_call(
             active_address,

@@ -5,16 +5,17 @@ const ENDPOINT_NAME: &str = "register_node_entry";
 pub(crate) async fn command(
     context: &mut Context,
 ) -> Result<TransactionDigest, anyhow::Error> {
-    let client = context.wallet.get_client().await?;
     let active_address = context.wallet.active_address()?;
     let package = context.unwrap_package_id();
-    let atoma_db = context.get_or_load_atoma_db(&client).await?;
-    let toma_wallet = context.get_or_load_toma_wallet(&client).await?;
+    let atoma_db = context.get_or_load_atoma_db().await?;
+    let toma_wallet = context.get_or_load_toma_wallet().await?;
 
     // we could also filter by the required collateral amount to even more
     // specific before needing to implement pagination
 
-    let tx = client
+    let tx = context
+        .get_client()
+        .await?
         .transaction_builder()
         .move_call(
             active_address,

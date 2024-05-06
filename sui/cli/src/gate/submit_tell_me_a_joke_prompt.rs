@@ -7,14 +7,15 @@ pub(crate) async fn command(
     model_name: &str,
     max_fee_per_token: u64,
 ) -> Result<TransactionDigest, anyhow::Error> {
-    let client = context.wallet.get_client().await?;
     let active_address = context.wallet.active_address()?;
     let package = context.unwrap_package_id();
-    let atoma_db = context.get_or_load_atoma_db(&client).await?;
-    let prompts = context.get_or_load_prompts(&client).await?;
-    let toma_wallet = context.get_or_load_toma_wallet(&client).await?;
+    let atoma_db = context.get_or_load_atoma_db().await?;
+    let prompts = context.get_or_load_prompts().await?;
+    let toma_wallet = context.get_or_load_toma_wallet().await?;
 
-    let tx = client
+    let tx = context
+        .get_client()
+        .await?
         .transaction_builder()
         .move_call(
             active_address,

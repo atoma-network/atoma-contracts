@@ -1104,6 +1104,7 @@ dependencies = [
  "fastcrypto 0.1.8",
  "log",
  "move-core-types",
+ "serde_json",
  "sui-sdk",
  "tokio",
 ]

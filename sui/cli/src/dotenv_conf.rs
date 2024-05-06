@@ -1,10 +1,15 @@
 use std::path::{Path, PathBuf};
 
-use sui_sdk::{types::base_types::ObjectID, SuiClient};
+use sui_sdk::{
+    rpc_types::{SuiObjectDataOptions, SuiParsedData},
+    types::base_types::{ObjectID, ObjectType},
+    SuiClient,
+};
 
 use crate::{
     find_toma_token_wallets, get_atoma_db, get_db_manager_badge,
-    get_node_badge, get_prompts, prelude::*,
+    get_node_badge, get_prompts, prelude::*, SETTLEMENT_MODULE_NAME,
+    SETTLEMENT_TICKET_TYPE_NAME,
 };
 
 pub(crate) const WALLET_PATH: &str = "WALLET_PATH";
@@ -40,6 +45,10 @@ impl DotenvConf {
 }
 
 impl Context {
+    pub(crate) async fn get_client(&self) -> Result<SuiClient, anyhow::Error> {
+        Ok(self.wallet.get_client().await?)
+    }
+
     pub(crate) fn with_optional_package_id(
         mut self,
         package_id: Option<String>,
@@ -101,13 +110,13 @@ impl Context {
 
     pub(crate) async fn get_or_load_atoma_db(
         &mut self,
-        sui: &SuiClient,
     ) -> Result<ObjectID, anyhow::Error> {
         if let Some(atoma_db_id) = self.conf.atoma_db_id {
             Ok(atoma_db_id)
         } else {
             let package_id = self.unwrap_package_id();
-            let atoma_db = get_atoma_db(sui, package_id).await?;
+            let atoma_db =
+                get_atoma_db(&self.get_client().await?, package_id).await?;
             self.conf.atoma_db_id = Some(atoma_db);
             Ok(atoma_db)
         }
@@ -115,14 +124,13 @@ impl Context {
 
     pub(crate) async fn get_or_load_db_manager_badge(
         &mut self,
-        sui: &SuiClient,
     ) -> Result<ObjectID, anyhow::Error> {
         if let Some(manager_badge_id) = self.conf.manager_badge_id {
             Ok(manager_badge_id)
         } else {
             let package_id = self.unwrap_package_id();
             let badge_id = get_db_manager_badge(
-                sui,
+                &self.get_client().await?,
                 package_id,
                 self.wallet.active_address()?,
             )
@@ -134,13 +142,13 @@ impl Context {
 
     pub(crate) async fn get_or_load_prompts(
         &mut self,
-        sui: &SuiClient,
     ) -> Result<ObjectID, anyhow::Error> {
         if let Some(prompt_standards_id) = self.conf.prompt_standards_id {
             Ok(prompt_standards_id)
         } else {
             let package_id = self.unwrap_package_id();
-            let prompt_standards = get_prompts(sui, package_id).await?;
+            let prompt_standards =
+                get_prompts(&self.get_client().await?, package_id).await?;
             self.conf.prompt_standards_id = Some(prompt_standards);
             Ok(prompt_standards)
         }
@@ -148,7 +156,6 @@ impl Context {
 
     pub(crate) async fn get_or_load_node_badge(
         &mut self,
-        sui: &SuiClient,
     ) -> Result<(ObjectID, u64), anyhow::Error> {
         if let (Some(node_badge_id), Some(node_id)) =
             (self.conf.node_badge_id, self.conf.node_id)
@@ -156,9 +163,12 @@ impl Context {
             Ok((node_badge_id, node_id))
         } else {
             let package_id = self.unwrap_package_id();
-            let (node_badge_id, node_id) =
-                get_node_badge(sui, package_id, self.wallet.active_address()?)
-                    .await?;
+            let (node_badge_id, node_id) = get_node_badge(
+                &self.get_client().await?,
+                package_id,
+                self.wallet.active_address()?,
+            )
+            .await?;
             self.conf.node_badge_id = Some(node_badge_id);
             self.conf.node_id = Some(node_id);
             Ok((node_badge_id, node_id))
@@ -167,17 +177,19 @@ impl Context {
 
     pub(crate) async fn get_or_load_toma_wallet(
         &mut self,
-        sui: &SuiClient,
     ) -> Result<ObjectID, anyhow::Error> {
         if let Some(toma_wallet_id) = self.conf.toma_wallet_id {
             Ok(toma_wallet_id)
         } else {
             let package_id = self.unwrap_package_id();
             let active_address = self.wallet.active_address()?;
-            let toma_wallet =
-                find_toma_token_wallets(sui, package_id, active_address)
-                    .await?
-                    .next();
+            let toma_wallet = find_toma_token_wallets(
+                &self.get_client().await?,
+                package_id,
+                active_address,
+            )
+            .await?
+            .next();
             if let Some(toma_wallet) = toma_wallet {
                 self.conf.toma_wallet_id = Some(toma_wallet);
                 Ok(toma_wallet)
@@ -185,5 +197,48 @@ impl Context {
                 anyhow::bail!("No TOMA wallet found")
             }
         }
+    }
+
+    pub(crate) async fn ticket_package_and_fields(
+        &mut self,
+        ticket_id: ObjectID,
+    ) -> Result<(ObjectID, serde_json::Value), anyhow::Error> {
+        let ticket = self
+            .wallet
+            .get_client()
+            .await?
+            .read_api()
+            .get_object_with_options(
+                ticket_id,
+                SuiObjectDataOptions {
+                    show_type: true,
+                    show_content: true,
+                    ..Default::default()
+                },
+            )
+            .await?
+            .data
+            .ok_or_else(|| anyhow!("Ticket not found"))?;
+
+        let ObjectType::Struct(ticket_type) = ticket.type_.unwrap() else {
+            return Err(anyhow!("Ticket type must be Struct"));
+        };
+        if ticket_type.module().as_str() != SETTLEMENT_MODULE_NAME
+            || ticket_type.name().as_str() != SETTLEMENT_TICKET_TYPE_NAME
+        {
+            return Err(anyhow!(
+                "Expected type \
+                {SETTLEMENT_MODULE_NAME}::{SETTLEMENT_TICKET_TYPE_NAME}, \
+                got {ticket_type:?}"
+            ));
+        };
+        let package: ObjectID = ticket_type.address().into();
+        self.assert_or_store_package_id(package);
+
+        let SuiParsedData::MoveObject(ticket) = ticket.content.unwrap() else {
+            return Err(anyhow!("Ticket content must be MoveObject"));
+        };
+
+        Ok((package, ticket.fields.to_json_value()))
     }
 }

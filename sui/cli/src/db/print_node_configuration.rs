@@ -3,13 +3,12 @@ use crate::prelude::*;
 pub(crate) async fn command(
     context: &mut Context,
 ) -> Result<(), anyhow::Error> {
-    let client = context.wallet.get_client().await?;
     let package = context.unwrap_package_id();
-    let atoma_db = context.get_or_load_atoma_db(&client).await?;
-    let manager_badge = context.get_or_load_db_manager_badge(&client).await?;
-    let (node_badge, node_id) = context.get_or_load_node_badge(&client).await?;
-    let toma_wallet = context.get_or_load_toma_wallet(&client).await.ok();
-    let prompt_standards = context.get_or_load_prompts(&client).await?;
+    let atoma_db = context.get_or_load_atoma_db().await?;
+    let manager_badge = context.get_or_load_db_manager_badge().await?;
+    let (node_badge, node_id) = context.get_or_load_node_badge().await?;
+    let toma_wallet = context.get_or_load_toma_wallet().await.ok();
+    let prompt_standards = context.get_or_load_prompts().await?;
 
     println!("WALLET_PATH={}", context.unwrap_wallet_path().display());
     println!("PACKAGE_ID={package}");
