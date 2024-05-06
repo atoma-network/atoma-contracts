@@ -46,6 +46,7 @@ module atoma::db {
     const ENodeNotSubscribedToModel: u64 = 10;
     /// This can happen due to race conditions in endpoint
     /// `remove_node_from_model`.
+    /// The CLI depends on this error code when sending the tx.
     const ENodeIndexMismatch: u64 = 11;
 
     public struct NodeRegisteredEvent has copy, drop {

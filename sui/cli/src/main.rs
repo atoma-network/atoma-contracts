@@ -8,7 +8,9 @@ use std::{io::Read, path::PathBuf, str::FromStr};
 
 use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
-use move_core_types::language_storage::StructTag;
+use move_core_types::{
+    account_address::AccountAddress, language_storage::StructTag,
+};
 use sui_sdk::{
     rpc_types::{
         ObjectChange, Page, SuiData, SuiObjectDataFilter, SuiObjectDataOptions,
@@ -17,6 +19,7 @@ use sui_sdk::{
     },
     types::{
         base_types::{ObjectID, ObjectType, SuiAddress},
+        dynamic_field::DynamicFieldName,
         TypeTag,
     },
     SuiClient,
@@ -524,6 +527,24 @@ fn wait_for_user_confirm() -> bool {
             'y' | 'Y' => return true,
             'n' | 'N' => return false,
             _ => println!("y/n only please."),
+        }
+    }
+}
+
+trait DynamicFieldNameExt {
+    fn ascii(s: &str) -> Self;
+}
+
+impl DynamicFieldNameExt for DynamicFieldName {
+    fn ascii(value: &str) -> Self {
+        DynamicFieldName {
+            type_: TypeTag::Struct(Box::new(StructTag {
+                address: AccountAddress::ONE,
+                module: FromStr::from_str("ascii").unwrap(),
+                name: FromStr::from_str("String").unwrap(),
+                type_params: vec![],
+            })),
+            value: serde_json::Value::String(value.to_owned()),
         }
     }
 }
