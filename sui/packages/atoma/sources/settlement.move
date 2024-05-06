@@ -13,9 +13,8 @@ module atoma::settlement {
     const ETicketMustHaveNodes: u64 = 6;
 
     /// Node is the first to submit a commitment for a given ticket
-    public struct FirstSubmission has copy, drop { 
+    public struct FirstSubmissionEvent has copy, drop { 
         ticket_id: ID,
-        is_first_submission: bool,
     }
 
     /// Nodes did not agree on the settlement.
@@ -138,9 +137,8 @@ module atoma::settlement {
         // if node is submitting a commitment for the first time,
         // emit an event informing it should manage output
         if (ticket.completed.is_empty()) { 
-            sui::event::emit(FirstSubmission {
+            sui::event::emit(FirstSubmissionEvent {
                 ticket_id,
-                is_first_submission: true,
             })
         };
 
