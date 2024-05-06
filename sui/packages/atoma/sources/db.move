@@ -367,7 +367,7 @@ module atoma::db {
     /// It must however finish serving open prompts if any.
     ///
     /// There's a wait period before the node can collect its collateral by
-    /// calling `destroy_node`.
+    /// calling `destroy_disabled_node`.
     public entry fun permanently_disable_node(
         self: &mut AtomaDb,
         node_badge: &NodeBadge,
@@ -386,7 +386,7 @@ module atoma::db {
     ///
     /// Also, 2 epochs guarantee that all the fees have been settled and are
     /// available for withdrawal, so the node is not cut short.
-    public entry fun destroy_node(
+    public entry fun destroy_disabled_node(
         self: &mut AtomaDb,
         node_badge: NodeBadge,
         ctx: &mut TxContext,
