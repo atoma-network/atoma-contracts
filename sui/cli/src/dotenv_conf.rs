@@ -8,8 +8,8 @@ use sui_sdk::{
 
 use crate::{
     find_toma_token_wallets, get_atoma_db, get_db_manager_badge,
-    get_node_badge, get_prompts, prelude::*, SETTLEMENT_MODULE_NAME,
-    SETTLEMENT_TICKET_TYPE_NAME,
+    get_node_badge, get_prompts, prelude::*, DB_MODULE_NAME, DB_TYPE_NAME,
+    SETTLEMENT_MODULE_NAME, SETTLEMENT_TICKET_TYPE_NAME,
 };
 
 pub(crate) const WALLET_PATH: &str = "WALLET_PATH";
@@ -70,7 +70,7 @@ impl DotenvConf {
 }
 
 impl Context {
-    pub(crate) async fn get_client(&self) -> Result<SuiClient, anyhow::Error> {
+    pub(crate) async fn get_client(&self) -> Result<SuiClient> {
         self.wallet.get_client().await
     }
 
@@ -132,9 +132,7 @@ impl Context {
             .unwrap_or_else(|| panic!("{} is not set", WALLET_PATH))
     }
 
-    pub(crate) async fn get_or_load_atoma_db(
-        &mut self,
-    ) -> Result<ObjectID, anyhow::Error> {
+    pub(crate) async fn get_or_load_atoma_db(&mut self) -> Result<ObjectID> {
         if let Some(atoma_db_id) = self.conf.atoma_db_id {
             Ok(atoma_db_id)
         } else {
@@ -148,7 +146,7 @@ impl Context {
 
     pub(crate) async fn get_or_load_db_manager_badge(
         &mut self,
-    ) -> Result<ObjectID, anyhow::Error> {
+    ) -> Result<ObjectID> {
         if let Some(manager_badge_id) = self.conf.manager_badge_id {
             Ok(manager_badge_id)
         } else {
@@ -164,9 +162,7 @@ impl Context {
         }
     }
 
-    pub(crate) async fn get_or_load_prompts(
-        &mut self,
-    ) -> Result<ObjectID, anyhow::Error> {
+    pub(crate) async fn get_or_load_prompts(&mut self) -> Result<ObjectID> {
         if let Some(prompt_standards_id) = self.conf.prompt_standards_id {
             Ok(prompt_standards_id)
         } else {
@@ -180,7 +176,7 @@ impl Context {
 
     pub(crate) async fn get_or_load_node_badge(
         &mut self,
-    ) -> Result<(ObjectID, u64), anyhow::Error> {
+    ) -> Result<(ObjectID, u64)> {
         if let (Some(node_badge_id), Some(node_id)) =
             (self.conf.node_badge_id, self.conf.node_id)
         {
@@ -199,9 +195,7 @@ impl Context {
         }
     }
 
-    pub(crate) async fn get_or_load_toma_wallet(
-        &mut self,
-    ) -> Result<ObjectID, anyhow::Error> {
+    pub(crate) async fn get_or_load_toma_wallet(&mut self) -> Result<ObjectID> {
         if let Some(toma_wallet_id) = self.conf.toma_wallet_id {
             Ok(toma_wallet_id)
         } else {
@@ -226,7 +220,7 @@ impl Context {
     pub(crate) async fn ticket_package_and_fields(
         &mut self,
         ticket_id: ObjectID,
-    ) -> Result<(ObjectID, serde_json::Value), anyhow::Error> {
+    ) -> Result<(ObjectID, serde_json::Value)> {
         let ticket = self
             .wallet
             .get_client()
@@ -264,5 +258,41 @@ impl Context {
         };
 
         Ok((package, ticket.fields.to_json_value()))
+    }
+
+    pub(crate) async fn load_atoma_db_fields(
+        &mut self,
+    ) -> Result<serde_json::Value> {
+        let atoma_id = self.get_or_load_atoma_db().await?;
+
+        let SuiParsedData::MoveObject(atoma) = self
+            .get_client()
+            .await?
+            .read_api()
+            .get_object_with_options(
+                atoma_id,
+                SuiObjectDataOptions {
+                    show_content: true,
+                    ..Default::default()
+                },
+            )
+            .await?
+            .data
+            .ok_or_else(|| anyhow!("Cannot fetch AtomaDb data"))?
+            .content
+            .ok_or_else(|| anyhow!("AtomaDb has no content"))?
+        else {
+            return Err(anyhow!("AtomaDb must be a Move object"));
+        };
+
+        if atoma.type_.module.as_str() != DB_MODULE_NAME
+            || atoma.type_.name.as_str() != DB_TYPE_NAME
+        {
+            return Err(anyhow!(
+                "AtomaDb must be of type {DB_MODULE_NAME}.{DB_TYPE_NAME}",
+            ));
+        }
+
+        Ok(atoma.fields.to_json_value())
     }
 }

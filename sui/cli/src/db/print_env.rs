@@ -1,8 +1,6 @@
 use crate::prelude::*;
 
-pub(crate) async fn command(
-    context: &mut Context,
-) -> Result<(), anyhow::Error> {
+pub(crate) async fn command(context: &mut Context) -> Result<()> {
     let package = context.unwrap_package_id();
     let atoma_db = context.get_or_load_atoma_db().await?;
     let manager_badge = context.get_or_load_db_manager_badge().await?;

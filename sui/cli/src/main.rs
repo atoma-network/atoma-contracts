@@ -4,20 +4,22 @@ mod gate;
 mod prelude;
 mod settle;
 
-use std::{collections::BTreeMap, io::Read, path::PathBuf, str::FromStr};
+use std::{io::Read, path::PathBuf, str::FromStr};
 
 use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
-use move_core_types::language_storage::StructTag;
+use move_core_types::{
+    account_address::AccountAddress, language_storage::StructTag,
+};
 use sui_sdk::{
     rpc_types::{
-        ObjectChange, Page, SuiData, SuiMoveStruct, SuiMoveValue,
-        SuiObjectDataFilter, SuiObjectDataOptions, SuiObjectResponseQuery,
-        SuiParsedData, SuiTransactionBlockResponseOptions,
+        ObjectChange, Page, SuiData, SuiObjectDataFilter, SuiObjectDataOptions,
+        SuiObjectResponseQuery, SuiTransactionBlockResponseOptions,
         SuiTransactionBlockResponseQuery, TransactionFilter,
     },
     types::{
         base_types::{ObjectID, ObjectType, SuiAddress},
+        dynamic_field::DynamicFieldName,
         TypeTag,
     },
     SuiClient,
@@ -66,13 +68,13 @@ enum DbCmds {
         #[arg(short, long)]
         package: Option<String>,
         #[arg(short, long)]
-        model_name: String,
+        name: String,
     },
     AddModelEchelon {
         #[arg(short, long)]
         package: Option<String>,
         #[arg(short, long)]
-        model_name: String,
+        model: String,
         #[arg(short, long)]
         echelon: u64,
         /// Max fee per character in protocol token.
@@ -95,7 +97,7 @@ enum DbCmds {
         #[arg(short, long)]
         package: Option<String>,
         #[arg(short, long)]
-        model_name: String,
+        model: String,
         #[arg(short, long)]
         echelon: u64,
     },
@@ -105,6 +107,12 @@ enum DbCmds {
         #[arg(short, long)]
         package: Option<String>,
     },
+    RemoveNodeFromModel {
+        #[arg(short, long)]
+        package: Option<String>,
+        #[arg(short, long)]
+        model: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -113,7 +121,7 @@ enum GateCmds {
         #[arg(short, long)]
         package: Option<String>,
         #[arg(short, long)]
-        model_name: String,
+        model: String,
         #[arg(long, default_value_t = 1_000)]
         max_fee_per_token: u64,
     },
@@ -138,7 +146,7 @@ enum SettlementCmds {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<()> {
     dotenv().ok();
     env_logger::init();
 
@@ -176,13 +184,10 @@ async fn main() -> Result<(), anyhow::Error> {
             db::print_env(&mut context.with_optional_package_id(package))
                 .await?;
         }
-        Some(Cmds::Db(DbCmds::AddModel {
-            package,
-            model_name,
-        })) => {
+        Some(Cmds::Db(DbCmds::AddModel { package, name })) => {
             let digest = db::add_model(
                 &mut context.with_optional_package_id(package),
-                &model_name,
+                &name,
             )
             .await?;
 
@@ -190,14 +195,14 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         Some(Cmds::Db(DbCmds::AddModelEchelon {
             package,
-            model_name,
+            model,
             echelon,
             fee_in_protocol_token,
             relative_performance,
         })) => {
             let digest = db::add_model_echelon(
                 &mut context.with_optional_package_id(package),
-                &model_name,
+                &model,
                 echelon,
                 fee_in_protocol_token,
                 relative_performance,
@@ -228,13 +233,22 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         Some(Cmds::Db(DbCmds::AddNodeToModel {
             package,
-            model_name,
+            model,
             echelon,
         })) => {
             let digest = db::add_node_to_model(
                 &mut context.with_optional_package_id(package),
-                &model_name,
+                &model,
                 echelon,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::RemoveNodeFromModel { package, model })) => {
+            let digest = db::remove_node_from_model(
+                &mut context.with_optional_package_id(package),
+                &model,
             )
             .await?;
 
@@ -242,12 +256,12 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         Some(Cmds::Gate(GateCmds::SubmitTellMeAJokePrompt {
             package,
-            model_name,
+            model,
             max_fee_per_token,
         })) => {
             let digest = gate::submit_tell_me_a_joke_prompt(
                 &mut context.with_optional_package_id(package),
-                &model_name,
+                &model,
                 max_fee_per_token,
             )
             .await?;
@@ -285,55 +299,16 @@ async fn main() -> Result<(), anyhow::Error> {
 async fn get_atoma_db(
     client: &SuiClient,
     package: ObjectID,
-) -> Result<ObjectID, anyhow::Error> {
+) -> Result<ObjectID> {
     get_publish_tx_created_object(client, package, DB_MODULE_NAME, DB_TYPE_NAME)
         .await
-}
-
-async fn get_atoma_db_id_and_fields(
-    client: &SuiClient,
-    package: ObjectID,
-) -> Result<(ObjectID, BTreeMap<String, SuiMoveValue>), anyhow::Error> {
-    let atoma_id = get_atoma_db(client, package).await?;
-
-    let SuiParsedData::MoveObject(atoma) = client
-        .read_api()
-        .get_object_with_options(
-            atoma_id,
-            SuiObjectDataOptions {
-                show_content: true,
-                ..Default::default()
-            },
-        )
-        .await?
-        .data
-        .ok_or_else(|| anyhow!("Cannot fetch AtomaDb data"))?
-        .content
-        .ok_or_else(|| anyhow!("AtomaDb has no content"))?
-    else {
-        return Err(anyhow!("AtomaDb must be a Move object"));
-    };
-
-    if atoma.type_.module.as_str() != DB_MODULE_NAME
-        || atoma.type_.name.as_str() != DB_TYPE_NAME
-    {
-        return Err(anyhow!(
-            "AtomaDb must be of type {DB_MODULE_NAME}.{DB_TYPE_NAME}",
-        ));
-    }
-
-    let SuiMoveStruct::WithFields(fields) = atoma.fields else {
-        return Err(anyhow!("AtomaDb must have fields"));
-    };
-
-    Ok((atoma_id, fields))
 }
 
 /// This object is a necessary input for atoma prompt standards.
 async fn get_prompts(
     client: &SuiClient,
     package: ObjectID,
-) -> Result<ObjectID, anyhow::Error> {
+) -> Result<ObjectID> {
     get_publish_tx_created_object(
         client,
         package,
@@ -348,7 +323,7 @@ async fn get_publish_tx_created_object(
     package: ObjectID,
     module: &str,
     name: &str,
-) -> Result<ObjectID, anyhow::Error> {
+) -> Result<ObjectID> {
     let Page {
         data,
         has_next_page,
@@ -402,7 +377,7 @@ async fn get_db_manager_badge(
     client: &SuiClient,
     package: ObjectID,
     active_address: SuiAddress,
-) -> Result<ObjectID, anyhow::Error> {
+) -> Result<ObjectID> {
     let Page {
         data,
         has_next_page,
@@ -450,7 +425,7 @@ async fn get_node_badge(
     client: &SuiClient,
     package: ObjectID,
     active_address: SuiAddress,
-) -> Result<(ObjectID, u64), anyhow::Error> {
+) -> Result<(ObjectID, u64)> {
     let Page {
         data,
         has_next_page,
@@ -508,7 +483,7 @@ async fn find_toma_token_wallets(
     client: &SuiClient,
     package: ObjectID,
     active_address: SuiAddress,
-) -> Result<impl Iterator<Item = ObjectID>, anyhow::Error> {
+) -> Result<impl Iterator<Item = ObjectID>> {
     let type_ = StructTag {
         address: SuiAddress::from_str(
             "0x0000000000000000000000000000000000000000000000000000000000000002",
@@ -552,6 +527,24 @@ fn wait_for_user_confirm() -> bool {
             'y' | 'Y' => return true,
             'n' | 'N' => return false,
             _ => println!("y/n only please."),
+        }
+    }
+}
+
+trait DynamicFieldNameExt {
+    fn ascii(s: &str) -> Self;
+}
+
+impl DynamicFieldNameExt for DynamicFieldName {
+    fn ascii(value: &str) -> Self {
+        DynamicFieldName {
+            type_: TypeTag::Struct(Box::new(StructTag {
+                address: AccountAddress::ONE,
+                module: FromStr::from_str("ascii").unwrap(),
+                name: FromStr::from_str("String").unwrap(),
+                type_params: vec![],
+            })),
+            value: serde_json::Value::String(value.to_owned()),
         }
     }
 }

@@ -6,6 +6,7 @@ module atoma::db {
     use std::ascii;
     use sui::balance::{Self, Balance};
     use sui::coin::{Self, Coin};
+    use sui::dynamic_field;
     use sui::object_table::{Self, ObjectTable};
     use sui::package::{Self, Publisher};
     use sui::table_vec::{Self, TableVec};
@@ -41,6 +42,12 @@ module atoma::db {
     /// nodes cannot be more than 1000 ‰.
     const ETotalPermilleMustBeLessThan1000: u64 = 7;
     const ENothingToWithdraw: u64 = 8;
+    const ENodeAlreadySubscribedToModel: u64 = 9;
+    const ENodeNotSubscribedToModel: u64 = 10;
+    /// This can happen due to race conditions in endpoint
+    /// `remove_node_from_model`.
+    /// The CLI depends on this error code when sending the tx.
+    const ENodeIndexMismatch: u64 = 11;
 
     public struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
@@ -51,6 +58,7 @@ module atoma::db {
     public struct NodeSubscribedToModelEvent has copy, drop {
         node_small_id: SmallId,
         model_name: ascii::String,
+        echelon_id: EchelonId,
     }
 
     /// Owned object.
@@ -288,23 +296,61 @@ module atoma::db {
     /// type.
     public entry fun add_node_to_model(
         self: &mut AtomaDb,
+        node_badge: &mut NodeBadge,
         model_name: ascii::String,
         echelon: u64,
-        node_badge: &NodeBadge,
     ) {
         let model = self.models.borrow_mut(model_name);
         assert!(!model.is_disabled, EModelDisabled);
 
+        // a node can be subscribed to a model only once irrespective of echelon
+        assert!(
+            !dynamic_field::exists_(&node_badge.id, model_name),
+            ENodeAlreadySubscribedToModel,
+        );
+
         let echelon_id = EchelonId { id: echelon };
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
-
-        // TODO: https://github.com/atoma-network/atoma-contracts/issues/2
         table_vec::push_back(&mut echelon.nodes, node_badge.small_id);
+        dynamic_field::add(&mut node_badge.id, model_name, echelon_id);
 
         sui::event::emit(NodeSubscribedToModelEvent {
             node_small_id: node_badge.small_id,
             model_name,
+            echelon_id,
         });
+    }
+
+    /// We are using dynamic fields (table vec) to hold a large number of nodes.
+    /// The disadvantage is that we cannot iterate over all nodes in a model.
+    /// Therefore, the offchain logic needs to find the index of the node ID in
+    /// the echelon nodes table vec.
+    ///
+    /// # Retries
+    /// Note that the index can change if another node is removed from the
+    /// echelon because we use swap remove.
+    /// It's possible that due to a race condition this call fails because the
+    /// node was moved to a different index.
+    /// In such case, it's appropriate to retry the operation (with the new
+    /// index).
+    public entry fun remove_node_from_model(
+        self: &mut AtomaDb,
+        node_badge: &mut NodeBadge,
+        model_name: ascii::String,
+        node_index: u64,
+    ) {
+        let mut perhaps_echelon_id =
+            dynamic_field::remove_if_exists(&mut node_badge.id, model_name);
+        assert!(perhaps_echelon_id.is_some(), ENodeNotSubscribedToModel);
+        let echelon_id = perhaps_echelon_id.extract();
+
+        let model = self.models.borrow_mut(model_name);
+        let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
+        assert!(echelon.nodes.length() > node_index, ENodeIndexMismatch);
+        let removed_id = echelon.nodes.swap_remove(node_index);
+        // as per the endpoint docs, there's a legitimate reason for this error
+        // in some circumstances
+        assert!(removed_id == node_badge.small_id, ENodeIndexMismatch);
     }
 
     /// Transfers a coin object to the sender if there are some fees to be
@@ -541,8 +587,8 @@ module atoma::db {
 
     public entry fun add_model_entry(
         self: &mut AtomaDb,
-        model_name: ascii::String,
         badge: &AtomaManagerBadge,
+        model_name: ascii::String,
         ctx: &mut TxContext,
     ) {
         let model = create_model(model_name, badge, ctx);
@@ -573,11 +619,11 @@ module atoma::db {
     /// The fee is charged per character.
     public entry fun add_model_echelon_entry(
         self: &mut AtomaDb,
+        badge: &AtomaManagerBadge,
         model_name: ascii::String,
         echelon: u64,
         fee_in_protocol_token: u64,
         relative_performance: u64,
-        badge: &AtomaManagerBadge,
         ctx: &mut TxContext,
     ) {
         let model = self.models.borrow_mut(model_name);

@@ -1,23 +1,20 @@
-use sui_sdk::rpc_types::{Page, SuiData, SuiMoveValue, SuiObjectDataOptions};
+use sui_sdk::{
+    rpc_types::{Page, SuiData, SuiObjectDataOptions},
+    types::base_types::ObjectID,
+};
 
-use crate::{get_atoma_db_id_and_fields, prelude::*, wait_for_user_confirm};
+use crate::{prelude::*, wait_for_user_confirm};
 
-pub(crate) async fn command(
-    context: &mut Context,
-) -> Result<(), anyhow::Error> {
-    let package = context.unwrap_package_id();
-
-    let client = context.wallet.get_client().await?;
-    let (_, fields) = get_atoma_db_id_and_fields(&client, package).await?;
-    let SuiMoveValue::UID { id: tickets_root } = fields
-        .get("tickets")
-        .ok_or_else(|| anyhow!("No tickets field found"))?
-    else {
-        return Err(anyhow!("Tickets field must be UID"));
-    };
+pub(crate) async fn command(context: &mut Context) -> Result<()> {
+    let tickets_root = ObjectID::from_str(
+        context.load_atoma_db_fields().await?["tickets"]["id"]
+            .as_str()
+            .ok_or_else(|| anyhow!("No tickets field found"))?,
+    )?;
 
     let mut cursor = None;
 
+    let client = context.get_client().await?;
     loop {
         let Page {
             data,
@@ -25,7 +22,7 @@ pub(crate) async fn command(
             next_cursor,
         } = client
             .read_api()
-            .get_dynamic_fields(*tickets_root, cursor, None)
+            .get_dynamic_fields(tickets_root, cursor, None)
             .await?;
         cursor = next_cursor;
 

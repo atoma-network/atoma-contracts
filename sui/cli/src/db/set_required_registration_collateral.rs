@@ -5,7 +5,7 @@ const ENDPOINT_NAME: &str = "set_required_registration_toma_collateral";
 pub(crate) async fn command(
     context: &mut Context,
     new_required_collateral_amount: u64,
-) -> Result<TransactionDigest, anyhow::Error> {
+) -> Result<TransactionDigest> {
     let active_address = context.wallet.active_address()?;
     let package = context.unwrap_package_id();
     let atoma_db = context.get_or_load_atoma_db().await?;

@@ -4,7 +4,7 @@ const ENDPOINT_NAME: &str = "register_node_entry";
 
 pub(crate) async fn command(
     context: &mut Context,
-) -> Result<TransactionDigest, anyhow::Error> {
+) -> Result<TransactionDigest> {
     let active_address = context.wallet.active_address()?;
     let package = context.unwrap_package_id();
     let atoma_db = context.get_or_load_atoma_db().await?;

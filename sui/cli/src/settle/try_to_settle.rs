@@ -5,7 +5,7 @@ const ENDPOINT_NAME: &str = "try_to_settle";
 pub(crate) async fn command(
     context: &mut Context,
     ticket_id: &str,
-) -> Result<TransactionDigest, anyhow::Error> {
+) -> Result<TransactionDigest> {
     let ticket_id = FromStr::from_str(ticket_id)?;
     let (package, _) = context.ticket_package_and_fields(ticket_id).await?;
     let active_address = context.wallet.active_address()?;
