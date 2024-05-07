@@ -15,6 +15,7 @@ module atoma::settlement {
     /// Node is the first to submit a commitment for a given ticket
     public struct FirstSubmissionEvent has copy, drop {
         ticket_id: ID,
+        node_id: SmallId,
     }
 
     /// Nodes did not agree on the settlement.
@@ -184,6 +185,7 @@ module atoma::settlement {
             ticket.output_tokens_count = option::some(output_tokens_count);
             sui::event::emit(FirstSubmissionEvent {
                 ticket_id,
+                node_id,
             })
         } else if (!ticket.is_being_disputed) {
             let input_tokens_count_match =
@@ -519,10 +521,12 @@ module atoma::settlement {
                 confiscated_total.join(confiscated_from_node);
                 slashed_nodes.push_back(node_id);
             } else {
-                // the node was right about the token counts and the FIRST node
-                // has already been slashed above
+                // A) the node was right about the token counts and
+                // the FIRST node has already been slashed above
                 //
-                // or the node was wrong but already slashed above
+                // OR
+                //
+                // B) the node was wrong but already slashed above
             };
         };
 
