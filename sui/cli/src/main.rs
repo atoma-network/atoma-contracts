@@ -113,6 +113,14 @@ enum DbCmds {
         #[arg(short, long)]
         model: String,
     },
+    PermanentlyDisableNode {
+        #[arg(short, long)]
+        package: Option<String>,
+    },
+    DestroyDisabledNode {
+        #[arg(short, long)]
+        package: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -253,6 +261,18 @@ async fn main() -> Result<()> {
             .await?;
 
             println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::PermanentlyDisableNode { package })) => {
+            db::permanently_disable_node(
+                &mut context.with_optional_package_id(package),
+            )
+            .await?;
+        }
+        Some(Cmds::Db(DbCmds::DestroyDisabledNode { package })) => {
+            db::destroy_disabled_node(
+                &mut context.with_optional_package_id(package),
+            )
+            .await?;
         }
         Some(Cmds::Gate(GateCmds::SubmitTellMeAJokePrompt {
             package,

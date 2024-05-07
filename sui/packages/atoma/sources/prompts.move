@@ -71,7 +71,7 @@ module atoma::prompts {
 
     /// Submits a text prompt to Atoma network that asks for an image of
     /// a pixel art Colosseum.
-    public entry fun generate_pixelart_colosseum(
+    public entry fun generate_nft(
         atoma: &mut AtomaDb,
         prompts: &AtomaPrompts,
         wallet: &mut Coin<TOMA>,
@@ -85,7 +85,7 @@ module atoma::prompts {
         let height = 360;
         let n_steps = 40;
         let num_samples = 2;
-        let prompt = string::utf8(b"Generate a pixel art Colosseum");
+        let prompt = string::utf8(b"Generate an NFT");
         let random_seed = atoma::utils::random_u64(ctx);
         let width = 640;
 

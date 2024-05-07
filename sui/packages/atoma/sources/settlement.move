@@ -13,7 +13,7 @@ module atoma::settlement {
     const ETicketMustHaveNodes: u64 = 6;
 
     /// Node is the first to submit a commitment for a given ticket
-    public struct FirstSubmissionEvent has copy, drop { 
+    public struct FirstSubmissionEvent has copy, drop {
         ticket_id: ID,
     }
 
@@ -143,7 +143,7 @@ module atoma::settlement {
 
         // if node is submitting a commitment for the first time,
         // emit an event informing it should manage output
-        if (ticket.completed.is_empty()) { 
+        if (ticket.completed.is_empty()) {
             sui::event::emit(FirstSubmissionEvent {
                 ticket_id,
             })
@@ -463,18 +463,20 @@ module atoma::settlement {
         });
     }
 
+    // =========================================================================
+    //                              Package private functions
+    // =========================================================================
+
     public(package) fun new_ticket(
-        atoma: &mut AtomaDb,
         model_name: ascii::String,
         echelon_id: EchelonId,
         nodes: vector<SmallId>,
         collected_fee_in_protocol_token: u64,
         timeout_ms: u64,
         ctx: &mut TxContext,
-    ): ID {
+    ): SettlementTicket {
         assert!(!nodes.is_empty(), ETicketMustHaveNodes);
-
-        let ticket = SettlementTicket {
+        SettlementTicket {
             id: object::new(ctx),
             model_name,
             echelon_id,
@@ -489,13 +491,24 @@ module atoma::settlement {
                 started_in_epoch: ctx.epoch(),
                 started_at_epoch_timestamp_ms: ctx.epoch_timestamp_ms(),
             },
-        };
-        let id = object::id(&ticket);
-
-        return_settlement_ticket(atoma, ticket);
-
-        id
+        }
     }
+
+    public(package) fun ticket_uid(self: &mut SettlementTicket): &mut UID {
+        &mut self.id
+    }
+
+    public(package) fun return_settlement_ticket(
+        atoma: &mut AtomaDb,
+        ticket: SettlementTicket,
+    ) {
+        let uid = atoma.get_tickets_uid_mut();
+        dynamic_object_field::add(uid, object::id(&ticket), ticket)
+    }
+
+    // =========================================================================
+    //                          Helpers
+    // =========================================================================
 
     /// # How the timeout works?
     ///
@@ -551,13 +564,5 @@ module atoma::settlement {
     ): SettlementTicket {
         let uid = atoma.get_tickets_uid_mut();
         dynamic_object_field::remove(uid, ticket)
-    }
-
-    fun return_settlement_ticket(
-        atoma: &mut AtomaDb,
-        ticket: SettlementTicket,
-    ) {
-        let uid = atoma.get_tickets_uid_mut();
-        dynamic_object_field::add(uid, object::id(&ticket), ticket)
     }
 }

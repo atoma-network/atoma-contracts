@@ -41,13 +41,17 @@ module atoma::db {
     /// So the ‰ that goes to the oracle plus the ‰ that goes to the honest
     /// nodes cannot be more than 1000 ‰.
     const ETotalPermilleMustBeLessThan1000: u64 = 7;
-    const ENothingToWithdraw: u64 = 8;
     const ENodeAlreadySubscribedToModel: u64 = 9;
     const ENodeNotSubscribedToModel: u64 = 10;
     /// This can happen due to race conditions in endpoint
     /// `remove_node_from_model`.
     /// The CLI depends on this error code when sending the tx.
     const ENodeIndexMismatch: u64 = 11;
+    const ENodeAlreadyDisabled: u64 = 12;
+    /// There's a 2 epoch wait.
+    /// Ie., if you disable a node in epoch N, you can only destroy it in epoch
+    /// N + 2.
+    const ENodeMustWaitBeforeDestroy: u64 = 13;
 
     public struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
@@ -141,6 +145,10 @@ module atoma::db {
 
     /// Field of AtomaDb.
     public struct NodeEntry has store {
+        /// Once the node is disabled, it cannot be re-enabled.
+        /// It must also wait for a certain number of epochs before it can be
+        /// deleted and collateral reclaimed.
+        was_disabled_in_epoch: Option<u64>,
         /// It can get slashed if node is not responding or if it submitted
         /// results that do not match the oracle's results.
         collateral: Balance<TOMA>,
@@ -271,6 +279,7 @@ module atoma::db {
 
         let node_entry = NodeEntry {
             collateral,
+            was_disabled_in_epoch: option::none(),
             last_fee_epoch: ctx.epoch(),
             last_fee_epoch_amount: 0,
             available_fee_amount: 0,
@@ -353,9 +362,59 @@ module atoma::db {
         assert!(removed_id == node_badge.small_id, ENodeIndexMismatch);
     }
 
+    /// This node will accept no more prompts.
+    /// It must however finish serving open prompts if any.
+    ///
+    /// There's a wait period before the node can collect its collateral by
+    /// calling `destroy_disabled_node`.
+    public entry fun permanently_disable_node(
+        self: &mut AtomaDb,
+        node_badge: &NodeBadge,
+        ctx: &mut TxContext,
+    ) {
+        let node = self.nodes.borrow_mut(node_badge.small_id);
+        assert!(node.was_disabled_in_epoch.is_none(), ENodeAlreadyDisabled);
+        node.was_disabled_in_epoch = option::some(ctx.epoch());
+    }
+
+    /// You must wait 2 epochs after `permanently_disable_node` before you can
+    /// destroy the node and collect the collateral.
+    /// This prevents nodes that disable themselves just before a new epoch
+    /// starts and then destroy themselves immediately once it starts,
+    /// potentially causing problems with open prompts without any repercussions.
+    ///
+    /// Also, 2 epochs guarantee that all the fees have been settled and are
+    /// available for withdrawal, so the node is not cut short.
+    public entry fun destroy_disabled_node(
+        self: &mut AtomaDb,
+        node_badge: NodeBadge,
+        ctx: &mut TxContext,
+    ) {
+        withdraw_fees(self, &node_badge, ctx);
+
+        let NodeEntry {
+            collateral,
+            mut was_disabled_in_epoch,
+
+            last_fee_epoch: _,
+            // will be zero because we force a wait before destroying a node
+            // that's one epoch longer than the fee withdrawal delay
+            last_fee_epoch_amount: _,
+            available_fee_amount: _,
+        } = self.nodes.remove(node_badge.small_id);
+
+        let was_disabled_in_epoch = was_disabled_in_epoch.extract();
+        assert!(was_disabled_in_epoch + 2 <= ctx.epoch(), ENodeMustWaitBeforeDestroy);
+
+        let wallet = coin::from_balance(collateral, ctx);
+        transfer::public_transfer(wallet, ctx.sender());
+
+        let NodeBadge { id: badge_id, small_id: _ } = node_badge;
+        badge_id.delete();
+    }
+
     /// Transfers a coin object to the sender if there are some fees to be
     /// claimed for this node.
-    /// Aborts if there are no fees to be claimed.
     public entry fun withdraw_fees(
         self: &mut AtomaDb,
         node_badge: &NodeBadge,
@@ -369,13 +428,11 @@ module atoma::db {
 
         let node = self.nodes.borrow_mut(node_id);
         let amount = node.available_fee_amount;
-        if (amount == 0) {
-            abort ENothingToWithdraw
+        if (amount > 0) {
+            node.available_fee_amount = 0;
+            let wallet = coin::from_balance(self.fee_treasury.split(amount), ctx);
+            transfer::public_transfer(wallet, ctx.sender());
         };
-
-        node.available_fee_amount = 0;
-        let wallet = coin::from_balance(self.fee_treasury.split(amount), ctx);
-        transfer::public_transfer(wallet, ctx.sender());
     }
 
     public fun is_oracle(
@@ -435,7 +492,7 @@ module atoma::db {
     public fun get_opaque_inner_id(self: SmallId): u64 { self.inner }
 
     // =========================================================================
-    //                          Package only functions
+    //                          Package private functions
     // =========================================================================
 
     /// Settlement tickets are dynamic objects of this UID.
@@ -923,13 +980,16 @@ module atoma::db {
             let node_index = atoma::utils::random_u64(ctx) % nodes_count;
             let node_id = *echelon.nodes.borrow(node_index);
             let has_node = nodes.contains(node_id);
-            if (has_node &&
-                nodes.borrow(node_id).collateral.value() > 0) {
-                break option::some(node_id)
-            } else {
-                // node has been slashed so remove it from the echelon
-                echelon.nodes.swap_remove(node_index);
-            }
+            if (has_node) {
+                let node = nodes.borrow(node_id);
+                if (node.collateral.value() > 0
+                    && node.was_disabled_in_epoch.is_none()) {
+                    break option::some(node_id)
+                };
+            };
+
+            // node has been slashed so remove it from the echelon
+            echelon.nodes.swap_remove(node_index);
         }
     }
 }
