@@ -89,17 +89,21 @@ module atoma::gate {
         wallet: &mut Balance<TOMA>,
         params: Text2TextPromptParams,
         max_fee_per_token: u64,
-        tokens_count: u64,
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
     ): ID {
+        // these are approximations that will get refunded partly
+        let input_characters = params.prompt.length();
+        let output_tokens = params.max_tokens;
+
         let (mut ticket, selected_nodes) = submit_prompt(
             atoma,
             wallet,
             params.model,
             max_fee_per_token,
+            input_characters,
             max_fee_per_token,
-            tokens_count,
+            output_tokens,
             nodes_to_sample,
             ctx,
         );
@@ -129,17 +133,22 @@ module atoma::gate {
         params: Text2ImagePromptParams,
         max_fee_per_input_token: u64,
         max_fee_per_output_token: u64,
-        tokens_count: u64,
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
     ): ID {
+        // this is approximation that will get refunded partly
+        let input_characters = params.prompt.length();
+        // this we know exactly
+        let output_pixels = params.width * params.height;
+
         let (mut ticket, selected_nodes) = submit_prompt(
             atoma,
             wallet,
             params.model,
             max_fee_per_input_token,
+            input_characters,
             max_fee_per_output_token,
-            tokens_count,
+            output_pixels,
             nodes_to_sample,
             ctx,
         );
@@ -212,7 +221,11 @@ module atoma::gate {
     //                              Helpers
     // =========================================================================
 
-    /// The fee is per input token.
+    /// The fee is per input and output tokens.
+    /// The provided estimation of the number of tokens is used to calculate
+    /// the charged amount.
+    /// However, the real fee is calculated when the nodes submit the results.
+    /// The difference is refunded to the user.
     ///
     /// 1. Get the model echelons from the database.
     /// 2. Randomly pick one of the echelons.
@@ -224,8 +237,9 @@ module atoma::gate {
         wallet: &mut Balance<TOMA>,
         model: ascii::String,
         max_fee_per_input_token: u64,
+        approx_input_tokens_count: u64,
         max_fee_per_output_token: u64,
-        tokens_count: u64,
+        approx_output_tokens_count: u64,
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
     ): (SettlementTicket, vector<SmallId>) {
@@ -247,7 +261,7 @@ module atoma::gate {
         let echelon_id = echelon.get_model_echelon_id();
         let echelon_settlement_timeout_ms =
             echelon.get_model_echelon_settlement_timeout_ms();
-        let echelon_fee_per_token = echelon.get_model_echelon_fee();
+        let (input_fee, output_fee) = echelon.get_model_echelon_fees();
 
         // 3.
         let mut sampled_nodes = vector::empty();
@@ -272,7 +286,8 @@ module atoma::gate {
 
         // 4.
         // we must fit into u64 bcs that's the limit of Balance
-        let collected_fee = echelon_fee_per_token * tokens_count;
+        let collected_fee = input_fee * approx_input_tokens_count
+            + output_fee * approx_output_tokens_count;
         atoma.deposit_to_fee_treasury(wallet.split(collected_fee));
 
         // 5.
@@ -280,6 +295,8 @@ module atoma::gate {
             model,
             echelon_id,
             sampled_nodes,
+            input_fee,
+            output_fee,
             collected_fee,
             echelon_settlement_timeout_ms,
             ctx,

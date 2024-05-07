@@ -24,8 +24,6 @@ module atoma::prompts {
         max_fee_per_token: u64,
         ctx: &mut TxContext,
     ) {
-        let tokens_count = 64;
-
         let max_tokens = 64;
         let prompt = string::utf8(b"Tell me a joke please");
         let random_seed = atoma::utils::random_u64(ctx);
@@ -50,7 +48,6 @@ module atoma::prompts {
             wallet.balance_mut(),
             params,
             max_fee_per_token,
-            tokens_count,
             option::some(1), // default nodes to sample
             ctx,
         );
@@ -66,8 +63,6 @@ module atoma::prompts {
         max_fee_per_output_pixel: u64,
         ctx: &mut TxContext,
     ) {
-        let tokens_count = 64;
-
         let guidance_scale = 1065353216; // 1.0
         let height = 360;
         let n_steps = 40;
@@ -92,7 +87,6 @@ module atoma::prompts {
             params,
             max_fee_per_input_token,
             max_fee_per_output_pixel,
-            tokens_count,
             option::some(1), // default nodes to sample
             ctx,
         );

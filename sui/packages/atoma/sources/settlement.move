@@ -91,10 +91,22 @@ module atoma::settlement {
         /// with zeros.
         /// Those will be overwritten when each node submits the hash of the chunk.
         merkle_leaves: vector<u8>,
-        /// The fee that was collected from the user.
+        /// The fee per input token at the time of the prompt submission.
+        input_fee_per_token: u64,
+        /// The fee per output token at the time of the prompt submission.
+        output_fee_per_token: u64,
+        /// The fee that was collected from the user on prompt submission.
+        /// It is higher than what should actually be paid to the nodes because
+        /// we overestimate the number of tokens.
+        /// The nodes with their commitment will provide the number of tokens
+        /// that should be paid to them, the rest being refunded to the user.
+        ///
         /// It will be distributed to the nodes that participated in the
         /// evaluation.
         collected_fee_in_protocol_token: u64,
+        /// The address of the account that created the prompt.
+        /// Any refund will be sent to this address.
+        payer: address,
         /// If any node does not agree with the first hash, the settlement is
         /// being disputed.
         ///
@@ -221,6 +233,9 @@ module atoma::settlement {
                     id,
                     mut completed,
                     collected_fee_in_protocol_token,
+                    payer,
+                    input_fee_per_token,
+                    output_fee_per_token,
 
                     model_name: _,
                     echelon_id: _,
@@ -371,6 +386,9 @@ module atoma::settlement {
             collected_fee_in_protocol_token,
             merkle_root: ticket_merkle_root,
             merkle_leaves: ticket_merkle_leaves,
+            payer,
+            input_fee_per_token,
+            output_fee_per_token,
 
             model_name: _,
             echelon_id: _,
@@ -471,6 +489,8 @@ module atoma::settlement {
         model_name: ascii::String,
         echelon_id: EchelonId,
         nodes: vector<SmallId>,
+        input_fee_per_token: u64,
+        output_fee_per_token: u64,
         collected_fee_in_protocol_token: u64,
         timeout_ms: u64,
         ctx: &mut TxContext,
@@ -485,7 +505,10 @@ module atoma::settlement {
             merkle_root: vector::empty(),
             merkle_leaves: vector::empty(),
             is_being_disputed: false,
+            input_fee_per_token,
+            output_fee_per_token,
             collected_fee_in_protocol_token,
+            payer: ctx.sender(),
             timeout: TimeoutInfo {
                 timeout_ms,
                 started_in_epoch: ctx.epoch(),

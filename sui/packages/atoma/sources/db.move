@@ -483,14 +483,6 @@ module atoma::db {
         (self.input_fee_per_token, self.output_fee_per_token)
     }
 
-    public fun get_model_echelon_input_fee(self: &ModelEchelon): u64 {
-        self.input_fee_per_token
-    }
-
-    public fun get_model_echelon_output_fee(self: &ModelEchelon): u64 {
-        self.output_fee_per_token
-    }
-
     public fun get_model_echelon_nodes(self: &ModelEchelon): &TableVec<SmallId> {
         &self.nodes
     }
