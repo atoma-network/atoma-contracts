@@ -1,5 +1,5 @@
 module atoma::gate {
-    use atoma::db::{AtomaManagerBadge, SmallId, ModelEchelon, AtomaDb};
+    use atoma::db::{SmallId, ModelEchelon, AtomaDb};
     use atoma::settlement::SettlementTicket;
     use atoma::utils::random_u256;
     use std::ascii;
@@ -13,13 +13,6 @@ module atoma::gate {
 
     const ENoEligibleEchelons: u64 = 0;
     const ETooManyNodesToSample: u64 = 1;
-
-    /// Stored or owned object.
-    ///
-    /// Anyone holding on this object can submit raw prompts.
-    public struct PromptBadge has key, store {
-        id: UID,
-    }
 
     #[allow(unused_field)]
     /// Serves as an input to the `submit_text2text_prompt` function.
@@ -93,7 +86,6 @@ module atoma::gate {
     /// Returns ticket ID which is an identifier of the settlement object.
     public fun submit_text2text_prompt(
         atoma: &mut AtomaDb,
-        _:& PromptBadge,
         wallet: &mut Balance<TOMA>,
         params: Text2TextPromptParams,
         max_fee_per_token: u64,
@@ -132,7 +124,6 @@ module atoma::gate {
     /// Returns ticket ID which is an identifier of the settlement object.
     public fun submit_text2image_prompt(
         atoma: &mut AtomaDb,
-        _:& PromptBadge,
         wallet: &mut Balance<TOMA>,
         params: Text2ImagePromptParams,
         max_fee_per_token: u64,
@@ -212,28 +203,6 @@ module atoma::gate {
             random_seed,
             width,
         }
-    }
-
-    public fun create_prompt_badge(
-        _: &AtomaManagerBadge,
-        ctx: &mut TxContext,
-    ): PromptBadge {
-        let id = object::new(ctx);
-        PromptBadge { id }
-    }
-
-    public fun destroy_prompt_badge(badge: PromptBadge) {
-        let PromptBadge { id } = badge;
-        id.delete();
-    }
-
-    // =========================================================================
-    //                              Package private functions
-    // =========================================================================
-
-    public(package) fun create_prompt_badge_(ctx: &mut TxContext): PromptBadge {
-        let id = object::new(ctx);
-        PromptBadge { id }
     }
 
     // =========================================================================
