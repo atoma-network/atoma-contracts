@@ -107,11 +107,32 @@ module atoma::settlement {
         /// The address of the account that created the prompt.
         /// Any refund will be sent to this address.
         payer: address,
+        /// The first node populates this field.
+        /// If any other node disagrees with the number of tokens, the ticket
+        /// is disputed.
+        input_tokens_count: Option<u64>,
+        /// The first node populates this field.
+        /// If any other node disagrees with the number of tokens, the ticket
+        /// is disputed.
+        output_tokens_count: Option<u64>,
         /// If any node does not agree with the first hash, the settlement is
         /// being disputed.
         ///
         /// An oracle must step in and resolve the dispute.
         is_being_disputed: bool,
+        /// If the reason for the dispute is that the number of input and/or
+        /// output tokens does not agree between the first node and some other,
+        /// we store the ID of the node that disagrees.
+        ///
+        /// During the dispute resolution, the oracle will check if the number
+        /// of tokens is correct.
+        /// If it is, the node that disagreed will be slashed.
+        /// If it is not, the node that submitted the commitment first will be
+        /// slashed.
+        ///
+        /// # Important
+        /// Can only be some if `is_being_disputed` is true.
+        token_counts_disputed_by: Option<SmallId>,
         /// There's only limited time to settle the prompt.
         timeout: TimeoutInfo,
     }
@@ -165,7 +186,8 @@ module atoma::settlement {
         // otherwise set it
         if (ticket.merkle_root.is_empty()) {
             ticket.merkle_root = merkle_root;
-        } else if (ticket.merkle_root != merkle_root) {
+        } else if (!ticket.is_being_disputed
+            && ticket.merkle_root != merkle_root) {
             ticket.is_being_disputed = true;
             sui::event::emit(DisputeEvent {
                 ticket_id,
@@ -224,7 +246,8 @@ module atoma::settlement {
         //
         // 1.
         //
-        if (ticket.completed.length() == ticket.all.length()) {
+        if (!ticket.is_being_disputed
+            && ticket.completed.length() == ticket.all.length()) {
             let computed_mroot = sui::hash::blake2b256(&ticket.merkle_leaves);
             if (computed_mroot == ticket.merkle_root) {
                 // happy path
@@ -232,11 +255,14 @@ module atoma::settlement {
                 let SettlementTicket {
                     id,
                     mut completed,
-                    collected_fee_in_protocol_token,
+                    collected_fee_in_protocol_token: collected_fee,
                     payer,
                     input_fee_per_token,
+                    mut input_tokens_count,
                     output_fee_per_token,
+                    mut output_tokens_count,
 
+                    token_counts_disputed_by: _, // is for sure none
                     model_name: _,
                     echelon_id: _,
                     all: _,
@@ -247,8 +273,21 @@ module atoma::settlement {
                 } = ticket;
                 id.delete();
 
-                let reward_per_node =
-                    collected_fee_in_protocol_token / completed.length();
+                // we can extract because the first node submits the counts
+                // and there is always at least one node
+                let exact_fee = input_fee_per_token * input_tokens_count.extract()
+                    + output_fee_per_token * output_tokens_count.extract();
+
+                let reward_per_node = if (exact_fee >= collected_fee) {
+                    // unlikely that it would be higher because we overestimate
+
+                    collected_fee / completed.length()
+                } else {
+                    let refund_amount = collected_fee - exact_fee;
+                    atoma.refund_to_user(payer, refund_amount, ctx);
+
+                    exact_fee / completed.length()
+                };
 
                 while (!completed.is_empty()) {
                     let node_id = completed.pop_back();
@@ -383,12 +422,15 @@ module atoma::settlement {
             id,
             mut completed,
             all,
-            collected_fee_in_protocol_token,
+            collected_fee_in_protocol_token: collected_fee,
             merkle_root: ticket_merkle_root,
             merkle_leaves: ticket_merkle_leaves,
             payer,
             input_fee_per_token,
+            mut input_tokens_count,
             output_fee_per_token,
+            mut output_tokens_count,
+            token_counts_disputed_by,
 
             model_name: _,
             echelon_id: _,
@@ -458,7 +500,22 @@ module atoma::settlement {
         // and the rest goes to the community
         atoma.deposit_to_communal_treasury(confiscated_total);
 
-        let total_fee = collected_fee_in_protocol_token + honest_nodes_extra_fee;
+        // we can extract because the first node submits the counts
+        // and there is always at least one node
+        let exact_fee = input_fee_per_token * input_tokens_count.extract()
+            + output_fee_per_token * output_tokens_count.extract();
+
+        let total_fee = honest_nodes_extra_fee + if (exact_fee >= collected_fee) {
+            // unlikely that it would be higher because we overestimate
+
+            collected_fee
+        } else {
+            let refund_amount = collected_fee - exact_fee;
+            atoma.refund_to_user(payer, refund_amount, ctx);
+
+            exact_fee
+        };
+
         let honest_nodes_len = completed.length() - slashed_nodes.length();
 
         if (honest_nodes_len == 0) {
@@ -508,6 +565,12 @@ module atoma::settlement {
             input_fee_per_token,
             output_fee_per_token,
             collected_fee_in_protocol_token,
+            // provided by the first node
+            input_tokens_count: option::none(),
+            // provided by the first node
+            output_tokens_count: option::none(),
+            // only set when any node does not agree with the first node
+            token_counts_disputed_by: option::none(),
             payer: ctx.sender(),
             timeout: TimeoutInfo {
                 timeout_ms,

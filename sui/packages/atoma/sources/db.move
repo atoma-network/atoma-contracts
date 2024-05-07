@@ -503,6 +503,19 @@ module atoma::db {
     //                          Package private functions
     // =========================================================================
 
+
+    public(package) fun refund_to_user(
+        self: &mut AtomaDb,
+        who: address,
+        amount: u64,
+        ctx: &mut TxContext,
+    ) {
+        if (amount > 0) {
+            let wallet = coin::from_balance(self.fee_treasury.split(amount), ctx);
+            transfer::public_transfer(wallet, who);
+        }
+    }
+
     /// Settlement tickets are dynamic objects of this UID.
     public(package) fun get_tickets_uid_mut(self: &mut AtomaDb): &mut UID { &mut self.tickets }
 
