@@ -157,6 +157,8 @@ module atoma::settlement {
         atoma: &mut AtomaDb,
         badge: &NodeBadge,
         ticket_id: ID,
+        input_tokens_count: u64,
+        output_tokens_count: u64,
         merkle_root: vector<u8>,
         chunk_hash: vector<u8>,
         ctx: &mut TxContext,
@@ -174,12 +176,32 @@ module atoma::settlement {
         let (contains, node_order) = ticket.all.index_of(&node_id);
         assert!(contains, ENotAwaitingCommitment);
 
-        // if node is submitting a commitment for the first time,
-        // emit an event informing it should manage output
         if (ticket.completed.is_empty()) {
+            // if node is submitting a commitment for the first time,
+            // emit an event informing it should manage output
+
+            ticket.input_tokens_count = option::some(input_tokens_count);
+            ticket.output_tokens_count = option::some(output_tokens_count);
             sui::event::emit(FirstSubmissionEvent {
                 ticket_id,
             })
+        } else if (!ticket.is_being_disputed) {
+            let input_tokens_count_match =
+                ticket.input_tokens_count.borrow() == input_tokens_count;
+            let output_tokens_count_match =
+                ticket.output_tokens_count.borrow() == output_tokens_count;
+
+            if (!input_tokens_count_match || !output_tokens_count_match) {
+                // this node does not agree with the first node, let oracle
+                // resolve the dispute
+
+                ticket.token_counts_disputed_by = option::some(node_id);
+                ticket.is_being_disputed = true;
+                sui::event::emit(DisputeEvent {
+                    ticket_id,
+                    timeout: option::some(ticket.timeout),
+                });
+            }
         };
 
         // if merkle root is not empty, check that it matches
