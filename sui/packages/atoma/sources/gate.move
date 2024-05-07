@@ -1,9 +1,11 @@
 module atoma::gate {
     use atoma::db::{AtomaManagerBadge, SmallId, ModelEchelon, AtomaDb};
+    use atoma::settlement::SettlementTicket;
     use atoma::utils::random_u256;
     use std::ascii;
     use std::string;
     use sui::balance::Balance;
+    use sui::dynamic_field;
     use toma::toma::TOMA;
 
     const DefaultNodesToSample: u64 = 10;
@@ -97,7 +99,7 @@ module atoma::gate {
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
     ) {
-        let (ticket_id, selected_nodes) = submit_prompt(
+        let (mut ticket, selected_nodes) = submit_prompt(
             atoma,
             wallet,
             params.model,
@@ -106,6 +108,13 @@ module atoma::gate {
             nodes_to_sample,
             ctx,
         );
+        // adds a dynfield to the ticket so that off chain can read the params
+        // with a query (alternative is to query for the first event mentioning
+        // the ticket id)
+        dynamic_field::add(ticket.ticket_uid(), ascii::string(b"params"), params);
+
+        let ticket_id = object::id(&ticket);
+        atoma::settlement::return_settlement_ticket(atoma, ticket);
 
         sui::event::emit(Text2TextPromptEvent {
             params,
@@ -125,7 +134,7 @@ module atoma::gate {
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
     ) {
-        let (ticket_id, selected_nodes) = submit_prompt(
+        let (mut ticket, selected_nodes) = submit_prompt(
             atoma,
             wallet,
             params.model,
@@ -134,6 +143,13 @@ module atoma::gate {
             nodes_to_sample,
             ctx,
         );
+        // adds a dynfield to the ticket so that off chain can read the params
+        // with a query (alternative is to query for the first event mentioning
+        // the ticket id)
+        dynamic_field::add(ticket.ticket_uid(), ascii::string(b"params"), params);
+
+        let ticket_id = object::id(&ticket);
+        atoma::settlement::return_settlement_ticket(atoma, ticket);
 
         sui::event::emit(Text2ImagePromptEvent {
             params,
@@ -231,7 +247,7 @@ module atoma::gate {
         tokens_count: u64,
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
-    ): (ID, vector<SmallId>) {
+    ): (SettlementTicket, vector<SmallId>) {
         // 1.
         let echelons = atoma.get_model_echelons_if_enabled(model);
 
@@ -278,8 +294,7 @@ module atoma::gate {
         atoma.deposit_to_fee_treasury(wallet.split(collected_fee));
 
         // 5.
-        let ticket_id = atoma::settlement::new_ticket(
-            atoma,
+        let ticket = atoma::settlement::new_ticket(
             model,
             echelon_id,
             sampled_nodes,
@@ -288,7 +303,7 @@ module atoma::gate {
             ctx,
         );
 
-        (ticket_id, sampled_nodes)
+        (ticket, sampled_nodes)
     }
 
     public struct EchelonIdAndPerformance has drop {

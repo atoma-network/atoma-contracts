@@ -496,7 +496,7 @@ module atoma::db {
     public fun get_opaque_inner_id(self: SmallId): u64 { self.inner }
 
     // =========================================================================
-    //                          Package only functions
+    //                          Package private functions
     // =========================================================================
 
     /// Settlement tickets are dynamic objects of this UID.
