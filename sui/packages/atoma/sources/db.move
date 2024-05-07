@@ -41,7 +41,6 @@ module atoma::db {
     /// So the ‰ that goes to the oracle plus the ‰ that goes to the honest
     /// nodes cannot be more than 1000 ‰.
     const ETotalPermilleMustBeLessThan1000: u64 = 7;
-    const ENothingToWithdraw: u64 = 8;
     const ENodeAlreadySubscribedToModel: u64 = 9;
     const ENodeNotSubscribedToModel: u64 = 10;
     /// This can happen due to race conditions in endpoint
@@ -416,7 +415,6 @@ module atoma::db {
 
     /// Transfers a coin object to the sender if there are some fees to be
     /// claimed for this node.
-    /// Aborts if there are no fees to be claimed.
     public entry fun withdraw_fees(
         self: &mut AtomaDb,
         node_badge: &NodeBadge,
@@ -430,13 +428,11 @@ module atoma::db {
 
         let node = self.nodes.borrow_mut(node_id);
         let amount = node.available_fee_amount;
-        if (amount == 0) {
-            abort ENothingToWithdraw
+        if (amount > 0) {
+            node.available_fee_amount = 0;
+            let wallet = coin::from_balance(self.fee_treasury.split(amount), ctx);
+            transfer::public_transfer(wallet, ctx.sender());
         };
-
-        node.available_fee_amount = 0;
-        let wallet = coin::from_balance(self.fee_treasury.split(amount), ctx);
-        transfer::public_transfer(wallet, ctx.sender());
     }
 
     public fun is_oracle(
