@@ -409,6 +409,8 @@ module atoma::settlement {
         atoma: &mut AtomaDb,
         node_badge: &NodeBadge,
         ticket_id: ID,
+        oracle_input_tokens_count: u64,
+        oracle_output_tokens_count: u64,
         oracle_merkle_root: vector<u8>,
         oracle_merkle_leaves: vector<u8>,
         ctx: &mut TxContext,
@@ -452,7 +454,7 @@ module atoma::settlement {
             mut input_tokens_count,
             output_fee_per_token,
             mut output_tokens_count,
-            token_counts_disputed_by,
+            mut token_counts_disputed_by,
 
             model_name: _,
             echelon_id: _,
@@ -464,7 +466,14 @@ module atoma::settlement {
         let mut confiscated_total = balance::zero();
         let mut slashed_nodes = vector::empty();
 
-        let mut i = if (ticket_merkle_root != oracle_merkle_root) {
+        let merkle_root_match = ticket_merkle_root == oracle_merkle_root;
+        let token_counts_match =
+            input_tokens_count.extract() == oracle_input_tokens_count
+            && output_tokens_count.extract() == oracle_output_tokens_count;
+
+        // if the first node did not provide the correct merkle root or
+        // token counts, slash it
+        let mut i = if (!merkle_root_match || !token_counts_match) {
             let node_id = completed[0];
             confiscated_total.join(atoma.slash_node_on_dispute(node_id));
             slashed_nodes.push_back(node_id);
@@ -498,6 +507,23 @@ module atoma::settlement {
                 // check the next byte
                 i = i + 1;
             }
+        };
+
+        if (token_counts_disputed_by.is_some()) {
+            let node_id = token_counts_disputed_by.extract();
+
+            if (token_counts_match && !slashed_nodes.contains(&node_id)) {
+                // the node was wrong about the token counts, we slash it if not
+                // already slashed
+                let confiscated_from_node = atoma.slash_node_on_dispute(node_id);
+                confiscated_total.join(confiscated_from_node);
+                slashed_nodes.push_back(node_id);
+            } else {
+                // the node was right about the token counts and the FIRST node
+                // has already been slashed above
+                //
+                // or the node was wrong but already slashed above
+            };
         };
 
         let oracle_reward = sui::math::divide_and_round_up(
