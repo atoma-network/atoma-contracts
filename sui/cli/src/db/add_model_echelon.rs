@@ -6,7 +6,8 @@ pub(crate) async fn command(
     context: &mut Context,
     model_name: &str,
     echelon: u64,
-    fee_in_protocol_token: u64,
+    input_fee_per_token: u64,
+    output_fee_per_token: u64,
     relative_performance: u64,
 ) -> Result<TransactionDigest> {
     let active_address = context.wallet.active_address()?;
@@ -29,7 +30,8 @@ pub(crate) async fn command(
                 SuiJsonValue::from_object_id(manager_badge),
                 SuiJsonValue::new(model_name.into())?,
                 SuiJsonValue::new(echelon.to_string().into())?,
-                SuiJsonValue::new(fee_in_protocol_token.to_string().into())?,
+                SuiJsonValue::new(input_fee_per_token.to_string().into())?,
+                SuiJsonValue::new(output_fee_per_token.to_string().into())?,
                 SuiJsonValue::new(relative_performance.to_string().into())?,
             ],
             None,

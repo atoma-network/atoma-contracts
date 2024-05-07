@@ -76,9 +76,10 @@ enum DbCmds {
         model: String,
         #[arg(short, long)]
         echelon: u64,
-        /// Max fee per character in protocol token.
         #[arg(short, long)]
-        fee_in_protocol_token: u64,
+        input_fee_per_token: u64,
+        #[arg(short, long)]
+        output_fee_per_token: u64,
         #[arg(short, long)]
         relative_performance: u64,
     },
@@ -204,14 +205,16 @@ async fn main() -> Result<()> {
             package,
             model,
             echelon,
-            fee_in_protocol_token,
+            input_fee_per_token,
+            output_fee_per_token,
             relative_performance,
         })) => {
             let digest = db::add_model_echelon(
                 &mut context.with_optional_package_id(package),
                 &model,
                 echelon,
-                fee_in_protocol_token,
+                input_fee_per_token,
+                output_fee_per_token,
                 relative_performance,
             )
             .await?;

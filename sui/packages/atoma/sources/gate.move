@@ -98,6 +98,7 @@ module atoma::gate {
             wallet,
             params.model,
             max_fee_per_token,
+            max_fee_per_token,
             tokens_count,
             nodes_to_sample,
             ctx,
@@ -126,7 +127,8 @@ module atoma::gate {
         atoma: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
         params: Text2ImagePromptParams,
-        max_fee_per_token: u64,
+        max_fee_per_input_token: u64,
+        max_fee_per_output_token: u64,
         tokens_count: u64,
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
@@ -135,7 +137,8 @@ module atoma::gate {
             atoma,
             wallet,
             params.model,
-            max_fee_per_token,
+            max_fee_per_input_token,
+            max_fee_per_output_token,
             tokens_count,
             nodes_to_sample,
             ctx,
@@ -220,7 +223,8 @@ module atoma::gate {
         atoma: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
         model: ascii::String,
-        max_fee_per_token: u64,
+        max_fee_per_input_token: u64,
+        max_fee_per_output_token: u64,
         tokens_count: u64,
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
@@ -235,7 +239,8 @@ module atoma::gate {
         let echelon_index = select_eligible_echelon_at_random(
             echelons,
             nodes_to_sample,
-            max_fee_per_token,
+            max_fee_per_input_token,
+            max_fee_per_output_token,
             ctx,
         );
         let echelon = echelons.borrow(echelon_index);
@@ -323,7 +328,8 @@ module atoma::gate {
     fun select_eligible_echelon_at_random(
         echelons: &vector<ModelEchelon>,
         nodes_to_sample: u64,
-        max_fee_per_token: u64,
+        max_fee_per_input_token: u64,
+        max_fee_per_output_token: u64,
         ctx: &mut TxContext,
     ): u64 {
         //
@@ -337,8 +343,9 @@ module atoma::gate {
         while (index < echelon_count) {
             let echelon = echelons.borrow(index);
 
-            let fee = echelon.get_model_echelon_fee();
-            if (fee > max_fee_per_token) {
+            let (input_fee, output_fee) = echelon.get_model_echelon_fees();
+            if (input_fee > max_fee_per_input_token
+                || output_fee > max_fee_per_output_token) {
                 index = index + 1;
                 continue
             };

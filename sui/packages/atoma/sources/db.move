@@ -479,6 +479,10 @@ module atoma::db {
 
     public fun get_model_echelon_id(self: &ModelEchelon): EchelonId { self.id }
 
+    public fun get_model_echelon_fees(self: &ModelEchelon): (u64, u64) {
+        (self.input_fee_per_token, self.output_fee_per_token)
+    }
+
     public fun get_model_echelon_input_fee(self: &ModelEchelon): u64 {
         self.input_fee_per_token
     }

@@ -62,7 +62,8 @@ module atoma::prompts {
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
         model: ascii::String,
-        max_fee_per_token: u64,
+        max_fee_per_input_token: u64,
+        max_fee_per_output_pixel: u64,
         ctx: &mut TxContext,
     ) {
         let tokens_count = 64;
@@ -89,7 +90,8 @@ module atoma::prompts {
             atoma,
             wallet.balance_mut(),
             params,
-            max_fee_per_token,
+            max_fee_per_input_token,
+            max_fee_per_output_pixel,
             tokens_count,
             option::some(1), // default nodes to sample
             ctx,
