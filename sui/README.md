@@ -95,7 +95,7 @@ See the contract documentation for more information on what these parameters mea
     --package "your package id can be found when publishing" \
     --model "llama" \
     --echelon 1 \
-    --fee-in-protocol-token 1000 \
+    --input-fee-per-token 1000 \
     --relative-performance 100
 ```
 

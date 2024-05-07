@@ -78,8 +78,9 @@ enum DbCmds {
         echelon: u64,
         #[arg(short, long)]
         input_fee_per_token: u64,
+        /// Defaults to input_fee_per_token.
         #[arg(short, long)]
-        output_fee_per_token: u64,
+        output_fee_per_token: Option<u64>,
         #[arg(short, long)]
         relative_performance: u64,
     },
@@ -214,7 +215,7 @@ async fn main() -> Result<()> {
                 &model,
                 echelon,
                 input_fee_per_token,
-                output_fee_per_token,
+                output_fee_per_token.unwrap_or(input_fee_per_token),
                 relative_performance,
             )
             .await?;
