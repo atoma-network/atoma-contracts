@@ -1,7 +1,5 @@
 module atoma::prompts {
-    //! This module provides some default prompts by Atoma.
-    //! However, patterns in this module can be reused by any partnered contract
-    //! that was authorized with PromptBadge.
+    //! This module provides some example prompts by Atoma.
     //!
     //! To convert 1.0 to 1065353216, you can use this snippet:
     //! ```rust
