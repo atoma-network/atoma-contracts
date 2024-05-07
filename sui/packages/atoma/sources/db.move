@@ -188,8 +188,16 @@ module atoma::db {
         /// If settlement is not done within this time, we attempt to settle
         /// without waiting for nodes that did not respond.
         settlement_timeout_ms: u64,
-        /// How much per character is charged by nodes in this group.
-        fee_in_protocol_token: u64,
+        /// How much per input token is charged by nodes in this group.
+        /// In TOMA tokens.
+        input_fee_per_token: u64,
+        /// How much per output token is charged by nodes in this group.
+        /// In TOMA tokens.
+        ///
+        /// The difference between input and output is made because the input
+        /// could be text and output could be an image, in which case this is
+        /// interpreted as a fee per pixel.
+        output_fee_per_token: u64,
         /// The higher this number, the more likely this echelon is to be
         /// selected to serve a prompt.
         /// Read it as "relative performance compared to other echelons".
@@ -471,8 +479,12 @@ module atoma::db {
 
     public fun get_model_echelon_id(self: &ModelEchelon): EchelonId { self.id }
 
-    public fun get_model_echelon_fee(self: &ModelEchelon): u64 {
-        self.fee_in_protocol_token
+    public fun get_model_echelon_input_fee(self: &ModelEchelon): u64 {
+        self.input_fee_per_token
+    }
+
+    public fun get_model_echelon_output_fee(self: &ModelEchelon): u64 {
+        self.output_fee_per_token
     }
 
     public fun get_model_echelon_nodes(self: &ModelEchelon): &TableVec<SmallId> {
@@ -648,21 +660,21 @@ module atoma::db {
         model_name: ascii::String,
         ctx: &mut TxContext,
     ) {
-        let model = create_model(model_name, badge, ctx);
-        add_model(self, model, badge);
+        let model = create_model(badge, model_name, ctx);
+        add_model(self, badge, model);
     }
 
     public fun add_model(
         self: &mut AtomaDb,
-        model: ModelEntry,
         _: &AtomaManagerBadge,
+        model: ModelEntry,
     ) {
         self.models.add(model.name, model);
     }
 
     public fun create_model(
-        model_name: ascii::String,
         _: &AtomaManagerBadge,
+        model_name: ascii::String,
         ctx: &mut TxContext,
     ): ModelEntry {
         ModelEntry {
@@ -679,26 +691,35 @@ module atoma::db {
         badge: &AtomaManagerBadge,
         model_name: ascii::String,
         echelon: u64,
-        fee_in_protocol_token: u64,
+        input_fee_per_token: u64,
+        output_fee_per_token: u64,
         relative_performance: u64,
         ctx: &mut TxContext,
     ) {
         let model = self.models.borrow_mut(model_name);
         add_model_echelon(
-            model, echelon, fee_in_protocol_token, relative_performance, badge, ctx
+            badge,
+            model,
+            echelon,
+            input_fee_per_token,
+            output_fee_per_token,
+            relative_performance,
+            ctx,
         )
     }
 
     /// The fee is charged per character.
     public fun add_model_echelon(
+        _: &AtomaManagerBadge,
         model: &mut ModelEntry,
         echelon: u64,
-        fee_in_protocol_token: u64,
+        input_fee_per_token: u64,
+        output_fee_per_token: u64,
         relative_performance: u64,
-        _: &AtomaManagerBadge,
         ctx: &mut TxContext,
     ) {
-        assert!(fee_in_protocol_token > 0, EProtocolFeeCannotBeZero);
+        assert!(input_fee_per_token > 0, EProtocolFeeCannotBeZero);
+        assert!(output_fee_per_token > 0, EProtocolFeeCannotBeZero);
         assert!(relative_performance > 0, ERelativePerformanceCannotBeZero);
         let echelon_id = EchelonId { id: echelon };
         assert!(
@@ -707,7 +728,8 @@ module atoma::db {
         );
         vector::push_back(&mut model.echelons, ModelEchelon {
             id: echelon_id,
-            fee_in_protocol_token,
+            input_fee_per_token,
+            output_fee_per_token,
             relative_performance,
             settlement_timeout_ms: InitialSettlementTimeoutMs,
             oracles: vec_set::empty(),
@@ -719,8 +741,8 @@ module atoma::db {
     /// bunch of model echelons one by one and then remove the model.
     public entry fun remove_model(
         self: &mut AtomaDb,
-        model_name: ascii::String,
         _: &AtomaManagerBadge,
+        model_name: ascii::String,
     ) {
         let ModelEntry {
             id: model_id,
@@ -735,7 +757,8 @@ module atoma::db {
         while (index < len) {
             let ModelEchelon {
                 id: _,
-                fee_in_protocol_token: _,
+                input_fee_per_token: _,
+                output_fee_per_token: _,
                 relative_performance: _,
                 settlement_timeout_ms: _,
                 oracles: _,
@@ -749,15 +772,16 @@ module atoma::db {
 
     public entry fun remove_model_echelon(
         self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
         model_name: ascii::String,
         echelon: u64,
-        _: &AtomaManagerBadge,
     ) {
         let model = object_table::borrow_mut(&mut self.models, model_name);
         let echelon_id = EchelonId { id: echelon };
         let ModelEchelon {
             id: _,
-            fee_in_protocol_token: _,
+            input_fee_per_token: _,
+            output_fee_per_token: _,
             relative_performance: _,
             settlement_timeout_ms: _,
             oracles: _,
@@ -768,8 +792,8 @@ module atoma::db {
 
     public entry fun disable_model(
         self: &mut AtomaDb,
-        model_name: ascii::String,
         _: &AtomaManagerBadge,
+        model_name: ascii::String,
     ) {
         let model = self.models.borrow_mut(model_name);
         model.is_disabled = true;
@@ -777,8 +801,8 @@ module atoma::db {
 
     public entry fun enable_model(
         self: &mut AtomaDb,
-        model_name: ascii::String,
         _: &AtomaManagerBadge,
+        model_name: ascii::String,
     ) {
         let model = self.models.borrow_mut(model_name);
         model.is_disabled = false;
@@ -794,16 +818,16 @@ module atoma::db {
 
     public entry fun set_required_registration_toma_collateral(
         self: &mut AtomaDb,
-        new_required_collateral: u64,
         _: &AtomaManagerBadge,
+        new_required_collateral: u64,
     ) {
         self.registration_collateral_in_protocol_token = new_required_collateral;
     }
 
     public entry fun set_permille_to_slash_node_on_timeout(
         self: &mut AtomaDb,
-        new_permille: u64,
         _: &AtomaManagerBadge,
+        new_permille: u64,
     ) {
         assert!(new_permille <= 1000, ETotalPermilleMustBeLessThan1000);
         self.permille_to_slash_node_on_timeout = new_permille;
@@ -811,8 +835,8 @@ module atoma::db {
 
     public entry fun set_permille_for_oracle_on_dispute(
         self: &mut AtomaDb,
-        new_permille: u64,
         _: &AtomaManagerBadge,
+        new_permille: u64,
     ) {
         assert!(
             new_permille + self.permille_for_honest_nodes_on_dispute <= 1000,
@@ -823,8 +847,8 @@ module atoma::db {
 
     public entry fun set_permille_for_honest_nodes_on_dispute(
         self: &mut AtomaDb,
-        new_permille: u64,
         _: &AtomaManagerBadge,
+        new_permille: u64,
     ) {
         assert!(
             new_permille + self.permille_for_oracle_on_dispute <= 1000,
@@ -836,23 +860,25 @@ module atoma::db {
     /// The fee is charged per character.
     public entry fun set_model_echelon_fee(
         self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
         model_name: ascii::String,
         echelon: u64,
-        new_fee_in_protocol_token: u64,
-        _: &AtomaManagerBadge,
+        new_input_fee_per_token: u64,
+        new_output_fee_per_token: u64,
     ) {
         let model = self.models.borrow_mut(model_name);
         let echelon_id = EchelonId { id: echelon };
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
-        echelon.fee_in_protocol_token = new_fee_in_protocol_token;
+        echelon.input_fee_per_token = new_input_fee_per_token;
+        echelon.output_fee_per_token = new_output_fee_per_token;
     }
 
     public entry fun add_model_echelon_oracle_node(
         self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
         model_name: ascii::String,
         echelon: u64,
         node_small_id: u64,
-        _: &AtomaManagerBadge,
     ) {
         let model = self.models.borrow_mut(model_name);
         let echelon_id = EchelonId { id: echelon };

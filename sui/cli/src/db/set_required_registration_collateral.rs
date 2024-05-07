@@ -23,10 +23,10 @@ pub(crate) async fn command(
             vec![],
             vec![
                 SuiJsonValue::from_object_id(atoma_db),
+                SuiJsonValue::from_object_id(manager_badge),
                 SuiJsonValue::new(
                     new_required_collateral_amount.to_string().into(),
                 )?,
-                SuiJsonValue::from_object_id(manager_badge),
             ],
             None,
             context.gas_budget(),
