@@ -1,6 +1,6 @@
 use crate::{prelude::*, DB_MODULE_NAME};
 
-const ENDPOINT_NAME: &str = "register_node_entry";
+const ENDPOINT_NAME: &str = "permanently_disable_node";
 
 pub(crate) async fn command(
     context: &mut Context,
@@ -8,7 +8,7 @@ pub(crate) async fn command(
     let active_address = context.wallet.active_address()?;
     let package = context.unwrap_package_id();
     let atoma_db = context.get_or_load_atoma_db().await?;
-    let toma_wallet = context.get_or_load_toma_wallet().await?;
+    let (node_badge, _) = context.get_or_load_node_badge().await?;
 
     let tx = context
         .get_client()
@@ -22,7 +22,7 @@ pub(crate) async fn command(
             vec![],
             vec![
                 SuiJsonValue::from_object_id(atoma_db),
-                SuiJsonValue::from_object_id(toma_wallet),
+                SuiJsonValue::from_object_id(node_badge),
             ],
             None,
             context.gas_budget(),
