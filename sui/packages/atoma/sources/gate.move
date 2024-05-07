@@ -89,6 +89,8 @@ module atoma::gate {
     }
 
     /// The fee is per input token.
+    ///
+    /// Returns ticket ID which is an identifier of the settlement object.
     public fun submit_text2text_prompt(
         atoma: &mut AtomaDb,
         _:& PromptBadge,
@@ -98,7 +100,7 @@ module atoma::gate {
         tokens_count: u64,
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
-    ) {
+    ): ID {
         let (mut ticket, selected_nodes) = submit_prompt(
             atoma,
             wallet,
@@ -121,9 +123,13 @@ module atoma::gate {
             ticket_id,
             nodes: selected_nodes,
         });
+
+        ticket_id
     }
 
     /// The fee is per input token.
+    ///
+    /// Returns ticket ID which is an identifier of the settlement object.
     public fun submit_text2image_prompt(
         atoma: &mut AtomaDb,
         _:& PromptBadge,
@@ -133,7 +139,7 @@ module atoma::gate {
         tokens_count: u64,
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
-    ) {
+    ): ID {
         let (mut ticket, selected_nodes) = submit_prompt(
             atoma,
             wallet,
@@ -156,6 +162,8 @@ module atoma::gate {
             ticket_id,
             nodes: selected_nodes,
         });
+
+        ticket_id
     }
 
     /// Arguments to `Text2TextPromptParams` in alphabetical order.
