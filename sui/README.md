@@ -6,6 +6,18 @@ Useful links:
 - [Sui Move Analyzer][sui-analyzer]
 - [Sui standard lib on Github][github-sui-std]
 
+## Events
+
+- `NodeRegisteredEvent` is emitted when a new node puts up collateral to register.
+- `NodeSubscribedToModelEvent` is emitted when a node subscribes to a model echelon and is ready to receive prompts.
+- `Text2TextPromptEvent` is emitted when a user submits a text to text prompt.
+- `Text2ImagePromptEvent` is emitted when a user submits a text to image prompt.
+- `FirstSubmissionEvent` is emitted when a node submits the _first_ response to a prompt.
+- `DisputeEvent` is emitted when a node disputes a submission.
+  Now, we want for an oracle to resolve the dispute.
+- `SettledEvent` is emitted when a ticket is settled and fee is distributed.
+- `NewlySampledNodesEvent` is emitted when a new set of nodes is sampled for a prompt because of timeout.
+
 ## Dev Environment
 
 There's a [`check` shell script](dev/check) that builds all packages.
