@@ -70,8 +70,12 @@ module atoma::gate {
         n_steps: u64,
         num_samples: u64,
         prompt: string::String,
-        random_seed: u64,
+        uncond_prompt: string::String,
+        random_seed: u32,
         width: u64,
+        img2img: Option<string::String>,
+        /// Represents a floating point number, little endian
+        img2img_strength: u32,
     }
 
     #[allow(unused_field)]
@@ -199,8 +203,11 @@ module atoma::gate {
         n_steps: u64,
         num_samples: u64,
         prompt: string::String,
-        random_seed: u64,
+        uncond_prompt: string::String,
+        random_seed: u32,
         width: u64,
+        img2img: Option<string::String>,
+        img2img_strength: u32,
     ): Text2ImagePromptParams {
         Text2ImagePromptParams {
             guidance_scale,
@@ -209,8 +216,11 @@ module atoma::gate {
             n_steps,
             num_samples,
             prompt,
+            uncond_prompt,
             random_seed,
             width,
+            img2img,
+            img2img_strength,
         }
     }
 

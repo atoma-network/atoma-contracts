@@ -113,7 +113,7 @@ echo
 echo "Sending test text prompt"
 
 ./cli gate submit-tell-me-a-joke-prompt \
-    --package "${package}" \
+    --package "0x1ec20ef2a26ee5b1f5187b1b0d4f5e63fb69f74b0d1b178b866d13328220e7a7" \
     --model "stable_diffusion_v1-5"
 
 echo

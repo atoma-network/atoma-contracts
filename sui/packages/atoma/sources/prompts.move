@@ -82,12 +82,14 @@ module atoma::prompts {
         let tokens_count = 64;
 
         let guidance_scale = 1065353216; // 1.0
-        let height = 360;
+        let height = 256;
         let n_steps = 40;
         let num_samples = 2;
         let prompt = string::utf8(b"Generate a bored ape NFT");
-        let random_seed = atoma::utils::random_u64(ctx);
-        let width = 640;
+        let uncond_prompt = string::utf8(b"Shinny, bright, bored, blue background");
+        let random_seed = atoma::utils::random_u32(ctx);
+        let width = 256;
+        let img2img_strength = 1065353216; // 1.0
 
         let params = atoma::gate::create_text2image_prompt_params(
             guidance_scale,
@@ -96,8 +98,11 @@ module atoma::prompts {
             n_steps,
             num_samples,
             prompt,
+            uncond_prompt,
             random_seed,
             width,
+            option::none(),
+            img2img_strength,
         );
         atoma::gate::submit_text2image_prompt(
             atoma,
