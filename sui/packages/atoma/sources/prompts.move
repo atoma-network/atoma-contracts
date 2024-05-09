@@ -85,7 +85,7 @@ module atoma::prompts {
         let height = 360;
         let n_steps = 40;
         let num_samples = 2;
-        let prompt = string::utf8(b"Generate an NFT");
+        let prompt = string::utf8(b"Generate a bored ape NFT");
         let random_seed = atoma::utils::random_u64(ctx);
         let width = 640;
 

@@ -133,6 +133,14 @@ enum GateCmds {
         #[arg(long, default_value_t = 1_000)]
         max_fee_per_token: u64,
     },
+    SubmitGenerateNftPrompt {
+        #[arg(short, long)]
+        package: Option<String>,
+        #[arg(short, long)]
+        model: String,
+        #[arg(long, default_value_t = 1_000)]
+        max_fee_per_token: u64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -280,6 +288,20 @@ async fn main() -> Result<()> {
             max_fee_per_token,
         })) => {
             let digest = gate::submit_tell_me_a_joke_prompt(
+                &mut context.with_optional_package_id(package),
+                &model,
+                max_fee_per_token,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Gate(GateCmds::SubmitGenerateNftPrompt {
+            package,
+            model,
+            max_fee_per_token,
+        })) => {
+            let digest = gate::submit_generate_nft_prompt(
                 &mut context.with_optional_package_id(package),
                 &model,
                 max_fee_per_token,
