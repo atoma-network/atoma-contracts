@@ -5,7 +5,7 @@
 #
 # Usage: ./oneclicksetup.sh
 #
-# When this script is done, we will have a model named "stable_diffusion_v1-5" with one echelon
+# When this script is done, we will have a model named "llama" with one echelon
 # ID 1, and a node registered to that model echelon.
 # Also, it will create .env file in the sui directory with configuration that
 # this script generated.
@@ -84,11 +84,11 @@ cd $root_dir/sui/dev
 
 ./cli db add-model \
     --package "${package}" \
-    --name "stable_diffusion_v1-5"
+    --name "llama"
 
 ./cli db add-model-echelon \
     --package "${package}" \
-    --model "stable_diffusion_v1-5" \
+    --model "llama" \
     --echelon 1 \
     --fee-in-protocol-token 1 \
     --relative-performance 100
@@ -101,7 +101,7 @@ cd $root_dir/sui/dev
 
 ./cli db add-node-to-model \
     --package "${package}" \
-    --model "stable_diffusion_v1-5" \
+    --model "llama" \
     --echelon 1
 
 echo
@@ -113,8 +113,8 @@ echo
 echo "Sending test text prompt"
 
 ./cli gate submit-tell-me-a-joke-prompt \
-    --package "0x1ec20ef2a26ee5b1f5187b1b0d4f5e63fb69f74b0d1b178b866d13328220e7a7" \
-    --model "stable_diffusion_v1-5"
+    --package "${package}" \
+    --model "llama"
 
 echo
 echo
