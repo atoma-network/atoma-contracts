@@ -78,13 +78,16 @@ module atoma::settlement {
         /// It's empty when the ticket is created.
         /// The first node that submits commitment will fill in this root.
         ///
-        /// Each node must submit their root and the part of hash of chunk.
-        /// A chunk is `H(output, node_position)`.
-        /// If the final hash does not match the root, or if any node does not
-        /// agree with the root, the settlement is being disputed.
-        ///
+        /// Each node must submits the root and its sampled position in an n-ary
+        /// tree.
+        /// N is given by the number of nodes that must submit commitment.
+        /// Its sampled position, called a chunk is, `H(output, node_position)`.
+        /// The root is calculated as a hash of all the chunks:
         /// `H(H(output, 1), H(output, 2), …, H(output, n))`
         /// where `n` is the number of sampled nodes, ie. `all.len()`.
+        ///
+        /// If the final hash does not match the root, or if any node does not
+        /// agree with the root, the settlement is being disputed.
         merkle_root: vector<u8>,
         /// The root must match the hash of the leaves of the merkle tree.
         /// Each leaf is a 32 byte Blake2b-256 hash of the output plus nodes
