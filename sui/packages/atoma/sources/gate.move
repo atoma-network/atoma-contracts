@@ -1,5 +1,5 @@
 module atoma::gate {
-    use atoma::db::{AtomaManagerBadge, SmallId, ModelEchelon, AtomaDb};
+    use atoma::db::{SmallId, ModelEchelon, AtomaDb};
     use atoma::settlement::SettlementTicket;
     use atoma::utils::random_u256;
     use std::ascii;
@@ -13,13 +13,6 @@ module atoma::gate {
 
     const ENoEligibleEchelons: u64 = 0;
     const ETooManyNodesToSample: u64 = 1;
-
-    /// Stored or owned object.
-    ///
-    /// Anyone holding on this object can submit raw prompts.
-    public struct PromptBadge has key, store {
-        id: UID,
-    }
 
     #[allow(unused_field)]
     /// Serves as an input to the `submit_text2text_prompt` function.
@@ -97,20 +90,24 @@ module atoma::gate {
     /// Returns ticket ID which is an identifier of the settlement object.
     public fun submit_text2text_prompt(
         atoma: &mut AtomaDb,
-        _:& PromptBadge,
         wallet: &mut Balance<TOMA>,
         params: Text2TextPromptParams,
         max_fee_per_token: u64,
-        tokens_count: u64,
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
     ): ID {
+        // these are approximations that will get refunded partly
+        let input_characters = params.prompt.length();
+        let output_tokens = params.max_tokens;
+
         let (mut ticket, selected_nodes) = submit_prompt(
             atoma,
             wallet,
             params.model,
             max_fee_per_token,
-            tokens_count,
+            input_characters,
+            max_fee_per_token,
+            output_tokens,
             nodes_to_sample,
             ctx,
         );
@@ -136,20 +133,26 @@ module atoma::gate {
     /// Returns ticket ID which is an identifier of the settlement object.
     public fun submit_text2image_prompt(
         atoma: &mut AtomaDb,
-        _:& PromptBadge,
         wallet: &mut Balance<TOMA>,
         params: Text2ImagePromptParams,
-        max_fee_per_token: u64,
-        tokens_count: u64,
+        max_fee_per_input_token: u64,
+        max_fee_per_output_token: u64,
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
     ): ID {
+        // this is approximation that will get refunded partly
+        let input_characters = params.prompt.length();
+        // this we know exactly
+        let output_pixels = params.width * params.height;
+
         let (mut ticket, selected_nodes) = submit_prompt(
             atoma,
             wallet,
             params.model,
-            max_fee_per_token,
-            tokens_count,
+            max_fee_per_input_token,
+            input_characters,
+            max_fee_per_output_token,
+            output_pixels,
             nodes_to_sample,
             ctx,
         );
@@ -224,33 +227,15 @@ module atoma::gate {
         }
     }
 
-    public fun create_prompt_badge(
-        _: &AtomaManagerBadge,
-        ctx: &mut TxContext,
-    ): PromptBadge {
-        let id = object::new(ctx);
-        PromptBadge { id }
-    }
-
-    public fun destroy_prompt_badge(badge: PromptBadge) {
-        let PromptBadge { id } = badge;
-        id.delete();
-    }
-
-    // =========================================================================
-    //                              Package private functions
-    // =========================================================================
-
-    public(package) fun create_prompt_badge_(ctx: &mut TxContext): PromptBadge {
-        let id = object::new(ctx);
-        PromptBadge { id }
-    }
-
     // =========================================================================
     //                              Helpers
     // =========================================================================
 
-    /// The fee is per input token.
+    /// The fee is per input and output tokens.
+    /// The provided estimation of the number of tokens is used to calculate
+    /// the charged amount.
+    /// However, the real fee is calculated when the nodes submit the results.
+    /// The difference is refunded to the user.
     ///
     /// 1. Get the model echelons from the database.
     /// 2. Randomly pick one of the echelons.
@@ -261,8 +246,10 @@ module atoma::gate {
         atoma: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
         model: ascii::String,
-        max_fee_per_token: u64,
-        tokens_count: u64,
+        max_fee_per_input_token: u64,
+        approx_input_tokens_count: u64,
+        max_fee_per_output_token: u64,
+        approx_output_tokens_count: u64,
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
     ): (SettlementTicket, vector<SmallId>) {
@@ -276,14 +263,15 @@ module atoma::gate {
         let echelon_index = select_eligible_echelon_at_random(
             echelons,
             nodes_to_sample,
-            max_fee_per_token,
+            max_fee_per_input_token,
+            max_fee_per_output_token,
             ctx,
         );
         let echelon = echelons.borrow(echelon_index);
         let echelon_id = echelon.get_model_echelon_id();
         let echelon_settlement_timeout_ms =
             echelon.get_model_echelon_settlement_timeout_ms();
-        let echelon_fee_per_token = echelon.get_model_echelon_fee();
+        let (input_fee, output_fee) = echelon.get_model_echelon_fees();
 
         // 3.
         let mut sampled_nodes = vector::empty();
@@ -308,7 +296,8 @@ module atoma::gate {
 
         // 4.
         // we must fit into u64 bcs that's the limit of Balance
-        let collected_fee = echelon_fee_per_token * tokens_count;
+        let collected_fee = input_fee * approx_input_tokens_count
+            + output_fee * approx_output_tokens_count;
         atoma.deposit_to_fee_treasury(wallet.split(collected_fee));
 
         // 5.
@@ -316,6 +305,8 @@ module atoma::gate {
             model,
             echelon_id,
             sampled_nodes,
+            input_fee,
+            output_fee,
             collected_fee,
             echelon_settlement_timeout_ms,
             ctx,
@@ -364,7 +355,8 @@ module atoma::gate {
     fun select_eligible_echelon_at_random(
         echelons: &vector<ModelEchelon>,
         nodes_to_sample: u64,
-        max_fee_per_token: u64,
+        max_fee_per_input_token: u64,
+        max_fee_per_output_token: u64,
         ctx: &mut TxContext,
     ): u64 {
         //
@@ -378,8 +370,9 @@ module atoma::gate {
         while (index < echelon_count) {
             let echelon = echelons.borrow(index);
 
-            let fee = echelon.get_model_echelon_fee();
-            if (fee > max_fee_per_token) {
+            let (input_fee, output_fee) = echelon.get_model_echelon_fees();
+            if (input_fee > max_fee_per_input_token
+                || output_fee > max_fee_per_output_token) {
                 index = index + 1;
                 continue
             };
