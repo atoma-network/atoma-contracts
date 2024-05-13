@@ -29,9 +29,10 @@ cd "${root_dir}/sui/packages/toma"
 sui move build
 
 echo
-echo " ==== Building node_manager package ===="
+echo " ==== Building Atoma network package ===="
 cd "${root_dir}/sui/packages/atoma"
 sui move build
+sui move test
 
 echo
 echo " ==== Building CLI ===="
