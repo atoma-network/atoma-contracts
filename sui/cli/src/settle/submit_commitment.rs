@@ -31,11 +31,18 @@ pub(crate) async fn command(
     // TODO: use the same implementation as the node (if sampled nodes don't
     // divide the output evenly, the last chunk must be smaller)
 
-    let merkle_leaves: Vec<u8> = prompt_output
-        .as_bytes()
-        .chunks(chunk_size)
-        .flat_map(|chunk| Blake2b256::digest(chunk).digest.into_iter())
+    let merkle_leaves: Vec<u8> = (0..sampled_nodes_count)
+        .flat_map(|n| {
+            let n = n.to_le_bytes();
+            Blake2b256::digest({
+                let output = prompt_output.as_bytes();
+                [output, n.as_slice()].concat()
+            })
+            .digest
+            .into_iter()
+        })
         .collect();
+
     let merkle_root = Blake2b256::digest(&merkle_leaves).digest;
     let chunk_hash =
         merkle_leaves[chunk_position * 32..(chunk_position + 1) * 32].to_vec();

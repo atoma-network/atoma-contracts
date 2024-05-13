@@ -26,6 +26,7 @@ module atoma::prompts {
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
         model: ascii::String,
+        output_destination: vector<u8>,
         max_fee_per_token: u64,
         ctx: &mut TxContext,
     ) {
@@ -40,6 +41,7 @@ module atoma::prompts {
         let params = atoma::gate::create_text2text_prompt_params(
             max_tokens,
             model,
+            output_destination,
             prompt,
             random_seed,
             repeat_last_n,
@@ -70,6 +72,7 @@ module atoma::prompts {
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
         model: ascii::String,
+        output_destination: vector<u8>,
         max_fee_per_input_token: u64,
         max_fee_per_output_pixel: u64,
         ctx: &mut TxContext,
@@ -83,15 +86,17 @@ module atoma::prompts {
         let random_seed = atoma::utils::random_u32(ctx);
         let width = 256;
         let img2img_strength = 1065353216; // 1.0
+        let img2img = option::none();
 
         let params = atoma::gate::create_text2image_prompt_params(
             guidance_scale,
             height,
-            option::none(),
             img2img_strength,
+            img2img,
             model,
             n_steps,
             num_samples,
+            output_destination,
             prompt,
             random_seed,
             uncond_prompt,

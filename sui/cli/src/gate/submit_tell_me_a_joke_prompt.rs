@@ -12,6 +12,9 @@ pub(crate) async fn command(
     let atoma_db = context.get_or_load_atoma_db().await?;
     let toma_wallet = context.get_or_load_toma_wallet().await?;
 
+    // TODO: agree with nodes on some output destination format
+    let output_destination: Vec<u8> = vec![];
+
     let tx = context
         .get_client()
         .await?
@@ -26,6 +29,7 @@ pub(crate) async fn command(
                 SuiJsonValue::from_object_id(atoma_db),
                 SuiJsonValue::from_object_id(toma_wallet),
                 SuiJsonValue::new(model_name.into())?,
+                SuiJsonValue::new(output_destination.into())?,
                 SuiJsonValue::new(max_fee_per_token.to_string().into())?,
             ],
             None,
