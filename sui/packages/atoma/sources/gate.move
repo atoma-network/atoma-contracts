@@ -59,11 +59,15 @@ module atoma::gate {
         /// Represents a floating point number, little endian.
         guidance_scale: u32,
         height: u64,
+        img2img: Option<string::String>,
+        /// Represents a floating point number, little endian
+        img2img_strength: u32,
         model: ascii::String,
         n_steps: u64,
         num_samples: u64,
         prompt: string::String,
-        random_seed: u64,
+        random_seed: u32,
+        uncond_prompt: string::String,
         width: u64,
     }
 
@@ -198,21 +202,27 @@ module atoma::gate {
     public fun create_text2image_prompt_params(
         guidance_scale: u32,
         height: u64,
+        img2img: Option<string::String>,
+        img2img_strength: u32,
         model: ascii::String,
         n_steps: u64,
         num_samples: u64,
         prompt: string::String,
-        random_seed: u64,
+        random_seed: u32,
+        uncond_prompt: string::String,
         width: u64,
     ): Text2ImagePromptParams {
         Text2ImagePromptParams {
             guidance_scale,
             height,
+            img2img,
+            img2img_strength,
             model,
             n_steps,
             num_samples,
             prompt,
             random_seed,
+            uncond_prompt,
             width,
         }
     }

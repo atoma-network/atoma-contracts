@@ -64,21 +64,26 @@ module atoma::prompts {
         ctx: &mut TxContext,
     ) {
         let guidance_scale = 1065353216; // 1.0
-        let height = 360;
+        let height = 256;
         let n_steps = 40;
         let num_samples = 2;
-        let prompt = string::utf8(b"Generate an NFT");
-        let random_seed = atoma::utils::random_u64(ctx);
-        let width = 640;
+        let prompt = string::utf8(b"Generate a bored ape NFT");
+        let uncond_prompt = string::utf8(b"Shinny, bright, bored, blue background");
+        let random_seed = atoma::utils::random_u32(ctx);
+        let width = 256;
+        let img2img_strength = 1065353216; // 1.0
 
         let params = atoma::gate::create_text2image_prompt_params(
             guidance_scale,
             height,
+            option::none(),
+            img2img_strength,
             model,
             n_steps,
             num_samples,
             prompt,
             random_seed,
+            uncond_prompt,
             width,
         );
         atoma::gate::submit_text2image_prompt(
