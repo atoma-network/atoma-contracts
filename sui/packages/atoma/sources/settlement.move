@@ -273,12 +273,13 @@ module atoma::settlement {
         // If settlement can be done, the ticket will be destroyed.
         // If not, it will be again added to the db.
         let mut ticket = remove_settlement_ticket(atoma, ticket_id);
+        let sampled_nodes_count = ticket.all.length();
 
         //
         // 1.
         //
         if (!ticket.is_being_disputed
-            && ticket.completed.length() == ticket.all.length()) {
+            && ticket.completed.length() == sampled_nodes_count) {
             let computed_mroot = sui::hash::blake2b256(&ticket.merkle_leaves);
             if (computed_mroot == ticket.merkle_root) {
                 // happy path
@@ -306,8 +307,11 @@ module atoma::settlement {
 
                 // we can extract because the first node submits the counts
                 // and there is always at least one node
-                let exact_fee = input_fee_per_token * input_tokens_count.extract()
-                    + output_fee_per_token * output_tokens_count.extract();
+                let exact_fee = sampled_nodes_count *
+                    (
+                        input_fee_per_token * input_tokens_count.extract()
+                        + output_fee_per_token * output_tokens_count.extract()
+                    );
 
                 let reward_per_node = if (exact_fee >= collected_fee) {
                     // unlikely that it would be higher because we overestimate
@@ -344,8 +348,7 @@ module atoma::settlement {
         else if (ticket.did_timeout(ctx) && !ticket.is_being_disputed) {
             let mut new_nodes = vector::empty();
             let mut i = 0;
-            let len = ticket.all.length();
-            while (i < len) {
+            while (i < sampled_nodes_count) {
                 let node_id = ticket.all[i];
 
                 if (!ticket.completed.contains(&node_id)) {
@@ -561,8 +564,11 @@ module atoma::settlement {
 
         // we can extract because the first node submits the counts
         // and there is always at least one node
-        let exact_fee = input_fee_per_token * input_tokens_count.extract()
-            + output_fee_per_token * output_tokens_count.extract();
+        let exact_fee = all.len() *
+            (
+                input_fee_per_token * input_tokens_count.extract()
+                + output_fee_per_token * output_tokens_count.extract()
+            );
 
         let total_fee = honest_nodes_extra_fee + if (exact_fee >= collected_fee) {
             // unlikely that it would be higher because we overestimate
