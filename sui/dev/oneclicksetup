@@ -84,7 +84,8 @@ cd $root_dir/sui/dev
 
 ./cli db add-model \
     --package "${package}" \
-    --name "llama"
+    --name "llama" \
+    --text2text
 
 ./cli db add-model-echelon \
     --package "${package}" \

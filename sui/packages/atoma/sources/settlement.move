@@ -567,7 +567,7 @@ module atoma::settlement {
 
         // we can extract because the first node submits the counts
         // and there is always at least one node
-        let exact_fee = all.len() *
+        let exact_fee = all.length() *
             (
                 input_fee_per_token * input_tokens_count.extract()
                 + output_fee_per_token * output_tokens_count.extract()

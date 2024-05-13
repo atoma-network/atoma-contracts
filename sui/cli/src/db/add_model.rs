@@ -5,6 +5,7 @@ const ENDPOINT_NAME: &str = "add_model_entry";
 pub(crate) async fn command(
     context: &mut Context,
     model_name: &str,
+    modality: u64,
 ) -> Result<TransactionDigest> {
     let active_address = context.wallet.active_address()?;
     let package = context.unwrap_package_id();
@@ -25,6 +26,7 @@ pub(crate) async fn command(
                 SuiJsonValue::from_object_id(atoma_db),
                 SuiJsonValue::from_object_id(manager_badge),
                 SuiJsonValue::new(model_name.into())?,
+                SuiJsonValue::new(modality.to_string().into())?,
             ],
             None,
             context.gas_budget(),
