@@ -1,7 +1,12 @@
 module atoma::prompts {
     //! This module provides some example prompts by Atoma.
+    //! If you are writing your own smart contract that depends on Atoma, this
+    //! is a great place to start.
     //!
-    //! To convert 1.0 to 1065353216, you can use this snippet:
+    //! # Floating point numbers
+    //! Since Sui does not have floating point number representation, we store
+    //! floating point numbers as u32 integers.
+    //! For example, to convert 1.0 to 1065353216, you can use this snippet:
     //! ```rust
     //! fn main() {
     //!     let float = 1.0_f32;
@@ -48,7 +53,13 @@ module atoma::prompts {
             wallet.balance_mut(),
             params,
             max_fee_per_token,
-            option::some(1), // default nodes to sample
+            // we sample just one node because of the illustrative purposes of
+            // this prompt, so that we can deploy this contract on devnet and
+            // have it produce output without many nodes
+            //
+            // you can set this to none to let Atoma network decide how many
+            // nodes to sample
+            option::some(1),
             ctx,
         );
     }
@@ -92,7 +103,13 @@ module atoma::prompts {
             params,
             max_fee_per_input_token,
             max_fee_per_output_pixel,
-            option::some(1), // default nodes to sample
+            // we sample just one node because of the illustrative purposes of
+            // this prompt, so that we can deploy this contract on devnet and
+            // have it produce output without many nodes
+            //
+            // you can set this to none to let Atoma network decide how many
+            // nodes to sample
+            option::some(1),
             ctx,
         );
     }

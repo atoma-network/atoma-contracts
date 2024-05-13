@@ -20,82 +20,76 @@ Useful links:
 
 ## How to use the atoma protocol
 
-To use the atoma protocol, you need to interact with the `gate` module of the `atoma` package.
-This module is responsible for submitting prompts.
+To interact with the Atoma protocol, utilize the `gate` module within the `atoma` package, responsible for prompt submission.
 
-A ubiquitous parameter is the `AtomaDb` shared object ID.
-Along with the actual package ID, these are meant be configured once and you should not need to change them.
-It's possible to derive the `AtomaDb` object ID from the package ID by querying the first transaction of the package and looking for the shared object with type name `AtomaDb`.
+A crucial parameter is the shared object ID for `AtomaDb`.
+These, along with the package ID, should be configured once and remain unchanged.
+The `AtomaDb` object ID can be derived from the package ID by querying the first transaction of the package and locating the shared object with the type name `AtomaDb` _if necessary_.
 
 Before we list all the parameters, here are some general rules:
 
-- floats are stored on chain as `u32` integers.
-  The conversion from float to `u32` is done with first converting the float to little endian bytes and then interpreting those bytes as a `u32`: `u32::from_le_bytes(xxx_f32.to_le_bytes())`.
-  Conversely, to go from `u32` to float you can use `f32::from_le_bytes(xxx_u32.to_le_bytes())`.
+- Floats are stored on-chain as `u32` integers.
+  To convert from float to `u32`, convert the float to little-endian bytes and then interpret those bytes as a little-endian `u32`: `u32::from_le_bytes(xxx_f32.to_le_bytes())`
+  Conversely, to convert from `u32` to float, use the reverse process.
 
-As of now, we support these modalities:
+As of now, the supported modalities are:
 
 - `submit_text2text_prompt` with params `Text2TextPromptParams`:
 
-  - `max_tokens` of output to be generated.
-    This value also determines how much `TOMA` tokens are charged from the user submitting the prompt.
-    If the output prompt is generated with fewer tokens, the remaining tokens are refunded to the user when the response is generated.
-  - `model` is a string identifier of the model to be used.
-    It must be a model that supports text to text generation.
-    For a list of models supported by the atoma network, see our website.
-  - `prompt` is the input text prompt.
-    There's no limit to the prompt length in the contract, but a Sui transaction can be 128KB at most.
-  - `random_seed` any random number to seed the random generator.
-    Necessary so that all the nodes generate the same output for the same prompt for non zero temperature.
+  - `max_tokens`: determines the maximum output to be generated and also the amount of `TOMA` tokens charged.
+    Unused tokens are refunded upon response generation.
+    We discuss pricing below.
+  - `model`: a string identifier of the model for text-to-text generation.
+    Refer to our website for supported models.
+  - `prompt`: input text prompt.
+    There's no limit to the prompt length at the protocol level, but a Sui transaction can be at most 128KB.
+  - `random_seed`: any random number to seed the random generator for consistent output across nodes.
     Before Sui stabilizes random generator, you can use `atoma::utils::random_u64`.
-  - `repeat_last_n` tells the model to avoid reusing tokens within the last `n` tokens.
-  - `repeat_penalty` is a float number that determines how much the model should avoid repeating tokens.
-    The higher the number, the less likely the model is to repeat tokens.
-  - `temperature` is a float number that determines how much randomness is added to the output.
-    The higher the number, the more random the output.
-  - `top_k` is an integer that determines how many tokens are considered for the next token generation.
-    The higher the number, the more diverse the output.
-  - `top_p` is a float number that determines how many tokens are considered for the next token generation.
-    The higher the number, the more diverse the output.
+  - `repeat_last_n`: instructs the model to avoid reusing tokens within the last `n` tokens.
+  - `repeat_penalty`: a float number determining token repetition avoidance.
+  - `temperature`: a float number determining randomness in the output.
+  - `top_k`: an integer determining token consideration for the next generation.
+  - `top_p`: a float number determining token consideration for the next generation.
 
 - `submit_text2image_prompt` with params `Text2ImagePromptParams`:
-  - `guidance_scale` is a float number that determines how much the guidance image is considered.
-    The higher the number, the more the guidance image is considered.
-  - `height` of the image.
-    Along with `width`, it determines how much is the user charged.
-  - `img2img` is an optional string. Which image you should use to start generating with stable diffusion?
-  - `img2img_strength` is a float number. How much should the model consider the `img2img` image?
-    Will be ignored if `img2img` is not provided.
-  - `model` see above.
-  - `n_steps` is an integer. How many steps should the model take to generate the image?
-  - `num_samples` is an integer. How many samples should the model generate?
-  - `prompt` see above.
-  - `random_seed` see above.
-  - `uncond_prompt` is negative word prompt.
-  - `width` of the image.
-    Along with `height`, it determines how much is the user charged.
 
-You will also need a wallet with some `TOMA` tokens to pay for the prompt.
-The payment differs based on the prompt type.
+  - `guidance_scale`: a float number determining the consideration of the guidance image.
+  - `height`: height of the image.
+    See pricing below.
+  - `img2img`: an optional string indicating the image to start generating with stable diffusion.
+  - `img2img_strength`: a float number indicating the consideration of the `img2img` image.
+  - `model`: same as above.
+  - `n_steps`: an integer indicating how many steps the model should take to generate the image.
+  - `num_samples`: an integer indicating how many samples the model should generate.
+  - `prompt`: same as above.
+  - `random_seed`: same as above.
+  - `uncond_prompt`: negative word prompt.
+  - `width`: width of the image.
+
+A wallet with `TOMA` tokens is required for prompt payment, with charges varying based on prompt type.
+Pricing for input and output tokens differs for each model.
 Each model has a pricing for input and output tokens as two separate parameters.
 For text to text models, these two parameters are likely to be the same.
 
-- `Text2TextPromptParams` charges `prompt_len * input_token_price + max_tokens * output_token_price` upon the submission of the prompt.
-  Once the prompt is settled, the user will be reimbursed for any unused tokens or overestimate.
-- `Text2ImagePromptParams` charges `prompt_len * input_token_price + width * height * output_token_price` upon the submission of the prompt.
-  Again, the input tokens are reimbursed upon overestimation.
+- `Text2TextPromptParams` charges `prompt_len * input_token_price + max_tokens * output_token_price` upon prompt submission.
+- `Text2ImagePromptParams` charges `prompt_len * input_token_price + width * height * output_token_price` upon submission.
 
-The aforementioned functions have `max_fee_per_token` parameter.
-If there are no nodes that can generate the prompt within the budget, the transaction will fail.
-The parameter applies to both input and output token prices.
+Unused tokens are reimbursed upon response generation.
+
+`submit_text2text_prompt` function has a `max_fee_per_token` parameter.
+This applies to both input and output token prices.
+If no nodes can generate the prompt within the budget, the transaction fails.
+
+`submit_text2image_prompt` has a `max_fee_per_input_token` and `max_fee_per_output_token` parameters.
+These apply to input and output token prices, respectively.
 
 The last parameter is `nodes_to_sample`.
 It's optional and defaults to a sensible value.
 
-See `atoma::prompts` module for sample implementations.
-If you are writing your own smart contract that should submit prompts, this module is the perfect place to start.
+Refer to the `atoma::prompts` module for sample implementations.
+If you are developing a custom smart contract for prompt submission, this module is a great starting point.
 
-Since the aforementioned functions are `public` but not `entry`, they must be used in Sui's programmable transactions from the client's POV.
+Since these functions are `public` but not `entry`, they must be used in Sui's programmable transactions from the client's perspective.
 
 ## Dev Environment
 
