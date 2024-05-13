@@ -44,7 +44,7 @@ pub(crate) async fn command(
 
     let output_tokens_count = prompt_output.len();
     let input_tokens_count = {
-        context
+        let object_content = context
             .get_client()
             .await?
             .read_api()
@@ -56,14 +56,14 @@ pub(crate) async fn command(
             .data
             .ok_or_else(|| anyhow!("Ticket params not found"))?
             .content
-            .unwrap()
+            .unwrap();
+        let json = object_content
             .try_into_move()
             .unwrap()
             .fields
-            .to_json_value()["value"]["prompt"]
-            .as_str()
-            .unwrap()
-            .len()
+            .to_json_value();
+        let prompt_str = json["value"]["prompt"].as_str().unwrap();
+        prompt_str.len()
     };
 
     let atoma_db = context.get_or_load_atoma_db().await?;
