@@ -90,7 +90,7 @@ cd $root_dir/sui/dev
     --package "${package}" \
     --model "llama" \
     --echelon 1 \
-    --fee-in-protocol-token 1 \
+    --input-fee-per-token 1 \
     --relative-performance 100
 
 ./cli db set-required-registration-toma-collateral \

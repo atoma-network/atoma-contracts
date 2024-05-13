@@ -6,6 +6,18 @@ Useful links:
 - [Sui Move Analyzer][sui-analyzer]
 - [Sui standard lib on Github][github-sui-std]
 
+## Events
+
+- `db::NodeRegisteredEvent` is emitted when a new node puts up collateral to register.
+- `db::NodeSubscribedToModelEvent` is emitted when a node subscribes to a model echelon and is ready to receive prompts.
+- `gate::Text2TextPromptEvent` is emitted when a user submits a text to text prompt.
+- `gate::Text2ImagePromptEvent` is emitted when a user submits a text to image prompt.
+- `settlement::FirstSubmissionEvent` is emitted when a node submits the _first_ response to a prompt.
+- `settlement::DisputeEvent` is emitted when a node disputes a submission.
+  Now, we want for an oracle to resolve the dispute.
+- `settlement::SettledEvent` is emitted when a ticket is settled and fee is distributed.
+- `settlement::NewlySampledNodesEvent` is emitted when a new set of nodes is sampled for a prompt because of timeout.
+
 ## Dev Environment
 
 There's a [`check` shell script](dev/check) that builds all packages.
@@ -29,7 +41,6 @@ ATOMA_DB_ID=
 MANAGER_BADGE_ID=
 NODE_BADGE_ID=
 NODE_ID=
-PROMPT_STANDARDS_ID=
 TOMA_WALLET_ID=
 GAS_BUDGET=
 ```
@@ -84,7 +95,7 @@ See the contract documentation for more information on what these parameters mea
     --package "your package id can be found when publishing" \
     --model "llama" \
     --echelon 1 \
-    --fee-in-protocol-token 1000 \
+    --input-fee-per-token 1000 \
     --relative-performance 100
 ```
 

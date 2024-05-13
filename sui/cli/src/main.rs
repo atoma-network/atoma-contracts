@@ -29,7 +29,6 @@ use crate::{dotenv_conf::DotenvConf, prelude::*};
 
 const DB_MODULE_NAME: &str = "db";
 const PROMPTS_MODULE_NAME: &str = "prompts";
-const PROMPTS_TYPE_NAME: &str = "AtomaPrompts";
 const DB_MANAGER_TYPE_NAME: &str = "AtomaManagerBadge";
 const DB_NODE_TYPE_NAME: &str = "NodeBadge";
 const DB_TYPE_NAME: &str = "AtomaDb";
@@ -77,9 +76,11 @@ enum DbCmds {
         model: String,
         #[arg(short, long)]
         echelon: u64,
-        /// Max fee per character in protocol token.
         #[arg(short, long)]
-        fee_in_protocol_token: u64,
+        input_fee_per_token: u64,
+        /// Defaults to input_fee_per_token.
+        #[arg(short, long)]
+        output_fee_per_token: Option<u64>,
         #[arg(short, long)]
         relative_performance: u64,
     },
@@ -205,14 +206,16 @@ async fn main() -> Result<()> {
             package,
             model,
             echelon,
-            fee_in_protocol_token,
+            input_fee_per_token,
+            output_fee_per_token,
             relative_performance,
         })) => {
             let digest = db::add_model_echelon(
                 &mut context.with_optional_package_id(package),
                 &model,
                 echelon,
-                fee_in_protocol_token,
+                input_fee_per_token,
+                output_fee_per_token.unwrap_or(input_fee_per_token),
                 relative_performance,
             )
             .await?;
@@ -322,20 +325,6 @@ async fn get_atoma_db(
 ) -> Result<ObjectID> {
     get_publish_tx_created_object(client, package, DB_MODULE_NAME, DB_TYPE_NAME)
         .await
-}
-
-/// This object is a necessary input for atoma prompt standards.
-async fn get_prompts(
-    client: &SuiClient,
-    package: ObjectID,
-) -> Result<ObjectID> {
-    get_publish_tx_created_object(
-        client,
-        package,
-        PROMPTS_MODULE_NAME,
-        PROMPTS_TYPE_NAME,
-    )
-    .await
 }
 
 async fn get_publish_tx_created_object(

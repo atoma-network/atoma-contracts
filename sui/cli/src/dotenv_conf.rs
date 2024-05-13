@@ -8,7 +8,7 @@ use sui_sdk::{
 
 use crate::{
     find_toma_token_wallets, get_atoma_db, get_db_manager_badge,
-    get_node_badge, get_prompts, prelude::*, DB_MODULE_NAME, DB_TYPE_NAME,
+    get_node_badge, prelude::*, DB_MODULE_NAME, DB_TYPE_NAME,
     SETTLEMENT_MODULE_NAME, SETTLEMENT_TICKET_TYPE_NAME,
 };
 
@@ -18,7 +18,6 @@ pub(crate) const ATOMA_DB_ID: &str = "ATOMA_DB_ID";
 pub(crate) const MANAGER_BADGE_ID: &str = "MANAGER_BADGE_ID";
 pub(crate) const NODE_BADGE_ID: &str = "NODE_BADGE_ID";
 pub(crate) const NODE_ID: &str = "NODE_ID";
-pub(crate) const PROMPT_STANDARDS_ID: &str = "PROMPT_STANDARDS_ID";
 pub(crate) const TOMA_WALLET_ID: &str = "TOMA_WALLET_ID";
 pub(crate) const GAS_BUDGET: &str = "GAS_BUDGET";
 
@@ -34,7 +33,6 @@ pub(crate) struct DotenvConf {
     pub(crate) manager_badge_id: Option<ObjectID>,
     pub(crate) node_badge_id: Option<ObjectID>,
     pub(crate) node_id: Option<u64>,
-    pub(crate) prompt_standards_id: Option<ObjectID>,
     pub(crate) toma_wallet_id: Option<ObjectID>,
     pub(crate) gas_budget: Option<u64>,
 }
@@ -56,9 +54,6 @@ impl DotenvConf {
                 .ok()
                 .map(|s| ObjectID::from_str(&s).unwrap()),
             node_id: std::env::var(NODE_ID).ok().map(|s| s.parse().unwrap()),
-            prompt_standards_id: std::env::var(PROMPT_STANDARDS_ID)
-                .ok()
-                .map(|s| ObjectID::from_str(&s).unwrap()),
             toma_wallet_id: std::env::var(TOMA_WALLET_ID)
                 .ok()
                 .map(|s| ObjectID::from_str(&s).unwrap()),
@@ -89,7 +84,6 @@ impl Context {
                 self.conf.manager_badge_id = None;
                 self.conf.node_badge_id = None;
                 self.conf.node_id = None;
-                self.conf.prompt_standards_id = None;
                 self.conf.toma_wallet_id = None;
             }
         }
@@ -159,18 +153,6 @@ impl Context {
             .await?;
             self.conf.manager_badge_id = Some(badge_id);
             Ok(badge_id)
-        }
-    }
-
-    pub(crate) async fn get_or_load_prompts(&mut self) -> Result<ObjectID> {
-        if let Some(prompt_standards_id) = self.conf.prompt_standards_id {
-            Ok(prompt_standards_id)
-        } else {
-            let package_id = self.unwrap_package_id();
-            let prompt_standards =
-                get_prompts(&self.get_client().await?, package_id).await?;
-            self.conf.prompt_standards_id = Some(prompt_standards);
-            Ok(prompt_standards)
         }
     }
 

@@ -1,7 +1,5 @@
 module atoma::prompts {
-    //! This module provides some default prompts by Atoma.
-    //! However, patterns in this module can be reused by any partnered contract
-    //! that was authorized with PromptBadge.
+    //! This module provides some example prompts by Atoma.
     //!
     //! To convert 1.0 to 1065353216, you can use this snippet:
     //! ```rust
@@ -13,31 +11,19 @@ module atoma::prompts {
     //! ```
 
     use atoma::db::AtomaDb;
-    use atoma::gate::PromptBadge;
     use std::ascii;
     use std::string;
     use sui::coin::Coin;
     use toma::toma::TOMA;
 
-    /// Immutable object.
-    ///
-    /// Allows users to use standard Atoma prompts.
-    public struct AtomaPrompts has key {
-        id: UID,
-        badge: PromptBadge,
-    }
-
     /// Submits a text prompt to Atoma network that asks for a joke.
     public entry fun tell_me_a_joke(
         atoma: &mut AtomaDb,
-        prompts: &AtomaPrompts,
         wallet: &mut Coin<TOMA>,
         model: ascii::String,
         max_fee_per_token: u64,
         ctx: &mut TxContext,
     ) {
-        let tokens_count = 64;
-
         let max_tokens = 64;
         let prompt = string::utf8(b"Tell me a joke please");
         let random_seed = atoma::utils::random_u64(ctx);
@@ -59,11 +45,9 @@ module atoma::prompts {
         );
         atoma::gate::submit_text2text_prompt(
             atoma,
-            &prompts.badge,
             wallet.balance_mut(),
             params,
             max_fee_per_token,
-            tokens_count,
             option::some(1), // default nodes to sample
             ctx,
         );
@@ -73,14 +57,12 @@ module atoma::prompts {
     /// a pixel art Colosseum.
     public entry fun generate_nft(
         atoma: &mut AtomaDb,
-        prompts: &AtomaPrompts,
         wallet: &mut Coin<TOMA>,
         model: ascii::String,
-        max_fee_per_token: u64,
+        max_fee_per_input_token: u64,
+        max_fee_per_output_pixel: u64,
         ctx: &mut TxContext,
     ) {
-        let tokens_count = 64;
-
         let guidance_scale = 1065353216; // 1.0
         let height = 360;
         let n_steps = 40;
@@ -101,23 +83,12 @@ module atoma::prompts {
         );
         atoma::gate::submit_text2image_prompt(
             atoma,
-            &prompts.badge,
             wallet.balance_mut(),
             params,
-            max_fee_per_token,
-            tokens_count,
+            max_fee_per_input_token,
+            max_fee_per_output_pixel,
             option::some(1), // default nodes to sample
             ctx,
         );
-    }
-
-    /// Other contracts need to be provided the badge object by the
-    /// Atoma admin, but since we are in the same package we can simply
-    /// grab it in the init function.
-    fun init(ctx: &mut TxContext) {
-        transfer::share_object(AtomaPrompts {
-            id: object::new(ctx),
-            badge: atoma::gate::create_prompt_badge_(ctx),
-        });
     }
 }

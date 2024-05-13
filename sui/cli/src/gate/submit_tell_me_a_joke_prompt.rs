@@ -10,7 +10,6 @@ pub(crate) async fn command(
     let active_address = context.wallet.active_address()?;
     let package = context.unwrap_package_id();
     let atoma_db = context.get_or_load_atoma_db().await?;
-    let prompts = context.get_or_load_prompts().await?;
     let toma_wallet = context.get_or_load_toma_wallet().await?;
 
     let tx = context
@@ -25,7 +24,6 @@ pub(crate) async fn command(
             vec![],
             vec![
                 SuiJsonValue::from_object_id(atoma_db),
-                SuiJsonValue::from_object_id(prompts),
                 SuiJsonValue::from_object_id(toma_wallet),
                 SuiJsonValue::new(model_name.into())?,
                 SuiJsonValue::new(max_fee_per_token.to_string().into())?,
