@@ -166,6 +166,9 @@ module atoma::db {
         id: UID,
         /// UTF8 model identifier.
         name: ascii::String,
+        /// The modality of the model.
+        /// Determines what kind of requests it can serve.
+        modality: u64,
         /// Whether the model is disabled and cannot be used to serve prompts.
         is_disabled: bool,
         /// Which echelons (groups of nodes) support this model.
@@ -499,6 +502,10 @@ module atoma::db {
 
     public fun get_opaque_inner_id(self: SmallId): u64 { self.inner }
 
+    public fun get_model_modality(self: &AtomaDb, model_name: ascii::String): u64 {
+        self.models.borrow(model_name).modality
+    }
+
     // =========================================================================
     //                          Package private functions
     // =========================================================================
@@ -663,13 +670,17 @@ module atoma::db {
         AtomaManagerBadge { id: object::new(ctx) }
     }
 
+    /// As per the gate module:
+    /// - Text2TextModality = 0
+    /// - Text2ImageModality = 1
     public entry fun add_model_entry(
         self: &mut AtomaDb,
         badge: &AtomaManagerBadge,
         model_name: ascii::String,
+        modality: u64,
         ctx: &mut TxContext,
     ) {
-        let model = create_model(badge, model_name, ctx);
+        let model = create_model(badge, model_name, modality, ctx);
         add_model(self, badge, model);
     }
 
@@ -681,14 +692,17 @@ module atoma::db {
         self.models.add(model.name, model);
     }
 
+    /// For modality identifiers, see the gate module.
     public fun create_model(
         _: &AtomaManagerBadge,
         model_name: ascii::String,
+        modality: u64,
         ctx: &mut TxContext,
     ): ModelEntry {
         ModelEntry {
             id: object::new(ctx),
             name: model_name,
+            modality,
             is_disabled: false,
             echelons: vector::empty()
         }
@@ -756,6 +770,7 @@ module atoma::db {
         let ModelEntry {
             id: model_id,
             name: _,
+            modality: _,
             is_disabled: _,
             mut echelons,
         } = object_table::remove(&mut self.models, model_name);

@@ -73,6 +73,14 @@ enum DbCmds {
         package: Option<String>,
         #[arg(short, long)]
         name: String,
+        /// Provide if the model is text2text such as llama.
+        /// Exclusive with text2image.
+        #[arg(long, action)]
+        text2text: bool,
+        /// Provide if the model is text2image such as stable diffusion.
+        /// Exclusive with text2text.
+        #[arg(long, action)]
+        text2image: bool,
     },
     /// Admin command to add a new echelon to a model.
     AddModelEchelon {
@@ -238,10 +246,25 @@ async fn main() -> Result<()> {
             db::print_env(&mut context.with_optional_package_id(package))
                 .await?;
         }
-        Some(Cmds::Db(DbCmds::AddModel { package, name })) => {
+        Some(Cmds::Db(DbCmds::AddModel {
+            package,
+            name,
+            text2text,
+            text2image,
+        })) => {
             let digest = db::add_model(
                 &mut context.with_optional_package_id(package),
                 &name,
+                match (text2text, text2image) {
+                    // this is defined in the gate module
+                    (true, false) => 0,
+                    (false, true) => 1,
+                    _ => {
+                        return Err(anyhow::anyhow!(
+                        "Exactly one of --text2text or --text2image must be set"
+                    ))
+                    }
+                },
             )
             .await?;
 

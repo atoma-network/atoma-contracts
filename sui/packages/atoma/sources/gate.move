@@ -13,6 +13,14 @@ module atoma::gate {
 
     const ENoEligibleEchelons: u64 = 0;
     const ETooManyNodesToSample: u64 = 1;
+    const EModalityMismatch: u64 = 2;
+
+    /// Models that take text as input and return text as output.
+    /// Be careful about changing this as clients rely on this value.
+    const Text2TextModality: u64 = 0;
+    /// Models that take text as input and return an image as output.
+    /// Be careful about changing this as clients rely on this value.
+    const Text2ImageModality: u64 = 1;
 
     #[allow(unused_field)]
     /// Serves as an input to the `submit_text2text_prompt` function.
@@ -108,6 +116,7 @@ module atoma::gate {
             atoma,
             wallet,
             params.model,
+            Text2TextModality,
             max_fee_per_token,
             input_characters,
             max_fee_per_token,
@@ -154,6 +163,7 @@ module atoma::gate {
             atoma,
             wallet,
             params.model,
+            Text2ImageModality,
             max_fee_per_input_token,
             input_characters,
             max_fee_per_output_token,
@@ -255,6 +265,7 @@ module atoma::gate {
         atoma: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
         model: ascii::String,
+        model_modality: u64,
         max_fee_per_input_token: u64,
         approx_input_tokens_count: u64,
         max_fee_per_output_token: u64,
@@ -262,6 +273,9 @@ module atoma::gate {
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
     ): (SettlementTicket, vector<SmallId>) {
+        let expected_model_modality = atoma.get_model_modality(model);
+        assert!(expected_model_modality == model_modality, EModalityMismatch);
+
         // 1.
         let echelons = atoma.get_model_echelons_if_enabled(model);
 
