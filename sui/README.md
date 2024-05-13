@@ -71,10 +71,14 @@ Pricing for input and output tokens differs for each model.
 Each model has a pricing for input and output tokens as two separate parameters.
 For text to text models, these two parameters are likely to be the same.
 
-- `Text2TextPromptParams` charges `prompt_len * input_token_price + max_tokens * output_token_price` upon prompt submission.
-- `Text2ImagePromptParams` charges `prompt_len * input_token_price + width * height * output_token_price` upon submission.
+The parameter `nodes_to_sample` is optional and defaults to a sensible value.
+Higher number of nodes means higher confidence in the generated output.
+However, the price is also higher as nodes multiply the prompt price.
 
-Unused tokens are reimbursed upon response generation.
+- `Text2TextPromptParams` charges `nodes_to_sample * (prompt_len * input_token_price + max_tokens * output_token_price)` upon prompt submission.
+- `Text2ImagePromptParams` charges `nodes_to_sample * (prompt_len * input_token_price + num_samples * output_token_price)` upon submission.
+
+Unused tokens are reimbursed upon response generation by sending a `Coin<TOMA>` object to the prompt submitter.
 
 `submit_text2text_prompt` function has a `max_fee_per_token` parameter.
 This applies to both input and output token prices.
@@ -85,6 +89,8 @@ These apply to input and output token prices, respectively.
 
 The last parameter is `nodes_to_sample`.
 It's optional and defaults to a sensible value.
+Higher number of nodes means higher confidence in the generated output.
+However, the price is also higher as nodes multiply the prompt price.
 
 Refer to the `atoma::prompts` module for sample implementations.
 If you are developing a custom smart contract for prompt submission, this module is a great starting point.

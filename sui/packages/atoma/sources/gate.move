@@ -65,6 +65,8 @@ module atoma::gate {
         img2img_strength: u32,
         model: ascii::String,
         n_steps: u64,
+        /// How many images to generate.
+        /// The user pays for each image.
         num_samples: u64,
         output_destination: vector<u8>,
         prompt: string::String,
@@ -130,7 +132,8 @@ module atoma::gate {
         ticket_id
     }
 
-    /// The fee is per input token.
+    /// The fee per input token is the prompt fee.
+    /// The fee per output token is how much does one image cost.
     ///
     /// Returns ticket ID which is an identifier of the settlement object.
     public fun submit_text2image_prompt(
@@ -145,7 +148,7 @@ module atoma::gate {
         // this is approximation that will get refunded partly
         let input_characters = params.prompt.length();
         // this we know exactly
-        let output_pixels = params.width * params.height;
+        let images = params.num_samples;
 
         let (mut ticket, selected_nodes) = submit_prompt(
             atoma,
@@ -154,7 +157,7 @@ module atoma::gate {
             max_fee_per_input_token,
             input_characters,
             max_fee_per_output_token,
-            output_pixels,
+            images,
             nodes_to_sample,
             ctx,
         );
@@ -302,8 +305,11 @@ module atoma::gate {
 
         // 4.
         // we must fit into u64 bcs that's the limit of Balance
-        let collected_fee = input_fee * approx_input_tokens_count
-            + output_fee * approx_output_tokens_count;
+        let collected_fee = nodes_to_sample *
+            (
+                input_fee * approx_input_tokens_count
+                + output_fee * approx_output_tokens_count
+            );
         atoma.deposit_to_fee_treasury(wallet.split(collected_fee));
 
         // 5.
