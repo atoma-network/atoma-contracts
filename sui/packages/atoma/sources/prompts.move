@@ -76,15 +76,15 @@ module atoma::prompts {
         let params = atoma::gate::create_text2image_prompt_params(
             guidance_scale,
             height,
+            option::none(),
+            img2img_strength,
             model,
             n_steps,
             num_samples,
             prompt,
-            uncond_prompt,
             random_seed,
+            uncond_prompt,
             width,
-            option::none(),
-            img2img_strength,
         );
         atoma::gate::submit_text2image_prompt(
             atoma,
