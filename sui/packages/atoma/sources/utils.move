@@ -1,5 +1,5 @@
 module atoma::utils {
-    public fun random_u32(ctx: &mut TxContext): u32 { 
+    public fun random_u32(ctx: &mut TxContext): u32 {
         let mut buffer = sui::address::to_bytes(
             tx_context::fresh_object_address(ctx)
         );
@@ -9,7 +9,7 @@ module atoma::utils {
         let mut i = 0;
         while (i < num_of_bytes) {
             let byte = buffer.pop_back();
-            result = (result << 4) + (byte as u32);
+            result = (result << 8) + (byte as u32);
             i = i + 1;
         };
         result
@@ -41,14 +41,14 @@ module atoma::utils {
         let mut i = 0;
         while (i < num_of_bytes) {
             let byte = buffer.pop_back();
-            result = (result << 32) + (byte as u256);
+            result = (result << 8) + (byte as u256);
             i = i + 1;
         };
         result
     }
 
     #[test]
-    fun test_random_u32() { 
+    fun test_random_u32() {
         let mut ctx = tx_context::new_from_hint(
             @0x1,
             9908,
@@ -56,7 +56,7 @@ module atoma::utils {
             10,
             0
         );
-        random_u32(&mut ctx)
+        random_u32(&mut ctx);
     }
 
     #[test]

@@ -1,7 +1,12 @@
 module atoma::prompts {
     //! This module provides some example prompts by Atoma.
+    //! If you are writing your own smart contract that depends on Atoma, this
+    //! is a great place to start.
     //!
-    //! To convert 1.0 to 1065353216, you can use this snippet:
+    //! # Floating point numbers
+    //! Since Sui does not have floating point number representation, we store
+    //! floating point numbers as u32 integers.
+    //! For example, to convert 1.0 to 1065353216, you can use this snippet:
     //! ```rust
     //! fn main() {
     //!     let float = 1.0_f32;
@@ -21,6 +26,7 @@ module atoma::prompts {
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
         model: ascii::String,
+        output_destination: vector<u8>,
         max_fee_per_token: u64,
         ctx: &mut TxContext,
     ) {
@@ -35,6 +41,7 @@ module atoma::prompts {
         let params = atoma::gate::create_text2text_prompt_params(
             max_tokens,
             model,
+            output_destination,
             prompt,
             random_seed,
             repeat_last_n,
@@ -48,7 +55,13 @@ module atoma::prompts {
             wallet.balance_mut(),
             params,
             max_fee_per_token,
-            option::some(1), // default nodes to sample
+            // we sample just one node because of the illustrative purposes of
+            // this prompt, so that we can deploy this contract on devnet and
+            // have it produce output without many nodes
+            //
+            // you can set this to none to let Atoma network decide how many
+            // nodes to sample
+            option::some(1),
             ctx,
         );
     }
@@ -59,6 +72,7 @@ module atoma::prompts {
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
         model: ascii::String,
+        output_destination: vector<u8>,
         max_fee_per_input_token: u64,
         max_fee_per_output_pixel: u64,
         ctx: &mut TxContext,
@@ -72,15 +86,17 @@ module atoma::prompts {
         let random_seed = atoma::utils::random_u32(ctx);
         let width = 256;
         let img2img_strength = 1065353216; // 1.0
+        let img2img = option::none();
 
         let params = atoma::gate::create_text2image_prompt_params(
             guidance_scale,
             height,
-            option::none(),
             img2img_strength,
+            img2img,
             model,
             n_steps,
             num_samples,
+            output_destination,
             prompt,
             random_seed,
             uncond_prompt,
@@ -92,7 +108,13 @@ module atoma::prompts {
             params,
             max_fee_per_input_token,
             max_fee_per_output_pixel,
-            option::some(1), // default nodes to sample
+            // we sample just one node because of the illustrative purposes of
+            // this prompt, so that we can deploy this contract on devnet and
+            // have it produce output without many nodes
+            //
+            // you can set this to none to let Atoma network decide how many
+            // nodes to sample
+            option::some(1),
             ctx,
         );
     }
