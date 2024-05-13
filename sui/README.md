@@ -78,7 +78,7 @@ However, the price is also higher as nodes multiply the prompt price.
 - `Text2TextPromptParams` charges `nodes_to_sample * (prompt_len * input_token_price + max_tokens * output_token_price)` upon prompt submission.
 - `Text2ImagePromptParams` charges `nodes_to_sample * (prompt_len * input_token_price + num_samples * output_token_price)` upon submission.
 
-Unused tokens are reimbursed upon response generation.
+Unused tokens are reimbursed upon response generation by sending a `Coin<TOMA>` object to the prompt submitter.
 
 `submit_text2text_prompt` function has a `max_fee_per_token` parameter.
 This applies to both input and output token prices.
