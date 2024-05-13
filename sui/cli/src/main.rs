@@ -42,63 +42,84 @@ struct Cli {
     command: Option<Cmds>,
 
     /// Some operations require a budget to be set.
-    /// We also provide sensible default values for this.
+    /// We provide sensible default value.
     #[arg(short, long)]
     gas_budget: Option<u64>,
     /// Where to find the config for the wallet keystore.
     /// Loaded from WALLET_PATH env var if not provided.
+    /// If neither is provided, the CLI will fail.
     #[arg(short, long)]
     wallet: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
 enum Cmds {
+    /// Queries and operations related to the database.
     #[command(subcommand)]
     Db(DbCmds),
+    /// Queries and operations related to submitting a prompt.
     #[command(subcommand)]
     Gate(GateCmds),
+    /// Queries and operations related to settling tickets.
     #[command(subcommand)]
     Settle(SettlementCmds),
 }
 
 #[derive(Subcommand)]
 enum DbCmds {
+    /// Admin command to add a new model to the database.
     AddModel {
         #[arg(short, long)]
         package: Option<String>,
         #[arg(short, long)]
         name: String,
     },
+    /// Admin command to add a new echelon to a model.
     AddModelEchelon {
         #[arg(short, long)]
         package: Option<String>,
+        /// Must match an existing model name.
         #[arg(short, long)]
         model: String,
+        /// The echelon is an ID that is agreed upon by the protocol.
         #[arg(short, long)]
         echelon: u64,
+        /// The fee per token that the model charges for input tokens.
         #[arg(short, long)]
         input_fee_per_token: u64,
-        /// Defaults to input_fee_per_token.
+        /// Defaults to input_fee_per_token, which is ideal for text to text
+        /// models.
         #[arg(short, long)]
         output_fee_per_token: Option<u64>,
+        /// The relative performance of the model to other models.
+        /// This is relevant for load balancing.
         #[arg(short, long)]
         relative_performance: u64,
     },
+    /// Admin command to set the required registration collateral for TOMA.
+    /// Nodes will lock this many TOMA tokens.
     SetRequiredRegistrationTomaCollateral {
         #[arg(short, long)]
         package: Option<String>,
         #[arg(short, long)]
         new_amount: u64,
     },
+    /// First thing to do as a node.
+    /// It will create a `NodeBadge` object for the node.
     RegisterNode {
         #[arg(short, long)]
         package: Option<String>,
     },
+    /// Node can join a model to receive prompts.
     AddNodeToModel {
         #[arg(short, long)]
         package: Option<String>,
+        /// Must match an existing model name.
         #[arg(short, long)]
         model: String,
+        /// Must match an existing echelon ID.
+        /// Echelons group nodes with similar HW and SW.
+        /// See the protocol documentation for the list of echelons.
         #[arg(short, long)]
         echelon: u64,
     },
@@ -108,16 +129,25 @@ enum DbCmds {
         #[arg(short, long)]
         package: Option<String>,
     },
+    /// A node can stop receiving prompts from a model.
+    /// There exist a rare scenario where this transaction must be retried due
+    /// to concurrent modification.
+    /// You will be informed if this happens and asked for retry.
     RemoveNodeFromModel {
         #[arg(short, long)]
         package: Option<String>,
         #[arg(short, long)]
         model: String,
     },
+    /// Stop participating in the network.
+    /// This cannot be undone and if a node wants to join again, they must
+    /// generate a new `NodeBadge`.
     PermanentlyDisableNode {
         #[arg(short, long)]
         package: Option<String>,
     },
+    /// On the second epoch from now (tops 2 days), the node can be destroyed
+    /// and the collateral will be returned.
     DestroyDisabledNode {
         #[arg(short, long)]
         package: Option<String>,
@@ -126,6 +156,7 @@ enum DbCmds {
 
 #[derive(Subcommand)]
 enum GateCmds {
+    /// Submits an example prompt to the network.
     SubmitTellMeAJokePrompt {
         #[arg(short, long)]
         package: Option<String>,
@@ -134,6 +165,7 @@ enum GateCmds {
         #[arg(long, default_value_t = 1_000)]
         max_fee_per_token: u64,
     },
+    /// Submits an example prompt to the network.
     SubmitGenerateNftPrompt {
         #[arg(short, long)]
         package: Option<String>,
@@ -146,16 +178,21 @@ enum GateCmds {
 
 #[derive(Subcommand)]
 enum SettlementCmds {
+    /// Lists all open tickets.
     ListTickets {
         #[arg(short, long)]
         package: Option<String>,
     },
+    /// Submit a commitment to settle a ticket.
+    /// This can be only used for text to text models.
     SubmitCommitment {
         #[arg(short, long)]
         ticket_id: String,
         #[arg(short, long)]
         output: String,
     },
+    /// Try to settle a ticket.
+    /// This might be necessary to handle node timeouts.
     TryToSettle {
         #[arg(short, long)]
         ticket_id: String,
