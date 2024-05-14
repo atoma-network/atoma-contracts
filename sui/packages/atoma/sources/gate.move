@@ -32,11 +32,14 @@ module atoma::gate {
         max_tokens: u64,
         model: ascii::String,
         output_destination: vector<u8>,
+        pre_prompt_tokens: vector<u32>,
+        prepend_output_with_input: bool,
         prompt: string::String,
         random_seed: u64,
         repeat_last_n: u64,
         /// Represents a floating point number, little endian.
         repeat_penalty: u32,
+        should_stream_output: bool,
         /// Represents a floating point number, little endian.
         temperature: u32,
         top_k: u64,
@@ -108,8 +111,13 @@ module atoma::gate {
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
     ): ID {
-        // these are approximations that will get refunded partly
-        let input_characters = params.prompt.length();
+        // These are approximations that will get refunded partly.
+        // While for the preprompt, we know the exact number of tokens, the
+        // input is a string and we don't know the exact number of tokens.
+        // Therefore this is an overestimation.
+        // See the settlement logic for reimbursement.
+        let input_tokens_approximation =
+            params.pre_prompt_tokens.length() + params.prompt.length();
         let output_tokens = params.max_tokens;
 
         let (mut ticket, selected_nodes) = submit_prompt(
@@ -118,7 +126,7 @@ module atoma::gate {
             params.model,
             Text2TextModality,
             max_fee_per_token,
-            input_characters,
+            input_tokens_approximation,
             max_fee_per_token,
             output_tokens,
             nodes_to_sample,
@@ -193,10 +201,13 @@ module atoma::gate {
         max_tokens: u64,
         model: ascii::String,
         output_destination: vector<u8>,
+        pre_prompt_tokens: vector<u32>,
+        prepend_output_with_input: bool,
         prompt: string::String,
         random_seed: u64,
         repeat_last_n: u64,
         repeat_penalty: u32,
+        should_stream_output: bool,
         temperature: u32,
         top_k: u64,
         top_p: u32,
@@ -205,10 +216,13 @@ module atoma::gate {
             max_tokens,
             model,
             output_destination,
+            pre_prompt_tokens,
+            prepend_output_with_input,
             prompt,
             random_seed,
             repeat_last_n,
             repeat_penalty,
+            should_stream_output,
             temperature,
             top_k,
             top_p,
