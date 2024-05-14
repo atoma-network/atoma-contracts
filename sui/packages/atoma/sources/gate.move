@@ -39,6 +39,7 @@ module atoma::gate {
         repeat_last_n: u64,
         /// Represents a floating point number, little endian.
         repeat_penalty: u32,
+        should_stream_output: bool,
         /// Represents a floating point number, little endian.
         temperature: u32,
         top_k: u64,
@@ -202,6 +203,7 @@ module atoma::gate {
         random_seed: u64,
         repeat_last_n: u64,
         repeat_penalty: u32,
+        should_stream_output: bool,
         temperature: u32,
         top_k: u64,
         top_p: u32,
@@ -216,6 +218,7 @@ module atoma::gate {
             random_seed,
             repeat_last_n,
             repeat_penalty,
+            should_stream_output,
             temperature,
             top_k,
             top_p,
