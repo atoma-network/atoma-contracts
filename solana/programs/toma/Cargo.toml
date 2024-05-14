@@ -1,12 +1,12 @@
 [package]
-name = "atoma"
+name = "toma"
 version = "0.1.0"
-description = "Atoma network on Solana"
+description = "TOMA token program"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "atoma"
+name = "toma"
 
 [features]
 default = []

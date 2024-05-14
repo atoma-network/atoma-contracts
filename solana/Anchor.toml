@@ -6,6 +6,7 @@ skip-lint = false
 
 [programs.localnet]
 atoma = "Cf8jbVDAgQcNy9TCt9PtSVvZZV5AcX7gpq7vx1ccgbcg"
+toma = "7whPY7L232dYJC7XosEf86NBnt8zcNkeJzCUqiLWVU58"
 
 [registry]
 url = "https://api.apr.dev"
