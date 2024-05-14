@@ -165,8 +165,10 @@ module atoma::settlement {
     ///
     /// We use Blake2b-256 for hashing the chunks.
     ///
-    /// In case of text2image, output tokens count should equal to the number
-    /// of generated images.
+    /// # Input and output tokens notes
+    /// - for text2text, the input tokens contain both preprompt and prompt
+    /// - for text2image, output tokens count should equal to the number
+    ///   of generated images
     public entry fun submit_commitment(
         atoma: &mut AtomaDb,
         badge: &NodeBadge,

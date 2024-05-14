@@ -111,8 +111,12 @@ module atoma::gate {
         nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
     ): ID {
-        // these are approximations that will get refunded partly
-        let input_characters =
+        // These are approximations that will get refunded partly.
+        // While for the preprompt, we know the exact number of tokens, the
+        // input is a string and we don't know the exact number of tokens.
+        // Therefore this is an overestimation.
+        // See the settlement logic for reimbursement.
+        let input_tokens_approximation =
             params.pre_prompt_tokens.length() + params.prompt.length();
         let output_tokens = params.max_tokens;
 
@@ -122,7 +126,7 @@ module atoma::gate {
             params.model,
             Text2TextModality,
             max_fee_per_token,
-            input_characters,
+            input_tokens_approximation,
             max_fee_per_token,
             output_tokens,
             nodes_to_sample,
