@@ -1,4 +1,8 @@
 //! `TOMA` token program
+//!
+//! Started on basis of [this guide][quicknode].
+//!
+//! [quicknode]: https://www.quicknode.com/guides/solana-development/anchor/create-tokens
 
 use anchor_lang::prelude::*;
 
