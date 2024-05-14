@@ -164,6 +164,9 @@ module atoma::settlement {
     /// A chunk is `H(output, node_position)`.
     ///
     /// We use Blake2b-256 for hashing the chunks.
+    ///
+    /// In case of text2image, output tokens count should equal to the number
+    /// of generated images.
     public entry fun submit_commitment(
         atoma: &mut AtomaDb,
         badge: &NodeBadge,
