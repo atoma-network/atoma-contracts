@@ -31,10 +31,13 @@ module atoma::prompts {
         ctx: &mut TxContext,
     ) {
         let max_tokens = 64;
+        let pre_prompt_tokens = vector::empty();
+        let prepend_output_with_input = false;
         let prompt = string::utf8(b"Tell me a joke please");
         let random_seed = atoma::utils::random_u64(ctx);
         let repeat_last_n = 1;
         let repeat_penalty = 1066192077; // 1.1
+        let should_stream_output = false;
         let temperature = 1048576000; // 0.25
         let top_k = 1;
         let top_p = 1063675494; // 0.9
@@ -42,10 +45,13 @@ module atoma::prompts {
             max_tokens,
             model,
             output_destination,
+            pre_prompt_tokens,
+            prepend_output_with_input,
             prompt,
             random_seed,
             repeat_last_n,
             repeat_penalty,
+            should_stream_output,
             temperature,
             top_k,
             top_p,

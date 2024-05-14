@@ -4,7 +4,7 @@ module toma::toma {
     /// The coin type.
     public struct TOMA has drop {}
 
-    const DECIMALS: u8 = 6;
+    const DECIMALS: u8 = 9;
     const SYMBOL: vector<u8> = b"TOMA";
     const NAME: vector<u8> = b"TOMA";
     const DESCRIPTION: vector<u8> = b"Atoma network coin";
