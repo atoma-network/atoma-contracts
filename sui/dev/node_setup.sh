@@ -31,16 +31,11 @@ coin2=$(echo $coins | jq -r ".[1].gasCoinId")
 coin3=$(echo $coins | jq -r ".[2].gasCoinId")
 sui client merge-coin --primary-coin $primary_coin --coin-to-merge $coin2 1>nul 2>nul
 sui client merge-coin --primary-coin $primary_coin --coin-to-merge $coin3 1>nul 2>nul
-echo WTF2
 sui client switch --address $admin_address
-echo WTF
 sui client call --package 0x2 --module coin --function mint_and_transfer --gas-budget 10000000 --args $treasury 10000000000 $address --type-args $package::toma::TOMA
-echo WTF3
 sui client switch --address $address
-echo WTF4
 models=$(echo $(pwd)/models)
 cd code/atoma-contracts/sui/dev/
 chmod +x ./cli
-echo HERERERERE
 ./cli db register-node --package $package                                                                                                                                                                                                                                                                                                                                                                                           while IFS= read -r line; do                                                                                                                                                                                         echo HERERERERE                                                                                                                                                                                                   ./cli db add-node-to-model --package $package --model $line --echelon 1
 done < $models
