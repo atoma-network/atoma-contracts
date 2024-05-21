@@ -31,7 +31,7 @@ module atoma::db {
     const InitialPermilleForHonestNodesOnDispute: u64 = 200;
 
     /// To be able to identify the errors faster in the logs, we start the
-    /// counter from an number that's leet for "error_000".
+    /// counter from a number that's leet for "error_000".
     const EBase = 312012_000;
     const ENodeRegDisabled: u64 = EBase + 0;
     const EModelDisabled: u64 = EBase + 1;
