@@ -11,9 +11,12 @@ module atoma::gate {
     const DefaultNodesToSample: u64 = 10;
     const MaxNodesToSample: u64 = 256;
 
-    const ENoEligibleEchelons: u64 = 0;
-    const ETooManyNodesToSample: u64 = 1;
-    const EModalityMismatch: u64 = 2;
+    /// To be able to identify the errors faster in the logs, we start the
+    /// counter from a number that's leet for "error_000".
+    const EBase = 312012_000;
+    const ENoEligibleEchelons: u64 = EBase + 0;
+    const ETooManyNodesToSample: u64 = EBase + 1;
+    const EModalityMismatch: u64 = EBase + 2;
 
     /// Models that take text as input and return text as output.
     /// Be careful about changing this as clients rely on this value.

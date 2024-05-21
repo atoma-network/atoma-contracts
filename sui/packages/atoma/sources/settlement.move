@@ -4,13 +4,16 @@ module atoma::settlement {
     use sui::balance;
     use sui::dynamic_object_field;
 
-    const ENotAwaitingCommitment: u64 = 0;
-    const EAlreadyCommitted: u64 = 1;
-    const ENotReadyToSettle: u64 = 2;
-    const EBlake2b256HashMustBe32Bytes: u64 = 3;
-    const EIncorrectMerkleLeavesBufferLength: u64 = 4;
-    const ENotAnOracle: u64 = 5;
-    const ETicketMustHaveNodes: u64 = 6;
+    /// To be able to identify the errors faster in the logs, we start the
+    /// counter from a number that's leet for "error_000".
+    const EBase = 312012_000;
+    const ENotAwaitingCommitment: u64 = EBase + 0;
+    const EAlreadyCommitted: u64 = EBase + 1;
+    const ENotReadyToSettle: u64 = EBase + 2;
+    const EBlake2b256HashMustBe32Bytes: u64 = EBase + 3;
+    const EIncorrectMerkleLeavesBufferLength: u64 = EBase + 4;
+    const ENotAnOracle: u64 = EBase + 5;
+    const ETicketMustHaveNodes: u64 = EBase + 6;
 
     /// Node is the first to submit a commitment for a given ticket
     public struct FirstSubmissionEvent has copy, drop {

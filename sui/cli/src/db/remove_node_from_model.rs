@@ -182,9 +182,9 @@ pub(crate) async fn command(
         if let SuiExecutionStatus::Failure { error } =
             resp.effects.as_ref().unwrap().status()
         {
-            // 11 is the error code
+            // 312012_000 + 11 is the error code as per the contract
             if error.contains(
-                "function_name: Some(\"remove_node_from_model\") }, 11)",
+                "function_name: Some(\"remove_node_from_model\") }, 312012011)",
             ) {
                 error!(
                     "Concurrent modification of blockchain detected. \
