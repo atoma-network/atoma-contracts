@@ -21,6 +21,59 @@ module atoma::prompts {
     use sui::coin::Coin;
     use toma::toma::TOMA;
 
+    
+    /// Submits a text prompt to Atoma network that asks for a joke.
+    public entry fun send_prompt(
+        atoma: &mut AtomaDb,
+        wallet: &mut Coin<TOMA>,
+        model: ascii::String,
+        output_destination: vector<u8>,
+        pre_prompt_tokens: vector<u32>,
+        prepend_output_with_input: bool,
+        max_fee_per_token: u64,
+        prompt: string::String,
+        should_stream_output: bool,
+        max_tokens: u64,
+        repeat_last_n: u64,
+        repeat_penalty: u32,
+        temperature: u32,
+        top_k: u64,
+        top_p: u32,
+        nodes_to_sample: Option<u64>,
+        ctx: &mut TxContext,
+    ) {
+        let random_seed = atoma::utils::random_u64(ctx);
+        let params = atoma::gate::create_text2text_prompt_params(
+            max_tokens,
+            model,
+            output_destination,
+            pre_prompt_tokens,
+            prepend_output_with_input,
+            prompt,
+            random_seed,
+            repeat_last_n,
+            repeat_penalty,
+            should_stream_output,
+            temperature,
+            top_k,
+            top_p,
+        );
+        atoma::gate::submit_text2text_prompt(
+            atoma,
+            wallet.balance_mut(),
+            params,
+            max_fee_per_token,
+            // we sample just one node because of the illustrative purposes of
+            // this prompt, so that we can deploy this contract on devnet and
+            // have it produce output without many nodes
+            //
+            // you can set this to none to let Atoma network decide how many
+            // nodes to sample
+            nodes_to_sample,
+            ctx,
+        );
+    }
+
     /// Submits a text prompt to Atoma network that asks for a joke.
     public entry fun tell_me_a_joke(
         atoma: &mut AtomaDb,
