@@ -5,7 +5,6 @@
 //! [quicknode]: https://www.quicknode.com/guides/solana-development/anchor/create-tokens
 
 use anchor_lang::prelude::*;
-
 use anchor_spl::{
     associated_token::AssociatedToken,
     metadata::Metadata as Metaplex,

@@ -5,6 +5,7 @@ resolver = "2"
 [workspace.dependencies]
 anchor-lang = { version = "=0.30.0", features = ["init-if-needed"] }
 anchor-spl = { version = "=0.30.0", features = ["metadata"] }
+bytemuck = "*"                                                       # whatever version needed by the anchor crate
 
 [profile.release]
 overflow-checks = true
