@@ -311,9 +311,20 @@ module atoma::gate {
         let (input_fee, output_fee) = echelon.get_model_echelon_fees();
 
         // 3.
+        // We need to fill the sampled nodes vector with unique nodes
+        // however, we can end up sampling slashed nodes (which clears them out)
+        // with some small probability.
+        // Therefore, we remember how many times have we iterated and we retry
+        // either until user requested number of nodes is sampled or we hit a
+        // max number of iterations.
+        // This means everything is ok in the non-pathological scenario with
+        // many unslashed nodes in the echelon and does not loop forever
+        // (hence exhausting the budget) in the pathological scenario.
         let mut sampled_nodes = vector::empty();
         let mut iteration = 0;
-        while (iteration < nodes_to_sample) {
+        let max_iterations = nodes_to_sample * 4;
+        while (sampled_nodes.length() < nodes_to_sample
+            || iteration <= max_iterations) {
             let node_id = atoma
                 .sample_node_by_echelon_index(model, echelon_index, ctx)
                 // unwraps if no unslashed nodes
@@ -323,10 +334,6 @@ module atoma::gate {
 
             iteration = iteration + 1;
             if (!sampled_nodes.contains(&node_id)) {
-                // we can end up with less nodes than requested, but no
-                // duplicates
-                //
-                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
                 sampled_nodes.push_back(node_id);
             };
         };
