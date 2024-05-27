@@ -145,6 +145,29 @@ module atoma::settlement {
         token_counts_disputed_by: Option<SmallId>,
         /// There's only limited time to settle the prompt.
         timeout: TimeoutInfo,
+        /// Possibly invoke cross validation when all nodes submit their
+        /// commitment.
+        cross_validation: Option<CrossValidation>
+    }
+
+    /// A settlement ticket can have some cross validation chance.
+    /// This means that with the given probability we will invite (once)
+    /// provided number of extra nodes to validate the prompt.
+    ///
+    /// The typically usecase is to sample just one node and with some
+    /// probability sample more, which makes cheating by the sampled node
+    /// uneconomic.
+    ///
+    /// # Important
+    /// If cross validation is required, the original `completed` vector, the
+    /// `merkle_root` and the `merkle_leaves` are all _cleared_.
+    /// The nodes
+    public struct CrossValidation has store, copy, drop {
+        /// We randomly generate a number between 0 and 1000 and if the number
+        /// is lower than this, we sample extra nodes.
+        probability_permille: u64,
+        /// This many extra nodes get sampled.
+        how_many_extra_nodes: u64,
     }
 
     public struct TimeoutInfo has store, copy, drop {

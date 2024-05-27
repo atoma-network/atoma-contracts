@@ -100,6 +100,47 @@ module atoma::gate {
         nodes: vector<SmallId>,
     }
 
+    fun submit_xd(
+        atoma: &mut AtomaDb,
+        wallet: &mut Balance<TOMA>,
+        model: ascii::String,
+        model_modality: u64,
+        max_fee_per_input_token: u64,
+        approx_input_tokens_count: u64,
+        max_fee_per_output_token: u64,
+        approx_output_tokens_count: u64,
+        ctx: &mut TxContext,
+    ) {
+        let expected_model_modality = atoma.get_model_modality(model);
+        assert!(expected_model_modality == model_modality, EModalityMismatch);
+
+        // 1.
+        let echelons = atoma.get_model_echelons_if_enabled(model);
+
+        // 2.
+        let nodes_to_sample = 1;
+        let echelon_index = select_eligible_echelon_at_random(
+            echelons,
+            nodes_to_sample,
+            max_fee_per_input_token,
+            max_fee_per_output_token,
+            ctx,
+        );
+
+        let echelon = echelons.borrow(echelon_index);
+        let echelon_id = echelon.get_model_echelon_id();
+        let echelon_settlement_timeout_ms =
+            echelon.get_model_echelon_settlement_timeout_ms();
+        let (input_fee, output_fee) = echelon.get_model_echelon_fees();
+
+        let node_id = atoma
+            .sample_node_by_echelon_index(model, echelon_index, ctx)
+            // unwraps if no unslashed nodes
+            // TBD: should we try another echelon?
+            // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
+            .extract();
+    }
+
     /// The fee is per input token.
     ///
     /// Returns ticket ID which is an identifier of the settlement object.
