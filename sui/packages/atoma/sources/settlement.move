@@ -6,7 +6,7 @@ module atoma::settlement {
 
     /// To be able to identify the errors faster in the logs, we start the
     /// counter from a number that's leet for "error_000".
-    const EBase = 312012_000;
+    const EBase: u64 = 312012_200;
     const ENotAwaitingCommitment: u64 = EBase + 0;
     const EAlreadyCommitted: u64 = EBase + 1;
     const ENotReadyToSettle: u64 = EBase + 2;
