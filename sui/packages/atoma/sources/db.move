@@ -943,10 +943,10 @@ module atoma::db {
 
     public entry fun remove_model_echelon_oracle_node(
         self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
         model_name: ascii::String,
         echelon: u64,
         node_small_id: u64,
-        _: &AtomaManagerBadge,
     ) {
         let model = self.models.borrow_mut(model_name);
         let echelon_id = EchelonId { id: echelon };
@@ -956,15 +956,31 @@ module atoma::db {
 
     public entry fun set_model_echelon_settlement_timeout_ms(
         self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
         model_name: ascii::String,
         echelon: u64,
         new_timeout_ms: u64,
-        _: &AtomaManagerBadge,
     ) {
         let model = self.models.borrow_mut(model_name);
         let echelon_id = EchelonId { id: echelon };
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
         echelon.settlement_timeout_ms = new_timeout_ms;
+    }
+
+    public entry fun set_cross_validation_probability_permille(
+        self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
+        new_probability_permille: u64,
+    ) {
+        self.cross_validation_probability_permille = new_probability_permille;
+    }
+
+    public entry fun set_cross_validation_extra_nodes_count(
+        self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
+        new_extra_nodes_count: u64,
+    ) {
+        self.cross_validation_extra_nodes_count = new_extra_nodes_count;
     }
 
     // =========================================================================
