@@ -570,43 +570,25 @@ async fn get_node_badge(
         })
 }
 
-async fn find_toma_token_wallets(
+async fn find_toma_token_wallet(
     client: &SuiClient,
     package: ObjectID,
     active_address: SuiAddress,
-) -> Result<impl Iterator<Item = ObjectID>> {
-    let type_ = StructTag {
-        address: SuiAddress::from_str(
-            "0x0000000000000000000000000000000000000000000000000000000000000002",
-        )
-        .unwrap()
-        .into(),
-        module: FromStr::from_str("coin")?,
-        name: FromStr::from_str("Coin")?,
-        type_params: vec![TypeTag::Struct(Box::new(StructTag {
-            address: package.into(),
-            module: FromStr::from_str("toma")?,
-            name: FromStr::from_str("TOMA")?,
-            type_params: vec![],
-        }))],
-    };
-
-    let Page { data, .. } = client
-        .read_api()
-        .get_owned_objects(
+) -> Result<ObjectID> {
+    let Page { data: coins, .. } = client
+        .coin_read_api()
+        .get_coins(
             active_address,
-            Some(SuiObjectResponseQuery {
-                filter: Some(SuiObjectDataFilter::StructType(type_)),
-                options: None,
-            }),
+            Some(format!("{package}::toma::TOMA")),
             None,
             None,
         )
         .await?;
-
-    Ok(data
+    coins
         .into_iter()
-        .filter_map(|resp| Some(resp.data?.object_id)))
+        .max_by_key(|coin| coin.balance)
+        .map(|coin| coin.coin_object_id)
+        .ok_or_else(|| anyhow::anyhow!("No TOMA coins for {active_address}"))
 }
 
 /// Waits for the user to confirm an action.

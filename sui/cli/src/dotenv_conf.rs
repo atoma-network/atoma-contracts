@@ -7,9 +7,9 @@ use sui_sdk::{
 };
 
 use crate::{
-    find_toma_token_wallets, get_atoma_db, get_db_manager_badge,
-    get_node_badge, prelude::*, DB_MODULE_NAME, DB_TYPE_NAME,
-    SETTLEMENT_MODULE_NAME, SETTLEMENT_TICKET_TYPE_NAME,
+    find_toma_token_wallet, get_atoma_db, get_db_manager_badge, get_node_badge,
+    prelude::*, DB_MODULE_NAME, DB_TYPE_NAME, SETTLEMENT_MODULE_NAME,
+    SETTLEMENT_TICKET_TYPE_NAME,
 };
 
 pub(crate) const WALLET_PATH: &str = "WALLET_PATH";
@@ -183,14 +183,13 @@ impl Context {
         } else {
             let package_id = self.unwrap_package_id();
             let active_address = self.wallet.active_address()?;
-            let toma_wallet = find_toma_token_wallets(
+            let toma_wallet = find_toma_token_wallet(
                 &self.get_client().await?,
                 package_id,
                 active_address,
             )
-            .await?
-            .next();
-            if let Some(toma_wallet) = toma_wallet {
+            .await;
+            if let Ok(toma_wallet) = toma_wallet {
                 self.conf.toma_wallet_id = Some(toma_wallet);
                 Ok(toma_wallet)
             } else {
