@@ -146,7 +146,7 @@ module atoma::gate {
             params.pre_prompt_tokens.length() + params.prompt.length();
         let output_tokens = params.max_tokens;
 
-        let (mut ticket, selected_nodes) = submit_prompt(
+        let (mut ticket, chunks_count, selected_nodes) = submit_prompt(
             atoma,
             wallet,
             params.model,
@@ -169,7 +169,7 @@ module atoma::gate {
         sui::event::emit(Text2TextPromptEvent {
             params,
             ticket_id,
-            chunks_count: selected_nodes.length(),
+            chunks_count,
             nodes: selected_nodes,
         });
 
@@ -194,7 +194,7 @@ module atoma::gate {
         // this we know exactly
         let images = params.num_samples;
 
-        let (mut ticket, selected_nodes) = submit_prompt(
+        let (mut ticket, chunks_count, selected_nodes) = submit_prompt(
             atoma,
             wallet,
             params.model,
@@ -217,7 +217,7 @@ module atoma::gate {
         sui::event::emit(Text2ImagePromptEvent {
             params,
             ticket_id,
-            chunks_count: selected_nodes.length(),
+            chunks_count,
             nodes: selected_nodes,
         });
 
@@ -303,6 +303,11 @@ module atoma::gate {
     /// 3. Sample the required number of nodes from the echelon.
     /// 4. Collect the total fee that's going to be split among the nodes.
     /// 5. Create a new settlement ticket in the database.
+    ///
+    /// Returns
+    /// - the ticket that can be attached to the atoma db
+    /// - into how many chunks should be the output split for commitment
+    /// - what were the sampled nodes (so far)
     fun submit_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
@@ -314,7 +319,7 @@ module atoma::gate {
         approx_output_tokens_count: u64,
         requested_nodes_to_sample: Option<u64>,
         ctx: &mut TxContext,
-    ): (SettlementTicket, vector<SmallId>) {
+    ): (SettlementTicket, u64, vector<SmallId>) {
         let expected_model_modality = atoma.get_model_modality(model);
         assert!(expected_model_modality == model_modality, EModalityMismatch);
 
@@ -323,6 +328,7 @@ module atoma::gate {
 
         // 2.
         // if None we do probabilistic cross validation (see settlement)
+        let has_cross_validation = requested_nodes_to_sample.is_none();
         let nodes_to_sample = requested_nodes_to_sample.get_with_default(1);
         assert!(nodes_to_sample <= MaxNodesToSample, ETooManyNodesToSample);
         let echelon_index = select_eligible_echelon_at_random(
@@ -360,18 +366,31 @@ module atoma::gate {
         };
 
         // 4.
-        let nodes_to_charge
+        let extra_cross_validation_counts_count =
+            atoma.get_cross_validation_extra_nodes_count();
+        let fee_per_node = input_fee * approx_input_tokens_count
+            + output_fee * approx_output_tokens_count;
 
+        let collected_fee = if (has_cross_validation) {
+            // first sampled one PLUS the extra
+            let full_fee = (1 + extra_cross_validation_counts_count)
+                * fee_per_node;
+
+            // no we need to take into account that in `p` cases, there will be
+            // just one node, so we scale down the fee such that on average
+            // the fees add up to the number of on average sampled nodes
+
+                  full_fee * atoma.get_cross_validation_probability_permille()
+            / //----------------------------------------------------------------
+                                        1000
+        } else {
+            nodes_to_sample * fee_per_node
+        };
         // we must fit into u64 bcs that's the limit of Balance
-        let collected_fee = nodes_to_sample *
-            (
-                input_fee * approx_input_tokens_count
-                + output_fee * approx_output_tokens_count
-            );
         atoma.deposit_to_fee_treasury(wallet.split(collected_fee));
 
         // 5.
-        let ticket = atoma::settlement::new_ticket(
+        let mut ticket = atoma::settlement::new_ticket(
             model,
             echelon_id,
             sampled_nodes,
@@ -381,13 +400,21 @@ module atoma::gate {
             echelon_settlement_timeout_ms,
             ctx,
         );
-        if (requested_nodes_to_sample.is_none()) {
-            // the user didn't specify the number of nodes to sample, so we do
-            // probabilistic cross validation
-            ticket.request_cross_validation();
-        }
 
-        (ticket, sampled_nodes)
+        if (has_cross_validation) {
+            // attach this information to the ticket
+            ticket.request_cross_validation(
+                atoma.get_cross_validation_probability_permille(),
+                extra_cross_validation_counts_count,
+            );
+            // this is a vector of length one
+            let sampled_node = sampled_nodes;
+
+            (ticket, 1 + extra_cross_validation_counts_count, sampled_node)
+        } else {
+            // nothing special
+            (ticket, sampled_nodes.length(), sampled_nodes)
+        }
     }
 
     public struct EchelonIdAndPerformance has drop {

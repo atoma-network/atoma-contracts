@@ -29,6 +29,13 @@ module atoma::db {
     /// Nodes that submitted correct (according to the oracle) results will get
     /// this ‰ of the slashed tokens.
     const InitialPermilleForHonestNodesOnDispute: u64 = 200;
+    /// The probability of cross validation.
+    /// We perform cross validation when the user does not specify how many
+    /// nodes to sampled.
+    /// See `gate` and `settlement` modules for more info.
+    const InitialCrossValidationProbabilityPermille: u64 = 500;
+    /// How many extra nodes to sample when cross validating.
+    const InitialCrossValidationExtraNodesCount: u64 = 10;
 
     /// To be able to identify the errors faster in the logs, we start the
     /// counter from a number that's leet for "error_000".
@@ -258,6 +265,10 @@ module atoma::db {
             permille_for_oracle_on_dispute: InitialPermilleForOracleOnDispute,
             permille_for_honest_nodes_on_dispute:
                 InitialPermilleForHonestNodesOnDispute,
+            cross_validation_probability_permille:
+                InitialCrossValidationProbabilityPermille,
+            cross_validation_extra_nodes_count:
+                InitialCrossValidationExtraNodesCount,
         };
         transfer::share_object(atoma_db);
 
@@ -515,6 +526,14 @@ module atoma::db {
 
     public fun get_model_modality(self: &AtomaDb, model_name: ascii::String): u64 {
         self.models.borrow(model_name).modality
+    }
+
+    public fun get_cross_validation_probability_permille(self: &AtomaDb): u64 {
+        self.cross_validation_probability_permille
+    }
+
+    public fun get_cross_validation_extra_nodes_count(self: &AtomaDb): u64 {
+        self.cross_validation_extra_nodes_count
     }
 
     // =========================================================================
