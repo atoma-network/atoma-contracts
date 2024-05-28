@@ -21,8 +21,9 @@ module atoma::prompts {
     use sui::coin::Coin;
     use toma::toma::TOMA;
 
-    
-    /// Submits a text prompt to Atoma network that asks for a joke.
+
+    /// Submits an arbitrary text prompt.
+    /// The other alternative is to use programmable txs on client.
     public entry fun send_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
