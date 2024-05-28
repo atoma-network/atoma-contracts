@@ -14,6 +14,8 @@ module atoma::settlement {
     const EIncorrectMerkleLeavesBufferLength: u64 = EBase + 4;
     const ENotAnOracle: u64 = EBase + 5;
     const ETicketMustHaveNodes: u64 = EBase + 6;
+    /// There can only be one node sampled at first for cross validation to work.
+    const ECrossValidationSupportedForOneNodeOnly: u64 = EBase + 7;
 
     /// Node is the first to submit a commitment for a given ticket
     public struct FirstSubmissionEvent has copy, drop {
@@ -148,23 +150,29 @@ module atoma::settlement {
         token_counts_disputed_by: Option<SmallId>,
         /// There's only limited time to settle the prompt.
         timeout: TimeoutInfo,
-        /// Possibly invoke cross validation when all nodes submit their
+        /// Can only be some if there is exactly one node sampled so far.
+        /// Possibly invokes cross validation when the node submit their
         /// commitment.
         cross_validation: Option<CrossValidation>
     }
 
     /// A settlement ticket can have some cross validation chance.
-    /// This means that with the given probability we will invite (once)
-    /// provided number of extra nodes to validate the prompt.
+    /// This means that with the given probability we will invite once
+    /// the provided number of extra nodes to validate the prompt.
     ///
-    /// The typically usecase is to sample just one node and with some
+    /// The goal of this feature is to sample just one node and with some
     /// probability sample more, which makes cheating by the sampled node
     /// uneconomic.
     ///
-    /// # Important
-    /// If cross validation is required, the original `completed` vector, the
-    /// `merkle_root` and the `merkle_leaves` are all _cleared_.
-    /// The nodes
+    /// If cross validation is required, the original `all` and `completed`
+    /// vectors are expanded, the `merkle_root` and the `merkle_leaves` keep
+    /// the value submitted by the node one.
+    /// That's because the node is instructed to submit the commitment AS IF
+    /// there were already `how_many_extra_nodes + 1` nodes.
+    ///
+    /// If cross validation is NOT required, then we don't check any hashes
+    /// as there's no point because all data has been submitted by one node.
+    /// We just accept the result at face value.
     public struct CrossValidation has store, copy, drop {
         /// We randomly generate a number between 0 and 1000 and if the number
         /// is lower than this, we sample extra nodes.
@@ -288,10 +296,12 @@ module atoma::settlement {
     /// - Some arbitrary party calls this at the appropriate time.
     ///
     /// # Two paths
-    /// 1. All nodes have submitted their commitment, check if the expected
-    ///    merkle root matches the hash of the leaves.
-    ///    If it does, the ticket is settled.
-    ///    If it doesn't, the ticket is being disputed.
+    /// 1. All nodes have submitted their commitment.
+    ///    a) If probabilistic cross validation is enabled and the node provided
+    ///       it's commitment, we either accept it or sample more nodes, randomly.
+    ///    b) If the expected merkle root matches the hash of the leaves, then
+    ///       the ticket is settled.
+    ///    c) If it doesn't, the ticket is being disputed.
     /// 2. The timeout to settle has passed but not all nodes have submitted
     ///    their commitment.
     ///    In this case, we slash the nodes that have not submitted their
@@ -314,60 +324,39 @@ module atoma::settlement {
         //
         if (!ticket.is_being_disputed
             && ticket.completed.length() == sampled_nodes_count) {
-            let computed_mroot = sui::hash::blake2b256(&ticket.merkle_leaves);
-            if (computed_mroot == ticket.merkle_root) {
-                // happy path
+            // a)
+            if (ticket.cross_validation.is_some()) {
+                let CrossValidation {
+                    probability_permille,
+                    how_many_extra_nodes,
+                } = ticket.cross_validation.extract();
 
-                let SettlementTicket {
-                    id,
-                    mut completed,
-                    collected_fee_in_protocol_token: collected_fee,
-                    payer,
-                    input_fee_per_token,
-                    mut input_tokens_count,
-                    output_fee_per_token,
-                    mut output_tokens_count,
+                // with the given chance sample more nodes
+                //
+                // the sender should not be able to predict the random number,
+                // but still would be nice to have this:
+                // TODO: https://github.com/atoma-network/atoma-contracts/issues/4
+                let should_sample_more =
+                    probability_permille < atoma::utils::random_u64(ctx) % 1000;
 
-                    token_counts_disputed_by: _, // is for sure none
-                    model_name: _,
-                    echelon_id: _,
-                    all: _,
-                    merkle_root: _,
-                    merkle_leaves: _,
-                    is_being_disputed: _,
-                    timeout: _,
-                } = ticket;
-                id.delete();
-
-                // we can extract because the first node submits the counts
-                // and there is always at least one node
-                let exact_fee = sampled_nodes_count *
-                    (
-                        input_fee_per_token * input_tokens_count.extract()
-                        + output_fee_per_token * output_tokens_count.extract()
+                if (should_sample_more) {
+                    sample_extra_nodes_for_cross_validation(
+                        atoma, ticket, how_many_extra_nodes, ctx,
                     );
-
-                let reward_per_node = if (exact_fee >= collected_fee) {
-                    // unlikely that it would be higher because we overestimate
-
-                    collected_fee / completed.length()
                 } else {
-                    let refund_amount = collected_fee - exact_fee;
-                    atoma.refund_to_user(payer, refund_amount, ctx);
-
-                    exact_fee / completed.length()
-                };
-
-                while (!completed.is_empty()) {
-                    let node_id = completed.pop_back();
-                    atoma.attribute_fee_to_node(node_id, reward_per_node, ctx);
-                };
-
-                sui::event::emit(SettledEvent {
-                    ticket_id,
-                    oracle_node_id: option::none(),
-                });
-            } else {
+                    // this time we don't sample more nodes
+                    ticket_ok_so_distribute_fees(atoma, ticket, ctx);
+                }
+            }
+            // b)
+            else if (ticket.merkle_root ==
+                sui::hash::blake2b256(&ticket.merkle_leaves) // computed root
+            ) {
+                // happy path
+                ticket_ok_so_distribute_fees(atoma, ticket, ctx);
+            }
+            // c)
+            else {
                 ticket.is_being_disputed = true;
                 return_settlement_ticket(atoma, ticket);
                 sui::event::emit(DisputeEvent {
@@ -506,6 +495,7 @@ module atoma::settlement {
             echelon_id: _,
             is_being_disputed: _,
             timeout: _,
+            cross_validation: _,
         } = ticket;
         id.delete();
 
@@ -676,7 +666,22 @@ module atoma::settlement {
                 started_in_epoch: ctx.epoch(),
                 started_at_epoch_timestamp_ms: ctx.epoch_timestamp_ms(),
             },
+            cross_validation: option::none(),
         }
+    }
+
+    public(package) fun request_cross_validation(
+        self: &mut SettlementTicket,
+        probability_permille: u64,
+        how_many_extra_nodes: u64,
+    ) {
+        assert!(self.all.length() == 1, ECrossValidationSupportedForOneNodeOnly);
+
+        let cross_validation = CrossValidation {
+            probability_permille,
+            how_many_extra_nodes,
+        };
+        self.cross_validation = option::some(cross_validation);
     }
 
     public(package) fun ticket_uid(self: &mut SettlementTicket): &mut UID {
@@ -694,6 +699,126 @@ module atoma::settlement {
     // =========================================================================
     //                          Helpers
     // =========================================================================
+
+    /// Ticket's happy path.
+    /// If everything is in order (caller checked) then this method destroys
+    /// the ticket and gives the participating nodes their reward.
+    fun ticket_ok_so_distribute_fees(
+        atoma: &mut AtomaDb, ticket: SettlementTicket, ctx: &mut TxContext,
+    ) {
+        let SettlementTicket {
+            id,
+            mut completed,
+            collected_fee_in_protocol_token: collected_fee,
+            payer,
+            input_fee_per_token,
+            mut input_tokens_count,
+            output_fee_per_token,
+            mut output_tokens_count,
+
+            token_counts_disputed_by: _, // is for sure none
+            model_name: _,
+            echelon_id: _,
+            all: _,
+            merkle_root: _,
+            merkle_leaves: _,
+            is_being_disputed: _,
+            timeout: _,
+            cross_validation: _,
+        } = ticket;
+        let ticket_id = object::uid_to_inner(&id);
+        id.delete();
+
+        // we can extract because the first node submits the counts
+        // and there is always at least one node
+        let exact_fee = completed.length() *
+            (
+                input_fee_per_token * input_tokens_count.extract()
+                + output_fee_per_token * output_tokens_count.extract()
+            );
+
+        let reward_per_node = if (exact_fee >= collected_fee) {
+            // unlikely that it would be higher because we overestimate
+
+            collected_fee / completed.length()
+        } else {
+            let refund_amount = collected_fee - exact_fee;
+            atoma.refund_to_user(payer, refund_amount, ctx);
+
+            exact_fee / completed.length()
+        };
+
+        while (!completed.is_empty()) {
+            let node_id = completed.pop_back();
+            atoma.attribute_fee_to_node(node_id, reward_per_node, ctx);
+        };
+
+        sui::event::emit(SettledEvent {
+            ticket_id,
+            oracle_node_id: option::none(),
+        });
+    }
+
+    /// There's a chance that probabilistic validation triggers more node
+    /// sampling which is what happens in this method.
+    /// We sample bunch of new nodes and emit an event about it.
+    /// At this stage of the settlement, there's a submitted merkle root and
+    /// the first chunk hash.
+    ///
+    /// If we cannot sample more nodes right now, we store this info on the
+    /// ticket and next time `try_to_settle` is called, we will retry until
+    /// there are some nodes.
+    fun sample_extra_nodes_for_cross_validation(
+        atoma: &mut AtomaDb,
+        mut ticket: SettlementTicket,
+        how_many_extra_nodes: u64,
+        ctx: &mut TxContext,
+    ) {
+        let ticket_id = object::id(&ticket);
+
+        ticket.timeout.started_in_epoch = ctx.epoch();
+        ticket.timeout.started_at_epoch_timestamp_ms =
+            ctx.epoch_timestamp_ms();
+
+        // TODO: sample multiple nodes at once
+        let mut new_nodes = vector::empty();
+        let mut i = 0;
+        while (i < how_many_extra_nodes) {
+            let mut perhaps_new_node_id = atoma
+                .sample_node_by_echelon_id(
+                    ticket.model_name,
+                    ticket.echelon_id,
+                    ctx,
+                );
+
+            if (perhaps_new_node_id.is_none()) {
+                // there are no nodes to sample right now, let's
+                // wait until more nodes join the echelon
+                ticket.cross_validation = option::some(CrossValidation {
+                    // we want to retry
+                    probability_permille: 1000,
+                    how_many_extra_nodes,
+                });
+                break
+            };
+
+            let new_node_id = perhaps_new_node_id.extract();
+            ticket.all.push_back(new_node_id);
+            new_nodes.push_back(MapNodeToChunk {
+                node_id: new_node_id,
+                // offset by 1 because there's already the first node
+                order: i + 1,
+            });
+
+            i = i + 1;
+        };
+
+        return_settlement_ticket(atoma, ticket);
+        sui::event::emit(NewlySampledNodesEvent {
+            ticket_id,
+            new_nodes,
+        });
+    }
 
     /// # How the timeout works?
     ///

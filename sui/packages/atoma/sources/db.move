@@ -123,6 +123,14 @@ module atoma::db {
         fee_treasury: Balance<TOMA>,
         /// When nodes get slashed, some of the collateral goes here.
         communal_treasury: Balance<TOMA>,
+        /// We have a probabilistic cross validation feature.
+        /// If the user submits a prompt but does not specify number of nodes
+        /// to sample, we sample just one.
+        /// Then, with this probability, we sample extra nodes to verify the
+        /// results.
+        cross_validation_probability_permille: u64,
+        /// If we decide to sample extra nodes, this is how many we sample.
+        cross_validation_extra_nodes_count: u64,
 
         // Configuration
 
