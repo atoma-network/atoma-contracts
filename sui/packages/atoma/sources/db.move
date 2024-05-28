@@ -30,28 +30,31 @@ module atoma::db {
     /// this ‰ of the slashed tokens.
     const InitialPermilleForHonestNodesOnDispute: u64 = 200;
 
-    const ENodeRegDisabled: u64 = 0;
-    const EModelDisabled: u64 = 1;
-    const ENotAuthorized: u64 = 2;
-    const EProtocolFeeCannotBeZero: u64 = 3;
-    const ERelativePerformanceCannotBeZero: u64 = 4;
-    const EEchelonNotFound: u64 = 5;
-    const EEchelonAlreadyExistsForModel: u64 = 6;
+    /// To be able to identify the errors faster in the logs, we start the
+    /// counter from a number that's leet for "error_000".
+    const EBase = 312012_000;
+    const ENodeRegDisabled: u64 = EBase + 0;
+    const EModelDisabled: u64 = EBase + 1;
+    const ENotAuthorized: u64 = EBase + 2;
+    const EProtocolFeeCannotBeZero: u64 = EBase + 3;
+    const ERelativePerformanceCannotBeZero: u64 = EBase + 4;
+    const EEchelonNotFound: u64 = EBase + 5;
+    const EEchelonAlreadyExistsForModel: u64 = EBase + 6;
     /// One cannot distribute more than 1000 ‰ of the total slashed collateral.
     /// So the ‰ that goes to the oracle plus the ‰ that goes to the honest
     /// nodes cannot be more than 1000 ‰.
-    const ETotalPermilleMustBeLessThan1000: u64 = 7;
-    const ENodeAlreadySubscribedToModel: u64 = 9;
-    const ENodeNotSubscribedToModel: u64 = 10;
+    const ETotalPermilleMustBeLessThan1000: u64 = EBase + 7;
+    const ENodeAlreadySubscribedToModel: u64 = EBase + 9;
+    const ENodeNotSubscribedToModel: u64 = EBase + 10;
     /// This can happen due to race conditions in endpoint
     /// `remove_node_from_model`.
     /// The CLI depends on this error code when sending the tx.
-    const ENodeIndexMismatch: u64 = 11;
-    const ENodeAlreadyDisabled: u64 = 12;
+    const ENodeIndexMismatch: u64 = EBase + 11;
+    const ENodeAlreadyDisabled: u64 = EBase + 12;
     /// There's a 2 epoch wait.
     /// Ie., if you disable a node in epoch N, you can only destroy it in epoch
     /// N + 2.
-    const ENodeMustWaitBeforeDestroy: u64 = 13;
+    const ENodeMustWaitBeforeDestroy: u64 = EBase + 13;
 
     public struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
