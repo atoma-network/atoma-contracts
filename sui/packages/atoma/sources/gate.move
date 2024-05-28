@@ -13,7 +13,7 @@ module atoma::gate {
 
     /// To be able to identify the errors faster in the logs, we start the
     /// counter from a number that's leet for "error_000".
-    const EBase: u64 = 312_012_100;
+    const EBase: u64 = 312012_100;
     const ENoEligibleEchelons: u64 = EBase + 0;
     const ETooManyNodesToSample: u64 = EBase + 1;
     const EModalityMismatch: u64 = EBase + 2;
