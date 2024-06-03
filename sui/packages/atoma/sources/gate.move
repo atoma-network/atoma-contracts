@@ -345,25 +345,12 @@ module atoma::gate {
         let (input_fee, output_fee) = echelon.get_model_echelon_fees();
 
         // 3.
-        let mut sampled_nodes = vector::empty();
-        let mut iteration = 0;
-        while (iteration < nodes_to_sample) {
-            let node_id = atoma
-                .sample_node_by_echelon_index(model, echelon_index, ctx)
-                // unwraps if no unslashed nodes
-                // TBD: should we try another echelon?
-                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
-                .extract();
-
-            iteration = iteration + 1;
-            if (!sampled_nodes.contains(&node_id)) {
-                // we can end up with less nodes than requested, but no
-                // duplicates
-                //
-                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
-                sampled_nodes.push_back(node_id);
-            };
-        };
+        let sampled_nodes = atoma.sample_unique_nodes_by_echelon_index(
+            model,
+            echelon_index,
+            nodes_to_sample,
+            ctx,
+        );
 
         // 4.
         let extra_cross_validation_counts_count =

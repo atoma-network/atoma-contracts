@@ -786,50 +786,56 @@ module atoma::settlement {
         ticket.timeout.started_at_epoch_timestamp_ms =
             ctx.epoch_timestamp_ms();
 
-        // TODO: sample multiple nodes at once
-        let mut new_nodes = vector::empty();
-        let mut i = 0;
-        while (i < how_many_extra_nodes) {
-            let mut perhaps_new_node_id = atoma
-                .sample_node_by_echelon_id(
-                    ticket.model_name,
-                    ticket.echelon_id,
-                    ctx,
-                );
+        let mut new_nodes = atoma.sample_unique_nodes_by_echelon_id(
+            ticket.model_name,
+            ticket.echelon_id,
+            // we sample one extra in case the asserter node is sampled
+            how_many_extra_nodes + 1,
+            ctx,
+        );
 
-            if (perhaps_new_node_id.is_none()) {
-                // there are no nodes to sample right now, let's
-                // wait until more nodes join the echelon
-                ticket.cross_validation = option::some(CrossValidation {
-                    // we want to retry
-                    probability_permille: 1000,
-                    how_many_extra_nodes,
-                });
+        let (has_asserter, asserter_index) = new_nodes.index_of(&ticket.all[0]);
+        if (has_asserter) {
+            new_nodes.swap_remove(asserter_index);
+        } else if (new_nodes.length() == how_many_extra_nodes + 1) {
+            // we added plus one above but asserter was not in the list, so we
+            // remove one node
+            new_nodes.pop_back();
+        };
 
-                sui::event::emit(RetrySettlementEvent {
-                    ticket_id,
-                    how_many_nodes_in_echelon: how_many_extra_nodes,
-                });
-
-                break
-            };
-
-            let new_node_id = perhaps_new_node_id.extract();
-            ticket.all.push_back(new_node_id);
-            new_nodes.push_back(MapNodeToChunk {
-                node_id: new_node_id,
-                // offset by 1 because there's already the first node
-                order: i + 1,
+        if (how_many_extra_nodes > new_nodes.length()) {
+            // not enough nodes to sample right now, let's
+            // wait until more nodes join the echelon
+            ticket.cross_validation = option::some(CrossValidation {
+                // we want to retry
+                probability_permille: 1000,
+                how_many_extra_nodes,
             });
 
-            i = i + 1;
+            sui::event::emit(RetrySettlementEvent {
+                ticket_id,
+                how_many_nodes_in_echelon: how_many_extra_nodes,
+            });
+        } else {
+            let mut new_nodes_map = vector::empty();
+            let mut i = 0;
+            while (!new_nodes.is_empty()) {
+                let new_node_id = new_nodes.pop_back();
+                new_nodes_map.push_back(MapNodeToChunk {
+                    node_id: new_node_id,
+                    // offset by 1 because there's already the first node
+                    order: i + 1,
+                });
+                i = i + 1;
+            };
+
+            sui::event::emit(NewlySampledNodesEvent {
+                ticket_id,
+                new_nodes: new_nodes_map,
+            });
         };
 
         return_settlement_ticket(atoma, ticket);
-        sui::event::emit(NewlySampledNodesEvent {
-            ticket_id,
-            new_nodes,
-        });
     }
 
     /// # How the timeout works?

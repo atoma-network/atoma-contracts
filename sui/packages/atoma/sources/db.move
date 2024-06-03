@@ -666,20 +666,31 @@ module atoma::db {
         sample_node(&self.nodes, echelon, ctx)
     }
 
-    /// From the given model's echelon, pick a random node.
-    /// If the picked node has been slashed, remove it from the echelon and
-    /// repeat until a valid node is found.
-    ///
-    /// In case all nodes have been slashed returns none.
-    public(package) fun sample_node_by_echelon_index(
+    /// Attempts to sample `count` unique nodes from the given model's echelon.
+    /// It's possible that there are not enough nodes to sample.
+    public(package) fun sample_unique_nodes_by_echelon_id(
+        self: &mut AtomaDb,
+        model_name: ascii::String,
+        echelon_id: EchelonId,
+        count: u64,
+        ctx: &mut TxContext,
+    ): vector<SmallId> {
+        let model = self.models.borrow_mut(model_name);
+        let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
+        sample_unique_nodes(&self.nodes, echelon, count, ctx)
+    }
+
+    /// Same as `sample_unique_nodes_by_echelon_id` but uses echelon index instead.
+    public(package) fun sample_unique_nodes_by_echelon_index(
         self: &mut AtomaDb,
         model_name: ascii::String,
         echelon_index: u64,
+        count: u64,
         ctx: &mut TxContext,
-    ): Option<SmallId> {
+    ): vector<SmallId> {
         let model = self.models.borrow_mut(model_name);
         let echelon = model.echelons.borrow_mut(echelon_index);
-        sample_node(&self.nodes, echelon, ctx)
+        sample_unique_nodes(&self.nodes, echelon, count, ctx)
     }
 
     // =========================================================================
@@ -1087,5 +1098,130 @@ module atoma::db {
             // node has been slashed so remove it from the echelon
             echelon.nodes.swap_remove(node_index);
         }
+    }
+
+    /// Attempts to sample `how_many_nodes_to_sample` unique nodes from the
+    /// given echelon.
+    ///
+    /// # Important
+    /// In a pathological scenario where there any very little unslashed nodes
+    /// in the echelon, this function might return less nodes than requested.
+    /// It's also possible there are no unslashed nodes at all, returning
+    /// an empty vector.
+    fun sample_unique_nodes(
+        nodes: &Table<SmallId, NodeEntry>,
+        echelon: &mut ModelEchelon,
+        how_many_nodes_to_sample: u64,
+        ctx: &mut TxContext,
+    ): vector<SmallId> {
+        let mut sampled_nodes = vector::empty();
+
+        let total_echelon_nodes = echelon.nodes.length();
+
+        // how many nodes do we sample from in each chunk
+        let base_nodes_per_chunk = total_echelon_nodes / how_many_nodes_to_sample;
+        // firs this many chunks will sample from one extra node
+        let total_chunks_with_extra_node_count = total_echelon_nodes % how_many_nodes_to_sample;
+
+        // when 0 then we no longer sample from extra node
+        let mut extra_node_chunks_remaining = total_chunks_with_extra_node_count;
+        // We keep track of the index of the first node in the chunk.
+        // This also tells us whether we iterated all the chunks of not yet
+        let mut from_node_index = 0;
+        while (from_node_index < how_many_nodes_to_sample) {
+            // sample in interval <from_node_index; from_node_index + nodes_to_pick_from)
+            let nodes_to_pick_from = base_nodes_per_chunk
+            + if (extra_node_chunks_remaining > 0) {
+                extra_node_chunks_remaining = extra_node_chunks_remaining - 1;
+                1
+            } else {
+                0
+            };
+
+            let random_u64 = 0; // TODO
+
+            let node_index = from_node_index + nodes_to_pick_from % random_u64;
+
+            // We want to sample from the end of the echelon for two reasons:
+            // - Primarily, since we remove nodes from the echelon, we want to
+            //   use swap remove and not invalidate the indices.
+            // - The first `total_chunks_with_extra_node_count` chunks have one
+            //   extra node, decreasing the chance of sampling of each node.
+            //   Ever so slightly, it's better NOT to unsubscribe and to
+            //   subscribe early.
+            // Therefore we inverse the index such that 0 becomes the last
+            // index, 1 the second to last and so on.
+            // The rest of the algorithm is simpler if we start from the
+            // beginning, so we do this transformation here.
+            let inverse_node_index = total_echelon_nodes - 1 - node_index;
+            let mut node_id = get_node_id_if_unslashed_or_swap_remove(
+                nodes, &mut echelon.nodes, inverse_node_index,
+            );
+            if (node_id.is_some()) {
+                // this node is fine to use, happy path
+                vector::push_back(&mut sampled_nodes, node_id.extract());
+            } else {
+                // this node has been slashed, we finish our chunk iterations
+                // and deal with the situation later
+            };
+
+            from_node_index = from_node_index + nodes_to_pick_from;
+        };
+
+        if (sampled_nodes.length() == how_many_nodes_to_sample) {
+            sampled_nodes
+        } else {
+            // We sampled some slashed nodes and so we need to fill in the
+            // missing nodes.
+
+            // We remember how many times have we iterated and we retry
+            // either until user requested number of nodes is sampled or
+            // we hit a max number of iterations.
+            // This means everything is ok in the non-pathological scenario with
+            // many unslashed nodes in the echelon and does not loop forever
+            // (hence exhausting the budget) in the pathological scenario.
+            let mut sampled_nodes = vector::empty();
+            let mut iteration = 0;
+            let max_iterations = how_many_nodes_to_sample * 4;
+            while (sampled_nodes.length() < how_many_nodes_to_sample
+                || iteration <= max_iterations) {
+                let mut node_id = sample_node(nodes, echelon, ctx);
+
+                if (node_id.is_none()) {
+                    // return what we have
+                    return sampled_nodes
+                };
+
+                let node_id = node_id.extract();
+                if (!sampled_nodes.contains(&node_id)) {
+                    sampled_nodes.push_back(node_id);
+                };
+
+                iteration = iteration + 1;
+            };
+
+            sampled_nodes
+        }
+    }
+
+    fun get_node_id_if_unslashed_or_swap_remove(
+        nodes: &Table<SmallId, NodeEntry>,
+        echelon_nodes: &mut TableVec<SmallId>,
+        node_index: u64,
+    ): Option<SmallId> {
+        let node_id = *echelon_nodes.borrow(node_index);
+        let has_node = nodes.contains(node_id);
+        if (has_node) {
+            let node = nodes.borrow(node_id);
+            if (node.collateral.value() > 0
+                && node.was_disabled_in_epoch.is_none()) {
+                return option::some(node_id)
+            }
+        };
+
+        // node has been slashed so remove it from the echelon
+        echelon_nodes.swap_remove(node_index);
+
+        option::none()
     }
 }
