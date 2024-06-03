@@ -51,6 +51,12 @@ module atoma::settlement {
         oracle_node_id: Option<SmallId>,
     }
 
+    /// Retry settlement when there are at least this many nodes in the echelon.
+    public struct RetrySettlementEvent has copy, drop {
+        ticket_id: ID,
+        how_many_nodes_in_echelon: u64,
+    }
+
     /// Dynamic object field of atoma db.
     ///
     /// Ticket that's created when user submits a new prompt.
@@ -799,6 +805,12 @@ module atoma::settlement {
                     probability_permille: 1000,
                     how_many_extra_nodes,
                 });
+
+                sui::event::emit(RetrySettlementEvent {
+                    ticket_id,
+                    how_many_nodes_in_echelon: how_many_extra_nodes,
+                });
+
                 break
             };
 
