@@ -823,7 +823,7 @@ module atoma::settlement {
                 let new_node_id = new_nodes.pop_back();
                 new_nodes_map.push_back(MapNodeToChunk {
                     node_id: new_node_id,
-                    // offset by 1 because there's already the first node
+                    // offset by 1 because there's already the asserter
                     order: i + 1,
                 });
                 i = i + 1;

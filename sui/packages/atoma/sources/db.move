@@ -1120,7 +1120,6 @@ module atoma::db {
         let mut sampled_nodes = vector::empty();
 
         let total_echelon_nodes = echelon.nodes.length();
-
         // how many nodes do we sample from in each chunk
         let base_nodes_per_chunk = total_echelon_nodes / how_many_nodes_to_sample;
         // firs this many chunks will sample from one extra node
@@ -1173,6 +1172,7 @@ module atoma::db {
         };
 
         if (sampled_nodes.length() == how_many_nodes_to_sample) {
+            // happy path! the chunk iterations did not hit any slashed nodes
             sampled_nodes
         } else {
             // We sampled some slashed nodes and so we need to fill in the
