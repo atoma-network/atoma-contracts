@@ -31,6 +31,8 @@ When upgrading, the version needs to be changed in
   Now, we want for an oracle to resolve the dispute.
 - `settlement::SettledEvent` is emitted when a ticket is settled and fee is distributed.
 - `settlement::NewlySampledNodesEvent` is emitted when a new set of nodes is sampled for a prompt because of timeout.
+- `settlement::RetrySettlementEvent` is emitted when settlement cannot progress because there are not enough nodes in the ticket's selected echelon.
+  It has a property that tells the off chain clients how many nodes are required before retry.
 
 ## How to use the atoma protocol
 
