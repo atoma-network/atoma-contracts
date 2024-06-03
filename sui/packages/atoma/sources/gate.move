@@ -491,6 +491,7 @@ module atoma::gate {
         // 2.
         //
 
+        // modulo is ok because we don't allow performance to be 0
         let goal = 1 + random_u256(ctx) % total_performance; // B
 
         let mut remaining_performance = total_performance;

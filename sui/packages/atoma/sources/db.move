@@ -62,6 +62,7 @@ module atoma::db {
     /// Ie., if you disable a node in epoch N, you can only destroy it in epoch
     /// N + 2.
     const ENodeMustWaitBeforeDestroy: u64 = EBase + 13;
+    const ECannotSampleZeroNodes: u64 = EBase + 14;
 
     public struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
@@ -1104,7 +1105,7 @@ module atoma::db {
     /// given echelon.
     ///
     /// # Important
-    /// In a pathological scenario where there any very little unslashed nodes
+    /// In a pathological scenario where there are few unslashed nodes
     /// in the echelon, this function might return less nodes than requested.
     /// It's also possible there are no unslashed nodes at all, returning
     /// an empty vector.
@@ -1114,6 +1115,8 @@ module atoma::db {
         how_many_nodes_to_sample: u64,
         ctx: &mut TxContext,
     ): vector<SmallId> {
+        assert!(how_many_nodes_to_sample > 0, ECannotSampleZeroNodes);
+
         let mut sampled_nodes = vector::empty();
 
         let total_echelon_nodes = echelon.nodes.length();
@@ -1138,7 +1141,8 @@ module atoma::db {
                 0
             };
 
-            let random_u64 = 0; // TODO
+            // TODO: cannot be zero
+            let random_u64 = 1; // TODO
 
             let node_index = from_node_index + nodes_to_pick_from % random_u64;
 
