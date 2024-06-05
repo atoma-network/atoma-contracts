@@ -1,14 +1,12 @@
 module atoma::gate {
     use atoma::db::{SmallId, ModelEchelon, AtomaDb};
     use atoma::settlement::SettlementTicket;
-    use atoma::utils::random_u256;
     use std::ascii;
     use std::string;
     use sui::balance::Balance;
     use sui::dynamic_field;
     use toma::toma::TOMA;
 
-    const DefaultNodesToSample: u64 = 10;
     const MaxNodesToSample: u64 = 256;
 
     /// To be able to identify the errors faster in the logs, we start the
@@ -57,10 +55,22 @@ module atoma::gate {
         ticket_id: ID,
         /// The parameters of the prompt that nodes must evaluate.
         params: Text2TextPromptParams,
+        /// Determines into how many chunks do the nodes split the output when
+        /// they generate proof hashes.
+        /// Might not equal the number of sampled nodes, see below.
+        chunks_count: u64,
         /// This might not be the final list of nodes that will be used to
         /// evaluate the prompt.
         /// If nodes don't agree on the output or not enough nodes provide
         /// the output in time, extra nodes will be sampled.
+        ///
+        /// Also, this vector does not determine how many chunks to split the
+        /// output into, only the order of nodes.
+        ///
+        /// We also have a probabilistic cross validation mechanism during which
+        /// there will only be one node sampled, but the prompt will still be
+        /// split into several chunks.
+        /// See the settlement module for more info.
         nodes: vector<SmallId>,
     }
 
@@ -84,7 +94,7 @@ module atoma::gate {
         num_samples: u64,
         output_destination: vector<u8>,
         prompt: string::String,
-        random_seed: u32,
+        random_seed: u64,
         uncond_prompt: string::String,
         width: u64,
     }
@@ -96,24 +106,45 @@ module atoma::gate {
         ticket_id: ID,
         /// The parameters of the prompt that nodes must evaluate.
         params: Text2ImagePromptParams,
+        /// Determines into how many chunks do the nodes split the output when
+        /// they generate proof hashes.
+        /// Might not equal the number of sampled nodes, see below.
+        chunks_count: u64,
         /// This might not be the final list of nodes that will be used to
         /// evaluate the prompt.
         /// If nodes don't agree on the output or not enough nodes provide
         /// the output in time, extra nodes will be sampled.
+        ///
+        /// Also, this vector does not determine how many chunks to split the
+        /// output into, only the order of nodes.
+        ///
+        /// We also have a probabilistic cross validation mechanism during which
+        /// there will only be one node sampled, but the prompt will still be
+        /// split into several chunks.
+        /// See the settlement module for more info.
         nodes: vector<SmallId>,
     }
 
+    #[allow(lint(public_random))]
     /// The fee is per input token.
     ///
     /// Returns ticket ID which is an identifier of the settlement object.
+    ///
+    /// # Randomness safety
+    /// - prompt is submitted by user
+    /// - random is used to sample nodes
+    /// - user cannot get the list of selected nodes in the same transaction
     public fun submit_text2text_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
         params: Text2TextPromptParams,
         max_fee_per_token: u64,
         nodes_to_sample: Option<u64>,
+        random: &sui::random::Random,
         ctx: &mut TxContext,
     ): ID {
+        let mut rng = random.new_generator(ctx);
+
         // These are approximations that will get refunded partly.
         // While for the preprompt, we know the exact number of tokens, the
         // input is a string and we don't know the exact number of tokens.
@@ -123,7 +154,7 @@ module atoma::gate {
             params.pre_prompt_tokens.length() + params.prompt.length();
         let output_tokens = params.max_tokens;
 
-        let (mut ticket, selected_nodes) = submit_prompt(
+        let (mut ticket, chunks_count, selected_nodes) = submit_prompt(
             atoma,
             wallet,
             params.model,
@@ -133,6 +164,7 @@ module atoma::gate {
             max_fee_per_token,
             output_tokens,
             nodes_to_sample,
+            &mut rng,
             ctx,
         );
         // adds a dynfield to the ticket so that off chain can read the params
@@ -146,16 +178,23 @@ module atoma::gate {
         sui::event::emit(Text2TextPromptEvent {
             params,
             ticket_id,
+            chunks_count,
             nodes: selected_nodes,
         });
 
         ticket_id
     }
 
+    #[allow(lint(public_random))]
     /// The fee per input token is the prompt fee.
     /// The fee per output token is how much does one image cost.
     ///
     /// Returns ticket ID which is an identifier of the settlement object.
+    ///
+    /// # Randomness safety
+    /// - prompt is submitted by user
+    /// - random is used to sample nodes
+    /// - user cannot get the list of selected nodes in the same transaction
     public fun submit_text2image_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
@@ -163,14 +202,17 @@ module atoma::gate {
         max_fee_per_input_token: u64,
         max_fee_per_output_token: u64,
         nodes_to_sample: Option<u64>,
+        random: &sui::random::Random,
         ctx: &mut TxContext,
     ): ID {
+        let mut rng = random.new_generator(ctx);
+
         // this is approximation that will get refunded partly
         let input_characters = params.prompt.length();
         // this we know exactly
         let images = params.num_samples;
 
-        let (mut ticket, selected_nodes) = submit_prompt(
+        let (mut ticket, chunks_count, selected_nodes) = submit_prompt(
             atoma,
             wallet,
             params.model,
@@ -180,6 +222,7 @@ module atoma::gate {
             max_fee_per_output_token,
             images,
             nodes_to_sample,
+            &mut rng,
             ctx,
         );
         // adds a dynfield to the ticket so that off chain can read the params
@@ -193,6 +236,7 @@ module atoma::gate {
         sui::event::emit(Text2ImagePromptEvent {
             params,
             ticket_id,
+            chunks_count,
             nodes: selected_nodes,
         });
 
@@ -243,7 +287,7 @@ module atoma::gate {
         num_samples: u64,
         output_destination: vector<u8>,
         prompt: string::String,
-        random_seed: u32,
+        random_seed: u64,
         uncond_prompt: string::String,
         width: u64,
     ): Text2ImagePromptParams {
@@ -278,6 +322,11 @@ module atoma::gate {
     /// 3. Sample the required number of nodes from the echelon.
     /// 4. Collect the total fee that's going to be split among the nodes.
     /// 5. Create a new settlement ticket in the database.
+    ///
+    /// Returns
+    /// - the ticket that can be attached to the atoma db
+    /// - into how many chunks should be the output split for commitment
+    /// - what were the sampled nodes (so far)
     fun submit_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
@@ -287,9 +336,10 @@ module atoma::gate {
         approx_input_tokens_count: u64,
         max_fee_per_output_token: u64,
         approx_output_tokens_count: u64,
-        nodes_to_sample: Option<u64>,
+        requested_nodes_to_sample: Option<u64>,
+        rng: &mut sui::random::RandomGenerator,
         ctx: &mut TxContext,
-    ): (SettlementTicket, vector<SmallId>) {
+    ): (SettlementTicket, u64, vector<SmallId>) {
         let expected_model_modality = atoma.get_model_modality(model);
         assert!(expected_model_modality == model_modality, EModalityMismatch);
 
@@ -297,15 +347,16 @@ module atoma::gate {
         let echelons = atoma.get_model_echelons_if_enabled(model);
 
         // 2.
-        let nodes_to_sample =
-            nodes_to_sample.get_with_default(DefaultNodesToSample);
+        // if None we do probabilistic cross validation (see settlement)
+        let has_cross_validation = requested_nodes_to_sample.is_none();
+        let nodes_to_sample = requested_nodes_to_sample.get_with_default(1);
         assert!(nodes_to_sample <= MaxNodesToSample, ETooManyNodesToSample);
         let echelon_index = select_eligible_echelon_at_random(
             echelons,
             nodes_to_sample,
             max_fee_per_input_token,
             max_fee_per_output_token,
-            ctx,
+            rng,
         );
         let echelon = echelons.borrow(echelon_index);
         let echelon_id = echelon.get_model_echelon_id();
@@ -314,37 +365,39 @@ module atoma::gate {
         let (input_fee, output_fee) = echelon.get_model_echelon_fees();
 
         // 3.
-        let mut sampled_nodes = vector::empty();
-        let mut iteration = 0;
-        while (iteration < nodes_to_sample) {
-            let node_id = atoma
-                .sample_node_by_echelon_index(model, echelon_index, ctx)
-                // unwraps if no unslashed nodes
-                // TBD: should we try another echelon?
-                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
-                .extract();
-
-            iteration = iteration + 1;
-            if (!sampled_nodes.contains(&node_id)) {
-                // we can end up with less nodes than requested, but no
-                // duplicates
-                //
-                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
-                sampled_nodes.push_back(node_id);
-            };
-        };
+        let sampled_nodes = atoma.sample_unique_nodes_by_echelon_index(
+            model,
+            echelon_index,
+            nodes_to_sample,
+            rng,
+        );
 
         // 4.
+        let extra_cross_validation_counts_count =
+            atoma.get_cross_validation_extra_nodes_count();
+        let fee_per_node = input_fee * approx_input_tokens_count
+            + output_fee * approx_output_tokens_count;
+
+        let collected_fee = if (has_cross_validation) {
+            // first sampled one PLUS the extra
+            let full_fee = (1 + extra_cross_validation_counts_count)
+                * fee_per_node;
+
+            // now we need to take into account that in `p` cases, there will be
+            // just one node, so we scale down the fee such that on average
+            // the fees add up to the number of on average sampled nodes
+
+                  full_fee * atoma.get_cross_validation_probability_permille()
+            / //----------------------------------------------------------------
+                                        1000
+        } else {
+            nodes_to_sample * fee_per_node
+        };
         // we must fit into u64 bcs that's the limit of Balance
-        let collected_fee = nodes_to_sample *
-            (
-                input_fee * approx_input_tokens_count
-                + output_fee * approx_output_tokens_count
-            );
         atoma.deposit_to_fee_treasury(wallet.split(collected_fee));
 
         // 5.
-        let ticket = atoma::settlement::new_ticket(
+        let mut ticket = atoma::settlement::new_ticket(
             model,
             echelon_id,
             sampled_nodes,
@@ -355,7 +408,20 @@ module atoma::gate {
             ctx,
         );
 
-        (ticket, sampled_nodes)
+        if (has_cross_validation) {
+            // attach this information to the ticket
+            ticket.request_cross_validation(
+                atoma.get_cross_validation_probability_permille(),
+                extra_cross_validation_counts_count,
+            );
+            // this is a vector of length one
+            let sampled_node = sampled_nodes;
+
+            (ticket, 1 + extra_cross_validation_counts_count, sampled_node)
+        } else {
+            // nothing special
+            (ticket, sampled_nodes.length(), sampled_nodes)
+        }
     }
 
     public struct EchelonIdAndPerformance has drop {
@@ -400,7 +466,7 @@ module atoma::gate {
         nodes_to_sample: u64,
         max_fee_per_input_token: u64,
         max_fee_per_output_token: u64,
-        ctx: &mut TxContext,
+        rng: &mut sui::random::RandomGenerator,
     ): u64 {
         //
         // 1.
@@ -445,7 +511,8 @@ module atoma::gate {
         // 2.
         //
 
-        let goal = 1 + random_u256(ctx) % total_performance; // B
+        // modulo is ok because we don't allow performance to be 0
+        let goal = 1 + rng.generate_u256() % total_performance; // B
 
         let mut remaining_performance = total_performance;
         loop {

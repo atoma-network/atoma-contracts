@@ -19,12 +19,13 @@ module atoma::prompts {
     use std::ascii;
     use std::string;
     use sui::coin::Coin;
+    use sui::random::Random;
     use toma::toma::TOMA;
 
 
     /// Submits an arbitrary text prompt.
     /// The other alternative is to use programmable txs on client.
-    public entry fun send_prompt(
+    entry fun send_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
         model: ascii::String,
@@ -41,9 +42,11 @@ module atoma::prompts {
         top_k: u64,
         top_p: u32,
         nodes_to_sample: Option<u64>,
+        random: &Random,
         ctx: &mut TxContext,
     ) {
-        let random_seed = atoma::utils::random_u64(ctx);
+        let mut rng = random.new_generator(ctx);
+        let random_seed = rng.generate_u64();
         let params = atoma::gate::create_text2text_prompt_params(
             max_tokens,
             model,
@@ -71,24 +74,28 @@ module atoma::prompts {
             // you can set this to none to let Atoma network decide how many
             // nodes to sample
             nodes_to_sample,
+            random,
             ctx,
         );
     }
 
     /// Submits a text prompt to Atoma network that asks for a joke.
-    public entry fun tell_me_a_joke(
+    entry fun tell_me_a_joke(
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
         model: ascii::String,
         output_destination: vector<u8>,
         max_fee_per_token: u64,
+        random: &Random,
         ctx: &mut TxContext,
     ) {
+        let mut rng = random.new_generator(ctx);
+
         let max_tokens = 64;
         let pre_prompt_tokens = vector::empty();
         let prepend_output_with_input = false;
         let prompt = string::utf8(b"Tell me a joke please");
-        let random_seed = atoma::utils::random_u64(ctx);
+        let random_seed = rng.generate_u64();
         let repeat_last_n = 1;
         let repeat_penalty = 1066192077; // 1.1
         let should_stream_output = false;
@@ -122,28 +129,32 @@ module atoma::prompts {
             // you can set this to none to let Atoma network decide how many
             // nodes to sample
             option::some(1),
+            random,
             ctx,
         );
     }
 
     /// Submits a text prompt to Atoma network that asks for an image of
     /// a pixel art Colosseum.
-    public entry fun generate_nft(
+    entry fun generate_nft(
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
         model: ascii::String,
         output_destination: vector<u8>,
         max_fee_per_input_token: u64,
         max_fee_per_output_pixel: u64,
+        random: &Random,
         ctx: &mut TxContext,
     ) {
+        let mut rng = random.new_generator(ctx);
+
         let guidance_scale = 1065353216; // 1.0
         let height = 256;
         let n_steps = 40;
         let num_samples = 2;
         let prompt = string::utf8(b"Generate a bored ape NFT");
         let uncond_prompt = string::utf8(b"Shinny, bright, bored, blue background");
-        let random_seed = atoma::utils::random_u32(ctx);
+        let random_seed = rng.generate_u64();
         let width = 256;
         let img2img_strength = 1065353216; // 1.0
         let img2img = option::none();
@@ -175,6 +186,7 @@ module atoma::prompts {
             // you can set this to none to let Atoma network decide how many
             // nodes to sample
             option::some(1),
+            random,
             ctx,
         );
     }
