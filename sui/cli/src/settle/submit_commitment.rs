@@ -1,5 +1,8 @@
 use fastcrypto::hash::{Blake2b256, HashFunction};
-use sui_sdk::{rpc_types::SuiData, types::dynamic_field::DynamicFieldName};
+use sui_sdk::{
+    rpc_types::SuiData,
+    types::{dynamic_field::DynamicFieldName, SUI_RANDOMNESS_STATE_OBJECT_ID},
+};
 
 use crate::{prelude::*, DynamicFieldNameExt, SETTLEMENT_MODULE_NAME};
 
@@ -92,6 +95,7 @@ pub(crate) async fn command(
                 SuiJsonValue::new(output_tokens_count.to_string().into())?,
                 SuiJsonValue::new(merkle_root.to_vec().into())?,
                 SuiJsonValue::new(chunk_hash.to_vec().into())?,
+                SuiJsonValue::from_object_id(SUI_RANDOMNESS_STATE_OBJECT_ID),
             ],
             None,
             context.gas_budget(),
