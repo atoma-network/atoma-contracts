@@ -665,7 +665,7 @@ module atoma::db {
     ): Option<SmallId> {
         let model = self.models.borrow_mut(model_name);
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
-        sample_node(&self.nodes, echelon, rng)
+        sample_node(&self.nodes, &mut echelon.nodes, rng)
     }
 
     /// Attempts to sample `count` unique nodes from the given model's echelon.
@@ -679,7 +679,7 @@ module atoma::db {
     ): vector<SmallId> {
         let model = self.models.borrow_mut(model_name);
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
-        sample_unique_nodes(&self.nodes, echelon, count, rng)
+        sample_unique_nodes(&self.nodes, &mut echelon.nodes, count, rng)
     }
 
     /// Same as `sample_unique_nodes_by_echelon_id` but uses echelon index instead.
@@ -692,7 +692,7 @@ module atoma::db {
     ): vector<SmallId> {
         let model = self.models.borrow_mut(model_name);
         let echelon = model.echelons.borrow_mut(echelon_index);
-        sample_unique_nodes(&self.nodes, echelon, count, rng)
+        sample_unique_nodes(&self.nodes, &mut echelon.nodes, count, rng)
     }
 
     // =========================================================================
@@ -1071,11 +1071,11 @@ module atoma::db {
     /// In case all nodes have been slashed returns none.
     fun sample_node(
         nodes: &Table<SmallId, NodeEntry>,
-        echelon: &mut ModelEchelon,
+        echelon_nodes: &mut TableVec<SmallId>,
         rng: &mut sui::random::RandomGenerator,
     ): Option<SmallId> {
         loop {
-            let nodes_count = echelon.nodes.length();
+            let nodes_count = echelon_nodes.length();
             if (nodes_count == 0) {
                 // Pathological scenario where all nodes have been slashed.
                 // When user samples node, they perform clean up for us.
@@ -1086,7 +1086,7 @@ module atoma::db {
             };
 
             let node_index = rng.generate_u64() % nodes_count;
-            let node_id = *echelon.nodes.borrow(node_index);
+            let node_id = *echelon_nodes.borrow(node_index);
             let has_node = nodes.contains(node_id);
             if (has_node) {
                 let node = nodes.borrow(node_id);
@@ -1097,7 +1097,7 @@ module atoma::db {
             };
 
             // node has been slashed so remove it from the echelon
-            echelon.nodes.swap_remove(node_index);
+            echelon_nodes.swap_remove(node_index);
         }
     }
 
@@ -1111,7 +1111,7 @@ module atoma::db {
     /// an empty vector.
     fun sample_unique_nodes(
         nodes: &Table<SmallId, NodeEntry>,
-        echelon: &mut ModelEchelon,
+        echelon_nodes: &mut TableVec<SmallId>,
         how_many_nodes_to_sample: u64,
         rng: &mut sui::random::RandomGenerator,
     ): vector<SmallId> {
@@ -1119,7 +1119,7 @@ module atoma::db {
 
         let mut sampled_nodes = vector::empty();
 
-        let total_echelon_nodes = echelon.nodes.length();
+        let total_echelon_nodes = echelon_nodes.length();
         // how many nodes do we sample from in each chunk
         let base_nodes_per_chunk = total_echelon_nodes / how_many_nodes_to_sample;
         // firs this many chunks will sample from one extra node
@@ -1130,7 +1130,7 @@ module atoma::db {
         // We keep track of the index of the first node in the chunk.
         // This also tells us whether we iterated all the chunks of not yet
         let mut from_node_index = 0;
-        while (from_node_index < how_many_nodes_to_sample) {
+        while (from_node_index < total_echelon_nodes) {
             // sample in interval <from_node_index; from_node_index + nodes_to_pick_from)
             let nodes_to_pick_from = base_nodes_per_chunk
             + if (extra_node_chunks_remaining > 0) {
@@ -1140,12 +1140,8 @@ module atoma::db {
                 0
             };
 
-            let random_u64 = {
-                let r = rng.generate_u64();
-                if (r == 0) { 1 } else { r }
-            };
-
-            let node_index = from_node_index + nodes_to_pick_from % random_u64;
+            let node_index = from_node_index
+                + rng.generate_u64() % nodes_to_pick_from;
 
             // We want to sample from the end of the echelon for two reasons:
             // - Primarily, since we remove nodes from the echelon, we want to
@@ -1160,7 +1156,7 @@ module atoma::db {
             // beginning, so we do this transformation here.
             let inverse_node_index = total_echelon_nodes - 1 - node_index;
             let mut node_id = get_node_id_if_unslashed_or_swap_remove(
-                nodes, &mut echelon.nodes, inverse_node_index,
+                nodes, echelon_nodes, inverse_node_index,
             );
             if (node_id.is_some()) {
                 // this node is fine to use, happy path
@@ -1191,7 +1187,7 @@ module atoma::db {
             let max_iterations = how_many_nodes_to_sample * 4;
             while (sampled_nodes.length() < how_many_nodes_to_sample
                 || iteration <= max_iterations) {
-                let mut node_id = sample_node(nodes, echelon, rng);
+                let mut node_id = sample_node(nodes, echelon_nodes, rng);
 
                 if (node_id.is_none()) {
                     // return what we have
@@ -1229,5 +1225,44 @@ module atoma::db {
         echelon_nodes.swap_remove(node_index);
 
         option::none()
+    }
+
+    #[test_only]
+    /// So that we don't have to manually destroy table in the tests.
+    public struct NodeEntryBin has key {
+        id: UID,
+        entries: Table<SmallId, NodeEntry>,
+    }
+
+    #[test]
+    fun it_samples_unique_random_nodes() {
+        let mut ctx = sui::tx_context::dummy();
+        let mut rng = sui::random::new_generator_for_testing();
+
+        let mut nodes = sui::table::new(&mut ctx);
+        let mut echelon_nodes = sui::table_vec::empty(&mut ctx);
+
+        while (nodes.length() < 10) {
+            let node_id = SmallId { inner: nodes.length() + 1 };
+            nodes.add(node_id, NodeEntry {
+                collateral: sui::balance::create_for_testing(100),
+                was_disabled_in_epoch: option::none(),
+                last_fee_epoch: 0,
+                last_fee_epoch_amount: 0,
+                available_fee_amount: 0,
+            });
+            echelon_nodes.push_back(node_id);
+        };
+
+        let sampled_nodes =
+            sample_unique_nodes(&nodes, &mut echelon_nodes, 2, &mut rng);
+        assert!(sampled_nodes.length() == 2);
+
+        // get rid of created resources
+        sui::transfer::share_object(NodeEntryBin {
+            id: object::new(&mut ctx),
+            entries: nodes,
+        });
+        sui::table_vec::drop(echelon_nodes);
     }
 }

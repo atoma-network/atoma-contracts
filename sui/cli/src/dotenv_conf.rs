@@ -43,22 +43,31 @@ impl DotenvConf {
             wallet_path: std::env::var(WALLET_PATH).ok().map(PathBuf::from),
             package_id: std::env::var(PACKAGE_ID)
                 .ok()
+                .filter(|s| !s.is_empty())
                 .map(|s| ObjectID::from_str(&s).unwrap()),
             atoma_db_id: std::env::var(ATOMA_DB_ID)
                 .ok()
+                .filter(|s| !s.is_empty())
                 .map(|s| ObjectID::from_str(&s).unwrap()),
             manager_badge_id: std::env::var(MANAGER_BADGE_ID)
                 .ok()
+                .filter(|s| !s.is_empty())
                 .map(|s| ObjectID::from_str(&s).unwrap()),
             node_badge_id: std::env::var(NODE_BADGE_ID)
                 .ok()
+                .filter(|s| !s.is_empty())
                 .map(|s| ObjectID::from_str(&s).unwrap()),
-            node_id: std::env::var(NODE_ID).ok().map(|s| s.parse().unwrap()),
+            node_id: std::env::var(NODE_ID)
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(|s| s.parse().unwrap()),
             toma_wallet_id: std::env::var(TOMA_WALLET_ID)
                 .ok()
+                .filter(|s| !s.is_empty())
                 .map(|s| ObjectID::from_str(&s).unwrap()),
             gas_budget: std::env::var(GAS_BUDGET)
                 .ok()
+                .filter(|s| !s.is_empty())
                 .map(|s| s.parse().unwrap()),
         }
     }
@@ -116,7 +125,7 @@ impl Context {
     }
 
     pub(crate) fn gas_budget(&self) -> u64 {
-        self.conf.gas_budget.unwrap_or(2_000_000_000)
+        self.conf.gas_budget.unwrap_or(10_000_000)
     }
 
     pub(crate) fn unwrap_wallet_path(&self) -> &Path {
