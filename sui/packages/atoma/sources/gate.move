@@ -1,7 +1,6 @@
 module atoma::gate {
     use atoma::db::{SmallId, ModelEchelon, AtomaDb};
     use atoma::settlement::SettlementTicket;
-    use atoma::utils::random_u256;
     use std::ascii;
     use std::string;
     use sui::balance::Balance;
@@ -95,7 +94,7 @@ module atoma::gate {
         num_samples: u64,
         output_destination: vector<u8>,
         prompt: string::String,
-        random_seed: u32,
+        random_seed: u64,
         uncond_prompt: string::String,
         width: u64,
     }
@@ -126,17 +125,26 @@ module atoma::gate {
         nodes: vector<SmallId>,
     }
 
+    #[allow(lint(public_random))]
     /// The fee is per input token.
     ///
     /// Returns ticket ID which is an identifier of the settlement object.
+    ///
+    /// # Randomness safety
+    /// - prompt is submitted by user
+    /// - random is used to sample nodes
+    /// - user cannot get the list of selected nodes in the same transaction
     public fun submit_text2text_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
         params: Text2TextPromptParams,
         max_fee_per_token: u64,
         nodes_to_sample: Option<u64>,
+        random: &sui::random::Random,
         ctx: &mut TxContext,
     ): ID {
+        let mut rng = random.new_generator(ctx);
+
         // These are approximations that will get refunded partly.
         // While for the preprompt, we know the exact number of tokens, the
         // input is a string and we don't know the exact number of tokens.
@@ -156,6 +164,7 @@ module atoma::gate {
             max_fee_per_token,
             output_tokens,
             nodes_to_sample,
+            &mut rng,
             ctx,
         );
         // adds a dynfield to the ticket so that off chain can read the params
@@ -176,10 +185,16 @@ module atoma::gate {
         ticket_id
     }
 
+    #[allow(lint(public_random))]
     /// The fee per input token is the prompt fee.
     /// The fee per output token is how much does one image cost.
     ///
     /// Returns ticket ID which is an identifier of the settlement object.
+    ///
+    /// # Randomness safety
+    /// - prompt is submitted by user
+    /// - random is used to sample nodes
+    /// - user cannot get the list of selected nodes in the same transaction
     public fun submit_text2image_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
@@ -187,8 +202,11 @@ module atoma::gate {
         max_fee_per_input_token: u64,
         max_fee_per_output_token: u64,
         nodes_to_sample: Option<u64>,
+        random: &sui::random::Random,
         ctx: &mut TxContext,
     ): ID {
+        let mut rng = random.new_generator(ctx);
+
         // this is approximation that will get refunded partly
         let input_characters = params.prompt.length();
         // this we know exactly
@@ -204,6 +222,7 @@ module atoma::gate {
             max_fee_per_output_token,
             images,
             nodes_to_sample,
+            &mut rng,
             ctx,
         );
         // adds a dynfield to the ticket so that off chain can read the params
@@ -268,7 +287,7 @@ module atoma::gate {
         num_samples: u64,
         output_destination: vector<u8>,
         prompt: string::String,
-        random_seed: u32,
+        random_seed: u64,
         uncond_prompt: string::String,
         width: u64,
     ): Text2ImagePromptParams {
@@ -318,6 +337,7 @@ module atoma::gate {
         max_fee_per_output_token: u64,
         approx_output_tokens_count: u64,
         requested_nodes_to_sample: Option<u64>,
+        rng: &mut sui::random::RandomGenerator,
         ctx: &mut TxContext,
     ): (SettlementTicket, u64, vector<SmallId>) {
         let expected_model_modality = atoma.get_model_modality(model);
@@ -336,7 +356,7 @@ module atoma::gate {
             nodes_to_sample,
             max_fee_per_input_token,
             max_fee_per_output_token,
-            ctx,
+            rng,
         );
         let echelon = echelons.borrow(echelon_index);
         let echelon_id = echelon.get_model_echelon_id();
@@ -349,7 +369,7 @@ module atoma::gate {
             model,
             echelon_index,
             nodes_to_sample,
-            ctx,
+            rng,
         );
 
         // 4.
@@ -363,7 +383,7 @@ module atoma::gate {
             let full_fee = (1 + extra_cross_validation_counts_count)
                 * fee_per_node;
 
-            // no we need to take into account that in `p` cases, there will be
+            // now we need to take into account that in `p` cases, there will be
             // just one node, so we scale down the fee such that on average
             // the fees add up to the number of on average sampled nodes
 
@@ -446,7 +466,7 @@ module atoma::gate {
         nodes_to_sample: u64,
         max_fee_per_input_token: u64,
         max_fee_per_output_token: u64,
-        ctx: &mut TxContext,
+        rng: &mut sui::random::RandomGenerator,
     ): u64 {
         //
         // 1.
@@ -492,7 +512,7 @@ module atoma::gate {
         //
 
         // modulo is ok because we don't allow performance to be 0
-        let goal = 1 + random_u256(ctx) % total_performance; // B
+        let goal = 1 + rng.generate_u256() % total_performance; // B
 
         let mut remaining_performance = total_performance;
         loop {
