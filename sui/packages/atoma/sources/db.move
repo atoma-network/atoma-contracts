@@ -555,6 +555,7 @@ module atoma::db {
     }
 
     /// Settlement tickets are dynamic objects of this UID.
+    /// Tickets must not be accessible outside of the package.
     public(package) fun get_tickets_uid_mut(self: &mut AtomaDb): &mut UID { &mut self.tickets }
 
     /// When a node does not respond to a prompt within the timeout, it is
@@ -660,11 +661,11 @@ module atoma::db {
         self: &mut AtomaDb,
         model_name: ascii::String,
         echelon_id: EchelonId,
-        ctx: &mut TxContext,
+        rng: &mut sui::random::RandomGenerator,
     ): Option<SmallId> {
         let model = self.models.borrow_mut(model_name);
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
-        sample_node(&self.nodes, echelon, ctx)
+        sample_node(&self.nodes, echelon, rng)
     }
 
     /// Attempts to sample `count` unique nodes from the given model's echelon.
@@ -674,11 +675,11 @@ module atoma::db {
         model_name: ascii::String,
         echelon_id: EchelonId,
         count: u64,
-        ctx: &mut TxContext,
+        rng: &mut sui::random::RandomGenerator,
     ): vector<SmallId> {
         let model = self.models.borrow_mut(model_name);
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
-        sample_unique_nodes(&self.nodes, echelon, count, ctx)
+        sample_unique_nodes(&self.nodes, echelon, count, rng)
     }
 
     /// Same as `sample_unique_nodes_by_echelon_id` but uses echelon index instead.
@@ -687,11 +688,11 @@ module atoma::db {
         model_name: ascii::String,
         echelon_index: u64,
         count: u64,
-        ctx: &mut TxContext,
+        rng: &mut sui::random::RandomGenerator,
     ): vector<SmallId> {
         let model = self.models.borrow_mut(model_name);
         let echelon = model.echelons.borrow_mut(echelon_index);
-        sample_unique_nodes(&self.nodes, echelon, count, ctx)
+        sample_unique_nodes(&self.nodes, echelon, count, rng)
     }
 
     // =========================================================================
@@ -1071,7 +1072,7 @@ module atoma::db {
     fun sample_node(
         nodes: &Table<SmallId, NodeEntry>,
         echelon: &mut ModelEchelon,
-        ctx: &mut TxContext,
+        rng: &mut sui::random::RandomGenerator,
     ): Option<SmallId> {
         loop {
             let nodes_count = echelon.nodes.length();
@@ -1080,12 +1081,11 @@ module atoma::db {
                 // When user samples node, they perform clean up for us.
                 // In a healthy ecosystem with enough nodes per echelon, this
                 // should not happen.
-                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
                 std::debug::print(&b"All echelon nodes have been slashed");
                 break option::none()
             };
 
-            let node_index = atoma::utils::random_u64(ctx) % nodes_count;
+            let node_index = rng.generate_u64() % nodes_count;
             let node_id = *echelon.nodes.borrow(node_index);
             let has_node = nodes.contains(node_id);
             if (has_node) {
@@ -1113,7 +1113,7 @@ module atoma::db {
         nodes: &Table<SmallId, NodeEntry>,
         echelon: &mut ModelEchelon,
         how_many_nodes_to_sample: u64,
-        ctx: &mut TxContext,
+        rng: &mut sui::random::RandomGenerator,
     ): vector<SmallId> {
         assert!(how_many_nodes_to_sample > 0, ECannotSampleZeroNodes);
 
@@ -1140,8 +1140,10 @@ module atoma::db {
                 0
             };
 
-            // TODO: cannot be zero
-            let random_u64 = 1; // TODO
+            let random_u64 = {
+                let r = rng.generate_u64();
+                if (r == 0) { 1 } else { r }
+            };
 
             let node_index = from_node_index + nodes_to_pick_from % random_u64;
 
@@ -1189,7 +1191,7 @@ module atoma::db {
             let max_iterations = how_many_nodes_to_sample * 4;
             while (sampled_nodes.length() < how_many_nodes_to_sample
                 || iteration <= max_iterations) {
-                let mut node_id = sample_node(nodes, echelon, ctx);
+                let mut node_id = sample_node(nodes, echelon, rng);
 
                 if (node_id.is_none()) {
                     // return what we have
