@@ -10,40 +10,55 @@ TODO: Jorge
 
 ## Smart contract logic overview
 
+There are three key modules in the Atoma smart contract:
+
+- `atoma::db` which holds the state of the network.
+  In this module you will find endpoints that let you manage your node's participation in the network.
+- `atoma::gate` is relevant for users who submit prompts.
+- `atoma:settlement` has endpoints that nodes use to submit their commitments in order to receive their fees.
+
 ## Sampling consensus mechanism
+
+TODO
 
 ## How to submit prompts to Atoma
 
+TODO
+
 ## Parameters explanation
+
+TODO
 
 ## Time to settlement
 
-        /// If a node does not respond to a prompt within the timeout, it is
-        /// slashed by this ‰ amount.
-        permille_to_slash_node_on_timeout: u64,
-
-                /// If settlement is not done within this time, we attempt to settle
-        /// without waiting for nodes that did not respond.
-        settlement_timeout_ms: u64,
+How much time does the node have to submit its commitment is dictated by a model parameter `settlement_timeout_ms`.
+If the node does not respond within this allotted time, it is slashed by some percentage value and new node is selected to replace it.
 
 ## Pricing
 
-        /// How much per input token is charged by nodes in this group.
-        /// In TOMA tokens.
-        input_fee_per_token: u64,
-        /// How much per output token is charged by nodes in this group.
-        /// In TOMA tokens.
-        ///
-        /// The difference between input and output is made because the input
-        /// could be text and output could be an image, in which case this is
-        /// interpreted as a fee per pixel.
-        output_fee_per_token: u64,
+All pricing is calculated in `TOMA` tokens.
 
-            /// The fee is per input and output tokens.
-    /// The provided estimation of the number of tokens is used to calculate
-    /// the charged amount.
-    /// However, the real fee is calculated when the nodes submit the results.
-    /// The difference is refunded to the user.
+Pricing is configured per model's echelon (HW group).
+It varies based on the prompt modality and based on how many nodes were selected to respond to the prompt.
+
+For _text to text_ prompts, the input and output tokens are the text tokens fed to or emitted by the model, respectively.
+However, for _text to image_ prompts, while the input tokens are text tokens fed to the model, the output tokens actually refer to the number of images generated.
+Therefore, the price per _output_ token on text to image models is going to be much higher than the price per _input_ token, just because one output token is one image.
+
+When the prompt is submitted the smart contract overestimates number of tokens that will be used.
+When the nodes submit settlement, they provide the real number of tokens used.
+The prompt payer is then reimbursed the difference between the overestimated and real number of tokens used.
+
+To be more concrete:
+
+```
+P_{txt2txt} = (input_tokens * input_token_fee + output_tokens * output_token_fee) * number_of_sampled_nodes
+
+P_{txt2img} = (input_tokens * input_token_fee + num_samples * output_token_fee) * number_of_sampled_nodes
+```
+
+However, the above is only valid if the number of sampled nodes is provided.
+TODO: Cross validation pricing
 
 ## How to register a node
 
