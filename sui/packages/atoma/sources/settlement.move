@@ -67,6 +67,12 @@ module atoma::settlement {
     /// In general, we want to minimize the number of nodes that are involved in
     /// the evaluation of a prompt, because of the cost of the evaluation and
     /// diminishing returns of validation value added.
+    ///
+    /// # Randomness safety
+    /// It's important that no other onchain package can tell whether a ticket
+    /// with a given ID is settled or not.
+    /// Otherwise asserter could, during cross validation, fail unless cross
+    /// validation is not triggered.
     public struct SettlementTicket has key, store {
         id: UID,
         /// The name of the model that the prompt is for.
@@ -81,6 +87,11 @@ module atoma::settlement {
         /// calculating the merkle tree.
         /// The merkle root is a hash of all the hashes of the chunks by each
         /// node in the order they are in this vector.
+        ///
+        /// # Randomness safety
+        /// It's important that this vector cannot be read outside of this
+        /// package so that txs cannot be aborted unless specific nodes were
+        /// sampled.
         all: vector<SmallId>,
         /// This vector is sorted, ie. the first element is the first node that
         /// submitted the commitment first.
@@ -198,6 +209,7 @@ module atoma::settlement {
         started_at_epoch_timestamp_ms: u64,
     }
 
+    #[allow(lint(public_random))]
     /// Find the ticket ID in the emitted prompt event.
     /// Based on the node's order in the list of nodes that must submit
     /// commitment, the node will know which chunk to submit.
@@ -209,6 +221,9 @@ module atoma::settlement {
     /// - for text2text, the input tokens contain both preprompt and prompt
     /// - for text2image, output tokens count should equal to the number
     ///   of generated images
+    ///
+    /// # Randomness safety
+    /// See `try_to_settle` for more info.
     public entry fun submit_commitment(
         atoma: &mut AtomaDb,
         badge: &NodeBadge,
@@ -217,6 +232,7 @@ module atoma::settlement {
         output_tokens_count: u64,
         merkle_root: vector<u8>,
         chunk_hash: vector<u8>,
+        random: &sui::random::Random,
         ctx: &mut TxContext,
     ) {
         assert!(merkle_root.length() == 32, EBlake2b256HashMustBe32Bytes);
@@ -290,9 +306,10 @@ module atoma::settlement {
         ticket.completed.push_back(node_id);
 
         // if we are ready to settle, do it
-        try_to_settle(atoma, ticket_id, ctx);
+        try_to_settle(atoma, ticket_id, random, ctx);
     }
 
+    #[allow(lint(public_random))]
     /// Permission-less endpoint.
     ///
     /// It won't panic if the ticket is not ready to settle, rather a no-op.
@@ -313,11 +330,30 @@ module atoma::settlement {
     ///    In this case, we slash the nodes that have not submitted their
     ///    commitment and sample other nodes that must do so in their stead.
     ///    If the ticket is already being disputed, skip this step.
+    ///
+    /// # Randomness safety
+    /// There are two ways we use randomness: (1) sampling nodes and (2) rolling
+    /// if cross validation should be done.
+    ///
+    /// The first one is ok because the submitter of this tx does not know until
+    /// the tx is over which nodes are sampled.
+    ///
+    /// The second one is ok because there are no getters for the ticket that
+    /// are publicly accessible.
+    /// Additionally, if `try_to_settle` is called on non existing ticket, it
+    /// fails the tx.
+    /// Therefore, an asserter cannot know if the ticket is settled or not,
+    /// because if it's settled and they try to settle it again, the tx will
+    /// fail.
+    /// And if the cross validation is triggered there is no way to cheat.
     public entry fun try_to_settle(
         atoma: &mut AtomaDb,
         ticket_id: ID,
+        random: &sui::random::Random,
         ctx: &mut TxContext,
     ) {
+        let mut rng = random.new_generator(ctx);
+
         // We remove it so that Sui Move doesn't scream at us for not being able
         // to use mut ref to atoma.
         // If settlement can be done, the ticket will be destroyed.
@@ -341,13 +377,12 @@ module atoma::settlement {
                 //
                 // the sender should not be able to predict the random number,
                 // but still would be nice to have this:
-                // TODO: https://github.com/atoma-network/atoma-contracts/issues/4
                 let should_sample_more =
-                    probability_permille < atoma::utils::random_u64(ctx) % 1000;
+                    probability_permille < rng.generate_u64() % 1000;
 
                 if (should_sample_more) {
                     sample_extra_nodes_for_cross_validation(
-                        atoma, ticket, how_many_extra_nodes, ctx,
+                        atoma, ticket, how_many_extra_nodes, &mut rng, ctx,
                     );
                 } else {
                     // this time we don't sample more nodes
@@ -389,7 +424,7 @@ module atoma::settlement {
                         .sample_node_by_echelon_id(
                             ticket.model_name,
                             ticket.echelon_id,
-                            ctx,
+                            &mut rng,
                         );
                     // TBD: should we try to sample again if node already in the list?
 
@@ -778,7 +813,8 @@ module atoma::settlement {
         atoma: &mut AtomaDb,
         mut ticket: SettlementTicket,
         how_many_extra_nodes: u64,
-        ctx: &mut TxContext,
+        rng: &mut sui::random::RandomGenerator,
+        ctx: &TxContext,
     ) {
         let ticket_id = object::id(&ticket);
 
@@ -786,50 +822,56 @@ module atoma::settlement {
         ticket.timeout.started_at_epoch_timestamp_ms =
             ctx.epoch_timestamp_ms();
 
-        // TODO: sample multiple nodes at once
-        let mut new_nodes = vector::empty();
-        let mut i = 0;
-        while (i < how_many_extra_nodes) {
-            let mut perhaps_new_node_id = atoma
-                .sample_node_by_echelon_id(
-                    ticket.model_name,
-                    ticket.echelon_id,
-                    ctx,
-                );
+        let mut new_nodes = atoma.sample_unique_nodes_by_echelon_id(
+            ticket.model_name,
+            ticket.echelon_id,
+            // we sample one extra in case the asserter node is sampled
+            how_many_extra_nodes + 1,
+            rng,
+        );
 
-            if (perhaps_new_node_id.is_none()) {
-                // there are no nodes to sample right now, let's
-                // wait until more nodes join the echelon
-                ticket.cross_validation = option::some(CrossValidation {
-                    // we want to retry
-                    probability_permille: 1000,
-                    how_many_extra_nodes,
-                });
+        let (has_asserter, asserter_index) = new_nodes.index_of(&ticket.all[0]);
+        if (has_asserter) {
+            new_nodes.swap_remove(asserter_index);
+        } else if (new_nodes.length() == how_many_extra_nodes + 1) {
+            // we added plus one above but asserter was not in the list, so we
+            // remove one node
+            new_nodes.pop_back();
+        };
 
-                sui::event::emit(RetrySettlementEvent {
-                    ticket_id,
-                    how_many_nodes_in_echelon: how_many_extra_nodes,
-                });
-
-                break
-            };
-
-            let new_node_id = perhaps_new_node_id.extract();
-            ticket.all.push_back(new_node_id);
-            new_nodes.push_back(MapNodeToChunk {
-                node_id: new_node_id,
-                // offset by 1 because there's already the first node
-                order: i + 1,
+        if (how_many_extra_nodes > new_nodes.length()) {
+            // not enough nodes to sample right now, let's
+            // wait until more nodes join the echelon
+            ticket.cross_validation = option::some(CrossValidation {
+                // we want to retry
+                probability_permille: 1000,
+                how_many_extra_nodes,
             });
 
-            i = i + 1;
+            sui::event::emit(RetrySettlementEvent {
+                ticket_id,
+                how_many_nodes_in_echelon: how_many_extra_nodes,
+            });
+        } else {
+            let mut new_nodes_map = vector::empty();
+            let mut i = 0;
+            while (!new_nodes.is_empty()) {
+                let new_node_id = new_nodes.pop_back();
+                new_nodes_map.push_back(MapNodeToChunk {
+                    node_id: new_node_id,
+                    // offset by 1 because there's already the asserter
+                    order: i + 1,
+                });
+                i = i + 1;
+            };
+
+            sui::event::emit(NewlySampledNodesEvent {
+                ticket_id,
+                new_nodes: new_nodes_map,
+            });
         };
 
         return_settlement_ticket(atoma, ticket);
-        sui::event::emit(NewlySampledNodesEvent {
-            ticket_id,
-            new_nodes,
-        });
     }
 
     /// # How the timeout works?
