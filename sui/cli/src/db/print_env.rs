@@ -9,10 +9,10 @@ pub(crate) async fn command(context: &mut Context) -> Result<()> {
 
     println!("WALLET_PATH={}", context.unwrap_wallet_path().display());
     println!("PACKAGE_ID={package}");
-    if let Sone(atoma_db) = atoma_db {
+    if let Some(atoma_db) = atoma_db {
         println!("ATOMA_DB_ID={atoma_db}");
     }
-    if let Sone(manager_badge) = manager_badge {
+    if let Some(manager_badge) = manager_badge {
         println!("MANAGER_BADGE_ID={manager_badge}");
     }
     if let Some((node_badge, node_id)) = node_info {
