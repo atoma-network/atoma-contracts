@@ -17,9 +17,9 @@ tokio = { version = "1.2", features = ["full"] }
 [dependencies.sui-sdk]
 git = "https://github.com/mystenlabs/sui"
 package = "sui-sdk"
-tag = "mainnet-v1.25.1"
+tag = "mainnet-v1.26.1"
 
 [dependencies.move-core-types]
 git = "https://github.com/mystenlabs/sui"
 package = "move-core-types"
-tag = "mainnet-v1.25.1"
+tag = "mainnet-v1.26.1"
