@@ -426,7 +426,7 @@ module atoma::db {
         let wallet = coin::from_balance(collateral, ctx);
         transfer::public_transfer(wallet, ctx.sender());
 
-        let NodeBadge { id: badge_id, small_id: _ } = node_badge;
+        let NodeBadge { id: badge_id, small_id: _, echelon_id: _ } = node_badge;
         badge_id.delete();
     }
 
