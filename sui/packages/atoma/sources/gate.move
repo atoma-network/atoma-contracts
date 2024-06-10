@@ -383,9 +383,12 @@ module atoma::gate {
             // would require
             let full_extra_fee = extra_cross_validation_counts_count * fee_per_node;
 
-            // now we need to take into account that in `p` cases, there will be
-            // just one node, so we scale down the fee such that on average
-            // the fees add up to the number of on average sampled nodes
+            // We must take into account that in `1 - p` cases there is just one
+            // and conversely in `p` cases there are
+            // `extra_cross_validation_counts_count`.
+            //
+            // We scale down the fee such that on average the fees add up to
+            // the number of on average sampled nodes
 
             let amortized_extra_fee =
               full_extra_fee * atoma.get_cross_validation_probability_permille()
