@@ -34,7 +34,6 @@ module atoma::gate {
     public struct Text2TextPromptParams has store, copy, drop {
         max_tokens: u64,
         model: ascii::String,
-        output_destination: vector<u8>,
         pre_prompt_tokens: vector<u32>,
         prepend_output_with_input: bool,
         prompt: string::String,
@@ -62,6 +61,8 @@ module atoma::gate {
         /// If nodes don't agree on the output or not enough nodes provide
         /// the output in time, extra nodes will be sampled.
         nodes: vector<SmallId>,
+        /// This is the output destination where the output will be stored. The output is serialized with a MessagePack.
+        output_destination: vector<u8>,
     }
 
     #[allow(unused_field)]
@@ -101,6 +102,8 @@ module atoma::gate {
         /// If nodes don't agree on the output or not enough nodes provide
         /// the output in time, extra nodes will be sampled.
         nodes: vector<SmallId>,
+        /// This is the output destination where the output will be stored. The output is serialized with a MessagePack.
+        output_destination: vector<u8>,
     }
 
     /// The fee is per input token.
@@ -112,6 +115,7 @@ module atoma::gate {
         params: Text2TextPromptParams,
         max_fee_per_token: u64,
         nodes_to_sample: Option<u64>,
+        output_destination: vector<u8>,
         ctx: &mut TxContext,
     ): ID {
         // These are approximations that will get refunded partly.
@@ -147,6 +151,7 @@ module atoma::gate {
             params,
             ticket_id,
             nodes: selected_nodes,
+            output_destination
         });
 
         ticket_id
@@ -163,6 +168,7 @@ module atoma::gate {
         max_fee_per_input_token: u64,
         max_fee_per_output_token: u64,
         nodes_to_sample: Option<u64>,
+        output_destination: vector<u8>,
         ctx: &mut TxContext,
     ): ID {
         // this is approximation that will get refunded partly
@@ -194,6 +200,7 @@ module atoma::gate {
             params,
             ticket_id,
             nodes: selected_nodes,
+            output_destination
         });
 
         ticket_id
@@ -203,7 +210,6 @@ module atoma::gate {
     public fun create_text2text_prompt_params(
         max_tokens: u64,
         model: ascii::String,
-        output_destination: vector<u8>,
         pre_prompt_tokens: vector<u32>,
         prepend_output_with_input: bool,
         prompt: string::String,
@@ -218,7 +224,6 @@ module atoma::gate {
         Text2TextPromptParams {
             max_tokens,
             model,
-            output_destination,
             pre_prompt_tokens,
             prepend_output_with_input,
             prompt,
