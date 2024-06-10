@@ -81,6 +81,7 @@ module atoma::db {
     public struct NodeBadge has key, store {
         id: UID,
         small_id: SmallId,
+        echelon_id: EchelonId,
     }
 
     /// Since referring to node is ubiquitous and potentially large collections
@@ -266,9 +267,10 @@ module atoma::db {
     public entry fun register_node_entry(
         self: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
+        echelon_id: u64,
         ctx: &mut TxContext,
     ) {
-        let badge = register_node(self, wallet.balance_mut(), ctx);
+        let badge = register_node(self, wallet.balance_mut(), echelon_id, ctx);
         transfer::transfer(badge, ctx.sender());
     }
 
@@ -281,6 +283,7 @@ module atoma::db {
     public fun register_node(
         self: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
+        echelon_id: u64,
         ctx: &mut TxContext,
     ): NodeBadge {
         assert!(!self.is_registration_disabled, ENodeRegDisabled);
@@ -307,6 +310,7 @@ module atoma::db {
         });
         NodeBadge {
             id: badge_id,
+            echelon_id: EchelonId { id: echelon_id },
             small_id,
         }
     }
@@ -321,7 +325,6 @@ module atoma::db {
         self: &mut AtomaDb,
         node_badge: &mut NodeBadge,
         model_name: ascii::String,
-        echelon: u64,
     ) {
         let model = self.models.borrow_mut(model_name);
         assert!(!model.is_disabled, EModelDisabled);
@@ -332,7 +335,7 @@ module atoma::db {
             ENodeAlreadySubscribedToModel,
         );
 
-        let echelon_id = EchelonId { id: echelon };
+        let echelon_id = node_badge.echelon_id;
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
         table_vec::push_back(&mut echelon.nodes, node_badge.small_id);
         dynamic_field::add(&mut node_badge.id, model_name, echelon_id);

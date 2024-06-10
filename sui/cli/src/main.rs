@@ -117,6 +117,11 @@ enum DbCmds {
     RegisterNode {
         #[arg(short, long)]
         package: Option<String>,
+        /// Must match an existing echelon ID.
+        /// Echelons group nodes with similar HW and SW.
+        /// See the protocol documentation for the list of echelons.
+        #[arg(short, long)]
+        echelon: u64,
     },
     /// Node can join a model to receive prompts.
     AddNodeToModel {
@@ -125,11 +130,6 @@ enum DbCmds {
         /// Must match an existing model name.
         #[arg(short, long)]
         model: String,
-        /// Must match an existing echelon ID.
-        /// Echelons group nodes with similar HW and SW.
-        /// See the protocol documentation for the list of echelons.
-        #[arg(short, long)]
-        echelon: u64,
     },
     /// Prints env vars in .env format that contain some important IDs for
     /// the network.
@@ -302,23 +302,19 @@ async fn main() -> Result<()> {
 
             println!("{digest}");
         }
-        Some(Cmds::Db(DbCmds::RegisterNode { package })) => {
+        Some(Cmds::Db(DbCmds::RegisterNode { package, echelon })) => {
             let digest = db::register_node(
                 &mut context.with_optional_package_id(package),
+                echelon,
             )
             .await?;
 
             println!("{digest}");
         }
-        Some(Cmds::Db(DbCmds::AddNodeToModel {
-            package,
-            model,
-            echelon,
-        })) => {
+        Some(Cmds::Db(DbCmds::AddNodeToModel { package, model })) => {
             let digest = db::add_node_to_model(
                 &mut context.with_optional_package_id(package),
                 &model,
-                echelon,
             )
             .await?;
 
