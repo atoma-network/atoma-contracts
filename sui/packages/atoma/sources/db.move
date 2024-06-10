@@ -1128,13 +1128,15 @@ module atoma::db {
         // when 0 then we no longer sample from extra node
         let mut extra_node_chunks_remaining = total_chunks_with_extra_node_count;
         // We keep track of the index of the first node in the chunk.
-        // This also tells us whether we iterated all the chunks of not yet
+        // This also tells us whether we iterated all the chunks or not yet
         let mut from_node_index = 0;
         while (from_node_index < total_echelon_nodes) {
             // sample in interval <from_node_index; from_node_index + nodes_to_pick_from)
             let nodes_to_pick_from = base_nodes_per_chunk
             + if (extra_node_chunks_remaining > 0) {
                 extra_node_chunks_remaining = extra_node_chunks_remaining - 1;
+                // add 1 because of the residual from modulo when dividing
+                // total_echelon_nodes by how_many_nodes_to_sample
                 1
             } else {
                 0

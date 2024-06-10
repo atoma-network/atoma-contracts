@@ -374,9 +374,6 @@ module atoma::settlement {
                 } = ticket.cross_validation.extract();
 
                 // with the given chance sample more nodes
-                //
-                // the sender should not be able to predict the random number,
-                // but still would be nice to have this:
                 let should_sample_more =
                     probability_permille < rng.generate_u64() % 1000;
 

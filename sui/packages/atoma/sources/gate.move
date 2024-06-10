@@ -57,7 +57,7 @@ module atoma::gate {
         params: Text2TextPromptParams,
         /// Determines into how many chunks do the nodes split the output when
         /// they generate proof hashes.
-        /// Might not equal the number of sampled nodes, see below.
+        /// Might not equal the number of sampled nodes, see `nodes` property.
         chunks_count: u64,
         /// This might not be the final list of nodes that will be used to
         /// evaluate the prompt.
@@ -108,7 +108,7 @@ module atoma::gate {
         params: Text2ImagePromptParams,
         /// Determines into how many chunks do the nodes split the output when
         /// they generate proof hashes.
-        /// Might not equal the number of sampled nodes, see below.
+        /// Might not equal the number of sampled nodes, see `nodes` property.
         chunks_count: u64,
         /// This might not be the final list of nodes that will be used to
         /// evaluate the prompt.
