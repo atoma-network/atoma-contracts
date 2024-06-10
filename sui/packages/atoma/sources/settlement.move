@@ -26,8 +26,12 @@ module atoma::settlement {
     /// Nodes did not agree on the settlement.
     public struct DisputeEvent has copy, drop {
         ticket_id: ID,
-        /// If None then the dispute is ready to be resolved, otherwise it's
-        /// Some then the oracle needs to wait for the timeout to pass.
+        /// If None then the dispute is ready to be resolved.
+        /// If Some then the oracle needs to wait for the timeout because other
+        /// nodes might still submit their commitment.
+        /// If the oracle would attempt to resolve the dispute before the
+        /// timeout, it would be unfair to the nodes that are still in the
+        /// process of submitting their commitment.
         timeout: Option<TimeoutInfo>,
     }
 
