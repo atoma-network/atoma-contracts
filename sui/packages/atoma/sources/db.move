@@ -1122,7 +1122,7 @@ module atoma::db {
         let total_echelon_nodes = echelon_nodes.length();
         // how many nodes do we sample from in each chunk
         let base_nodes_per_chunk = total_echelon_nodes / how_many_nodes_to_sample;
-        // firs this many chunks will sample from one extra node
+        // first this many chunks will sample from one extra node
         let total_chunks_with_extra_node_count = total_echelon_nodes % how_many_nodes_to_sample;
 
         // when 0 then we no longer sample from extra node
