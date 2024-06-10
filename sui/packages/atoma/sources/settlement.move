@@ -553,7 +553,7 @@ module atoma::settlement {
             slashed_nodes.push_back(node_id);
 
             // first node is slashed, no need to check its leaves
-            1
+            32
         } else {
             // first node provided the correct merkle root, check its leaves
             0
