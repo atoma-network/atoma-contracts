@@ -68,19 +68,31 @@ if [ -z "${treasury}" ] || [[ ! "${treasury}" =~ ^0x ]]; then
     exit 1
 fi
 
+faucet=$(
+    echo "${json}" |
+        jq -r '.objectChanges[] | select(.objectType | type == "string" and endswith("toma::Faucet")) | .objectId'
+)
+
+if [ -z "${faucet}" ] || [[ ! "${faucet}" =~ ^0x ]]; then
+    echo "Could not find the faucet. Exiting."
+    exit 1
+fi
+
 echo
 active_address=$(sui client active-address)
 echo "Active address: ${active_address}"
 echo "Package: ${package}"
+echo "Faucet: ${faucet}"
 echo "Treasury: ${treasury}"
-echo
-echo "Minting some TOMA tokens for collateral and fees"
 
+echo "Making the treasury into a faucet"
 sui client call \
-    --package "0x2" --module "coin" --function "mint_and_transfer" \
+    --package "${package}" --module "toma" --function "enable_faucet" \
     --gas-budget 10000000 \
-    --args "${treasury}" 10000000 "${active_address}" \
-    --type-args "${package}::toma::TOMA" || exit 1
+    --args "${faucet}" "${treasury}" || exit 1
+
+echo "Using TOMA faucet"
+./dev/faucet "${faucet}" || exit 1
 
 echo
 echo "Using CLI to setup resource on chain"

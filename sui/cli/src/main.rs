@@ -13,9 +13,10 @@ use move_core_types::{
 };
 use sui_sdk::{
     rpc_types::{
-        ObjectChange, Page, SuiData, SuiObjectDataFilter, SuiObjectDataOptions,
-        SuiObjectResponseQuery, SuiTransactionBlockResponseOptions,
-        SuiTransactionBlockResponseQuery, TransactionFilter,
+        Page, SuiData, SuiObjectDataFilter, SuiObjectDataOptions,
+        SuiObjectResponseQuery, SuiTransactionBlockEffects,
+        SuiTransactionBlockResponseOptions, SuiTransactionBlockResponseQuery,
+        TransactionFilter,
     },
     types::{
         base_types::{ObjectID, ObjectType, SuiAddress},
@@ -425,7 +426,7 @@ async fn get_publish_tx_created_object(
             SuiTransactionBlockResponseQuery {
                 filter: Some(TransactionFilter::ChangedObject(package)),
                 options: Some(SuiTransactionBlockResponseOptions {
-                    show_object_changes: true,
+                    show_effects: true,
                     ..Default::default()
                 }),
             },
@@ -437,31 +438,36 @@ async fn get_publish_tx_created_object(
     assert_eq!(1, data.len(), "Did you select right package ID?");
     assert!(!has_next_page);
 
-    let changes = data.into_iter().next().unwrap().object_changes.unwrap();
+    let SuiTransactionBlockEffects::V1(changes) =
+        data.into_iter().next().unwrap().effects.unwrap();
 
-    changes
-        .into_iter()
-        .find_map(|change| {
-            if let ObjectChange::Created {
-                object_type,
+    let object_ids = changes.created.into_iter().map(|r| r.reference.object_id);
+    for object_id in object_ids {
+        let type_ = client
+            .read_api()
+            .get_object_with_options(
                 object_id,
-                ..
-            } = change
-            {
-                if object_type.module.as_str() == module
-                    && object_type.name.as_str() == name
+                SuiObjectDataOptions {
+                    show_type: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .ok()
+            .and_then(|r| r.data)
+            .and_then(|data| data.type_);
+        if let Some(type_) = type_ {
+            if let ObjectType::Struct(type_) = type_ {
+                if type_.module().as_str() == module
+                    && type_.name().as_str() == name
                 {
-                    Some(object_id)
-                } else {
-                    None
+                    return Ok(object_id);
                 }
-            } else {
-                None
             }
-        })
-        .ok_or_else(|| {
-            anyhow::anyhow!("No {module}::{name} found for the package")
-        })
+        }
+    }
+
+    Err(anyhow::anyhow!("No {module}::{name} found for the package"))
 }
 
 async fn get_db_manager_badge(
