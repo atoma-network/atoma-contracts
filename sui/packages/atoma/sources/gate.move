@@ -61,7 +61,7 @@ module atoma::gate {
         /// If nodes don't agree on the output or not enough nodes provide
         /// the output in time, extra nodes will be sampled.
         nodes: vector<SmallId>,
-        /// This is the output destination where the output will be stored.
+        /// This is the output destination where the output will be stored. The output is serialized with a MessagePack.
         output_destination: vector<u8>,
     }
 
@@ -102,7 +102,7 @@ module atoma::gate {
         /// If nodes don't agree on the output or not enough nodes provide
         /// the output in time, extra nodes will be sampled.
         nodes: vector<SmallId>,
-        /// This is the output destination where the output will be stored.
+        /// This is the output destination where the output will be stored. The output is serialized with a MessagePack.
         output_destination: vector<u8>,
     }
 
