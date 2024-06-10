@@ -67,12 +67,6 @@ module atoma::prompts {
             wallet.balance_mut(),
             params,
             max_fee_per_token,
-            // we sample just one node because of the illustrative purposes of
-            // this prompt, so that we can deploy this contract on devnet and
-            // have it produce output without many nodes
-            //
-            // you can set this to none to let Atoma network decide how many
-            // nodes to sample
             nodes_to_sample,
             random,
             ctx,
