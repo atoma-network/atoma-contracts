@@ -6,9 +6,8 @@ Useful links:
 - [Sui Move Analyzer][sui-analyzer]
 - [Sui standard lib on Github][github-sui-std]
 
-The packages and CLI is pointed to the currently released Sui _mainnet_ version tag.
-
-Upgrade your CLI to the appropriate mainnet version that matches the [`Move.toml`](packages/atoma/Move.toml):
+The packages and CLI are pointed to the currently released Sui version tag.
+Upgrade your CLI to the appropriate version that matches the [`Move.toml`](packages/atoma/Move.toml):
 
 ```sh
 cargo install --locked --git https://github.com/MystenLabs/sui.git --tag mainnet-vX.Y.Z sui
