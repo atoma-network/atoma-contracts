@@ -34,6 +34,13 @@ root_dir=$(abs_path_to_git_root_dir)
 
 cd $root_dir/sui/packages/toma
 
+# make sure Move.toml address is set to 0x0 otherwise we cannot deploy
+if ! grep -q '^toma = "0x0"$' "Move.toml"; then
+    echo "Please set toma address to 0x0 in sui/packages/toma/Move.toml"
+    echo "Otherwise Sui CLI will not be able to deploy the TOMA package"
+    exit 1
+fi
+
 # skip dependency verification is useful to allow publishing to different
 # environments without having to change the Sui Std version in Move.toml
 publish_event=$(sui client publish --skip-dependency-verification --json | jq '.events[0]')
@@ -52,14 +59,20 @@ if [ "$active_env" == "devnet" ] || [ "$active_env" == "testnet" ]; then
     sui client call \
         --package "${toma_package}" --module "toma" --function "enable_faucet" \
         --args "${faucet}" "${treasury}" || exit 1
-else
-    echo "Please add this property to the sui/packages/toma/Move.toml:"
-    echo
-    echo "[package]"
-    echo "..."
-    echo "published-at = \"${toma_package}\""
-    echo
 fi
+
+echo
+echo "Please add/change these property in the sui/packages/toma/Move.toml:"
+echo
+echo "[package]"
+echo "..."
+echo "published-at = \"${toma_package}\""
+echo "..."
+echo "[addresses]"
+echo "toma = \"${toma_package}\""
+echo
+
+read -p "Click any key to confirm you have changed the values" -n 1 -r
 
 export TOMA_PACKAGE="${toma_package}"
 export TOMA_FAUCET="${faucet}"
