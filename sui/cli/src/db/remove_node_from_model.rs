@@ -153,7 +153,7 @@ pub(crate) async fn command(
 
         // 4.
         let active_address = context.wallet.active_address()?;
-        let package = context.unwrap_package_id();
+        let atoma_package = context.unwrap_atoma_package_id();
         let atoma_db = context.get_or_load_atoma_db().await?;
         let tx = context
             .get_client()
@@ -161,7 +161,7 @@ pub(crate) async fn command(
             .transaction_builder()
             .move_call(
                 active_address,
-                package,
+                atoma_package,
                 DB_MODULE_NAME,
                 ENDPOINT_NAME,
                 vec![],

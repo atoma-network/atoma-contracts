@@ -31,11 +31,25 @@ root_dir=$(abs_path_to_git_root_dir)
 
 cd $root_dir/sui
 
+active_env=$(sui client active-env)
+if [ "${active_env}" != "testnet" ] && [ "${active_env}" != "devnet" ]; then
+    echo "This script is only for testnet or devnet. Exiting."
+    exit 1
+fi
+
+# publish the package with TOMA token and faucet
+./dev/publish_toma || exit 1
+# the env var comes from the publish_toma script
+./dev/faucet "${TOMA_FAUCET}" || exit 1
+
+echo "TOMA published at address ${TOMA_ADDRESS}"
+
+# TODO: now we need to change the dependency address of toma package in atoma
+
 json=$(
     sui client publish \
         --with-unpublished-dependencies \
         --skip-dependency-verification \
-        --gas-budget 1000000000 \
         --json \
         "${root_dir}/sui/packages/atoma"
 )
@@ -57,42 +71,6 @@ if [ -z "${package}" ] || [[ ! "${package}" =~ ^0x ]]; then
     echo "Could not publish the package. Exiting."
     exit 1
 fi
-
-treasury=$(
-    echo "${json}" |
-        jq -r '.objectChanges[] | select(.objectType | type == "string" and startswith("0x2::coin::TreasuryCap")) | .objectId'
-)
-
-if [ -z "${treasury}" ] || [[ ! "${treasury}" =~ ^0x ]]; then
-    echo "Could not find the treasury. Exiting."
-    exit 1
-fi
-
-faucet=$(
-    echo "${json}" |
-        jq -r '.objectChanges[] | select(.objectType | type == "string" and endswith("toma::Faucet")) | .objectId'
-)
-
-if [ -z "${faucet}" ] || [[ ! "${faucet}" =~ ^0x ]]; then
-    echo "Could not find the faucet. Exiting."
-    exit 1
-fi
-
-echo
-active_address=$(sui client active-address)
-echo "Active address: ${active_address}"
-echo "Package: ${package}"
-echo "Faucet: ${faucet}"
-echo "Treasury: ${treasury}"
-
-echo "Making the treasury into a faucet"
-sui client call \
-    --package "${package}" --module "toma" --function "enable_faucet" \
-    --gas-budget 10000000 \
-    --args "${faucet}" "${treasury}" || exit 1
-
-echo "Using TOMA faucet"
-./dev/faucet "${faucet}" || exit 1
 
 echo
 echo "Using CLI to setup resource on chain"
@@ -140,9 +118,10 @@ echo "Sending test text prompt"
 
 echo
 echo
-echo "Storing IDs into .env file in the sui directory"
-./cli db print-env --package "${package}" >"${root_dir}/sui/.env"
-cat "${root_dir}/sui/.env"
+env_file_path="${root_dir}/sui/.env.${active_env}"
+echo "Storing IDs into file '${env_file_path}'"
+./cli db print-env --package "${package}" >"${env_file_path}"
+cat "${env_file_path}"
 
 # leave the caller where they started
 cd $entrance_dir

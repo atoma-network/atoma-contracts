@@ -50,7 +50,6 @@ echo
 
 sui client call \
     --package "${faucet_package}" --module "toma" --function "faucet" \
-    --gas-budget 10000000 \
     --args "${faucet}" 10000000 || exit 1
 
 echo

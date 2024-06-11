@@ -2,13 +2,20 @@ module toma::toma {
     use sui::coin;
     use sui::package::Publisher;
 
-    /// The coin type.
-    public struct TOMA has drop {}
-
     const DECIMALS: u8 = 9;
     const SYMBOL: vector<u8> = b"TOMA";
     const NAME: vector<u8> = b"TOMA";
     const DESCRIPTION: vector<u8> = b"Atoma network coin";
+
+    /// The coin type.
+    public struct TOMA has drop {}
+
+    /// Emitted once when the package is published.
+    public struct PublishedEvent has copy, drop {
+        faucet: ID,
+        treasury: ID,
+        metadata: ID,
+    }
 
     /// Used to mint TOMA tokens.
     public struct Faucet has key, store {
@@ -29,15 +36,21 @@ module toma::toma {
             url,
             ctx
         );
+        let faucet = Faucet {
+            id: object::new(ctx),
+            treasury: option::none(),
+        };
+
+        sui::event::emit(PublishedEvent {
+            faucet: object::id(&faucet),
+            treasury: object::id(&treasury),
+            metadata: object::id(&metadata),
+        });
 
         transfer::public_transfer(treasury, ctx.sender());
         transfer::public_transfer(metadata, ctx.sender());
-
         // by default, faucet is disabled
-        transfer::share_object(Faucet {
-            id: object::new(ctx),
-            treasury: option::none(),
-        });
+        transfer::share_object(faucet);
     }
 
     /// Only call this on testnet or devnet.

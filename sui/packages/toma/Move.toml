@@ -3,8 +3,7 @@ name = "Toma"
 version = "0.1.0"
 edition = "2024.beta"
 
-[dependencies]
-Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "mainnet-v1.26.1" }
-
-[addresses]
-toma = "0x0"
+[dependencies.Sui]
+git = "https://github.com/MystenLabs/sui.git"
+subdir = "crates/sui-framework/packages/sui-framework"
+rev = "mainnet-v1.26.2"

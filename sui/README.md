@@ -169,7 +169,6 @@ Your current directory has to be where this README is located.
 sui client publish \
     --with-unpublished-dependencies \
     --skip-dependency-verification \
-    --gas-budget 1000000000 \
     --json \
     packages/atoma
 ```
@@ -241,7 +240,6 @@ Use the following template to mint yourself some `TOMA` tokens.
 ```sh
 sui client call \
     --package "0x2" --module "coin" --function "mint_and_transfer" \
-    --gas-budget 10000000 \
     --args YOUR_TOMA_MINT_CAP 1000000 $(sui client active-address) \
     --type-args YOUR_TOMA_PACKAGE_ID::toma::TOMA
 ```

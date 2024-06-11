@@ -1,19 +1,24 @@
 use std::path::{Path, PathBuf};
 
 use sui_sdk::{
-    rpc_types::{SuiObjectDataOptions, SuiParsedData},
-    types::base_types::{ObjectID, ObjectType},
+    rpc_types::{
+        Page, SuiData, SuiObjectDataFilter, SuiObjectDataOptions,
+        SuiObjectResponseQuery, SuiParsedData, SuiTransactionBlockEffects,
+        SuiTransactionBlockResponseOptions, SuiTransactionBlockResponseQuery,
+        TransactionFilter,
+    },
+    types::base_types::{ObjectID, ObjectType, SuiAddress},
     SuiClient,
 };
 
 use crate::{
-    find_toma_token_wallet, get_atoma_db, get_db_manager_badge, get_node_badge,
-    prelude::*, DB_MODULE_NAME, DB_TYPE_NAME, SETTLEMENT_MODULE_NAME,
-    SETTLEMENT_TICKET_TYPE_NAME,
+    prelude::*, DB_MANAGER_TYPE_NAME, DB_MODULE_NAME, DB_NODE_TYPE_NAME,
+    DB_TYPE_NAME, SETTLEMENT_MODULE_NAME, SETTLEMENT_TICKET_TYPE_NAME,
 };
 
 pub(crate) const WALLET_PATH: &str = "WALLET_PATH";
-pub(crate) const PACKAGE_ID: &str = "PACKAGE_ID";
+pub(crate) const ATOMA_PACKAGE_ID: &str = "ATOMA_PACKAGE_ID";
+pub(crate) const TOMA_PACKAGE_ID: &str = "TOMA_PACKAGE_ID";
 pub(crate) const ATOMA_DB_ID: &str = "ATOMA_DB_ID";
 pub(crate) const MANAGER_BADGE_ID: &str = "MANAGER_BADGE_ID";
 pub(crate) const NODE_BADGE_ID: &str = "NODE_BADGE_ID";
@@ -26,9 +31,11 @@ pub(crate) struct Context {
     pub(crate) wallet: WalletContext,
 }
 
+#[derive(Debug, Default)]
 pub(crate) struct DotenvConf {
     pub(crate) wallet_path: Option<PathBuf>,
-    pub(crate) package_id: Option<ObjectID>,
+    pub(crate) atoma_package_id: Option<ObjectID>,
+    pub(crate) toma_package_id: Option<ObjectID>,
     pub(crate) atoma_db_id: Option<ObjectID>,
     pub(crate) manager_badge_id: Option<ObjectID>,
     pub(crate) node_badge_id: Option<ObjectID>,
@@ -41,7 +48,11 @@ impl DotenvConf {
     pub(crate) fn from_env() -> Self {
         Self {
             wallet_path: std::env::var(WALLET_PATH).ok().map(PathBuf::from),
-            package_id: std::env::var(PACKAGE_ID)
+            atoma_package_id: std::env::var(ATOMA_PACKAGE_ID)
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(|s| ObjectID::from_str(&s).unwrap()),
+            toma_package_id: std::env::var(TOMA_PACKAGE_ID)
                 .ok()
                 .filter(|s| !s.is_empty())
                 .map(|s| ObjectID::from_str(&s).unwrap()),
@@ -78,32 +89,37 @@ impl Context {
         self.wallet.get_client().await
     }
 
-    pub(crate) fn with_optional_package_id(
+    pub(crate) fn with_optional_atoma_package_id(
         mut self,
         package_id: Option<String>,
     ) -> Self {
         if let Some(s) = package_id {
             let new_package_id = ObjectID::from_str(&s).unwrap();
-            if Some(new_package_id) != self.conf.package_id {
-                debug!("Using package {new_package_id}, ignoring .env");
-                self.conf.package_id = Some(new_package_id);
+            if Some(new_package_id) != self.conf.atoma_package_id {
+                debug!("Using Atoma package {new_package_id}, ignoring .env");
                 // since the package id has changed, we need to reset all the
                 // other ids
-                self.conf.atoma_db_id = None;
-                self.conf.manager_badge_id = None;
-                self.conf.node_badge_id = None;
-                self.conf.node_id = None;
-                self.conf.toma_wallet_id = None;
+                self.conf = Default::default();
+                self.conf.atoma_package_id = Some(new_package_id);
             }
         }
 
         self
     }
 
-    pub(crate) fn unwrap_package_id(&self) -> ObjectID {
+    /// Package of the Atoma network.
+    pub(crate) fn unwrap_atoma_package_id(&self) -> ObjectID {
         self.conf
-            .package_id
-            .unwrap_or_else(|| panic!("{} is not set", PACKAGE_ID))
+            .atoma_package_id
+            .unwrap_or_else(|| panic!("{} is not set", ATOMA_PACKAGE_ID))
+    }
+
+    /// Package of the TOMA token.
+    pub(crate) fn unwrap_toma_package_id(&self) -> ObjectID {
+        // TODO: get the TOMA package ID from the Atoma package dependency
+        self.conf
+            .toma_package_id
+            .unwrap_or_else(|| panic!("{} is not set", TOMA_PACKAGE_ID))
     }
 
     /// Some CLI calls don't require a package ID to be provided, because it can
@@ -112,15 +128,18 @@ impl Context {
     ///
     /// However, we want to make sure that the package ID is consistent with the
     /// one that is configured in the .env file if any is provided.
-    pub(crate) fn assert_or_store_package_id(&mut self, package_id: ObjectID) {
-        if let Some(existing_package_id) = self.conf.package_id {
+    pub(crate) fn assert_or_store_atoma_package_id(
+        &mut self,
+        package_id: ObjectID,
+    ) {
+        if let Some(existing_package_id) = self.conf.atoma_package_id {
             assert_eq!(
                 existing_package_id, package_id,
                 "Package {package_id} mismatches \
                 configured package {existing_package_id}"
             );
         } else {
-            self.conf.package_id = Some(package_id);
+            self.conf.atoma_package_id = Some(package_id);
         }
     }
 
@@ -139,7 +158,7 @@ impl Context {
         if let Some(atoma_db_id) = self.conf.atoma_db_id {
             Ok(atoma_db_id)
         } else {
-            let package_id = self.unwrap_package_id();
+            let package_id = self.unwrap_atoma_package_id();
             let atoma_db =
                 get_atoma_db(&self.get_client().await?, package_id).await?;
             self.conf.atoma_db_id = Some(atoma_db);
@@ -153,7 +172,7 @@ impl Context {
         if let Some(manager_badge_id) = self.conf.manager_badge_id {
             Ok(manager_badge_id)
         } else {
-            let package_id = self.unwrap_package_id();
+            let package_id = self.unwrap_atoma_package_id();
             let badge_id = get_db_manager_badge(
                 &self.get_client().await?,
                 package_id,
@@ -173,7 +192,7 @@ impl Context {
         {
             Ok((node_badge_id, node_id))
         } else {
-            let package_id = self.unwrap_package_id();
+            let package_id = self.unwrap_atoma_package_id();
             let (node_badge_id, node_id) = get_node_badge(
                 &self.get_client().await?,
                 package_id,
@@ -190,7 +209,7 @@ impl Context {
         if let Some(toma_wallet_id) = self.conf.toma_wallet_id {
             Ok(toma_wallet_id)
         } else {
-            let package_id = self.unwrap_package_id();
+            let package_id = self.unwrap_toma_package_id();
             let active_address = self.wallet.active_address()?;
             let toma_wallet = find_toma_token_wallet(
                 &self.get_client().await?,
@@ -241,7 +260,7 @@ impl Context {
             ));
         };
         let package: ObjectID = ticket_type.address().into();
-        self.assert_or_store_package_id(package);
+        self.assert_or_store_atoma_package_id(package);
 
         let SuiParsedData::MoveObject(ticket) = ticket.content.unwrap() else {
             return Err(anyhow!("Ticket content must be MoveObject"));
@@ -285,4 +304,199 @@ impl Context {
 
         Ok(atoma.fields.to_json_value())
     }
+}
+
+/// Returns the ID of the node badge and the small ID of the node.
+async fn get_node_badge(
+    client: &SuiClient,
+    package: ObjectID,
+    active_address: SuiAddress,
+) -> Result<(ObjectID, u64)> {
+    let Page {
+        data,
+        has_next_page,
+        ..
+    } = client
+        .read_api()
+        .get_owned_objects(
+            active_address,
+            Some(SuiObjectResponseQuery {
+                filter: Some(SuiObjectDataFilter::Package(package)),
+                options: Some(SuiObjectDataOptions {
+                    show_type: true,
+                    show_content: true,
+                    ..Default::default()
+                }),
+            }),
+            None,
+            None,
+        )
+        .await?;
+    assert!(!has_next_page, "We don't support pagination yet");
+
+    data.into_iter()
+        .find_map(|resp| {
+            let object = resp.data?;
+
+            let ObjectType::Struct(type_) = object.type_? else {
+                return None;
+            };
+
+            if type_.module().as_str() == DB_MODULE_NAME
+                && type_.name().as_str() == DB_NODE_TYPE_NAME
+            {
+                let id = object
+                    .content?
+                    .try_as_move()?
+                    .clone()
+                    .fields
+                    .to_json_value();
+
+                Some((
+                    object.object_id,
+                    id["small_id"]["inner"].as_str()?.parse().ok()?,
+                ))
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!("No {DB_NODE_TYPE_NAME} found for the package")
+        })
+}
+
+async fn find_toma_token_wallet(
+    client: &SuiClient,
+    toma_package: ObjectID,
+    active_address: SuiAddress,
+) -> Result<ObjectID> {
+    let Page { data: coins, .. } = client
+        .coin_read_api()
+        .get_coins(
+            active_address,
+            Some(format!("{toma_package}::toma::TOMA")),
+            None,
+            None,
+        )
+        .await?;
+    coins
+        .into_iter()
+        .max_by_key(|coin| coin.balance)
+        .map(|coin| coin.coin_object_id)
+        .ok_or_else(|| anyhow::anyhow!("No TOMA coins for {active_address}"))
+}
+
+async fn get_atoma_db(
+    client: &SuiClient,
+    package: ObjectID,
+) -> Result<ObjectID> {
+    get_publish_tx_created_object(client, package, DB_MODULE_NAME, DB_TYPE_NAME)
+        .await
+}
+
+async fn get_publish_tx_created_object(
+    client: &SuiClient,
+    package: ObjectID,
+    module: &str,
+    name: &str,
+) -> Result<ObjectID> {
+    let Page {
+        data,
+        has_next_page,
+        ..
+    } = client
+        .read_api()
+        .query_transaction_blocks(
+            SuiTransactionBlockResponseQuery {
+                filter: Some(TransactionFilter::ChangedObject(package)),
+                options: Some(SuiTransactionBlockResponseOptions {
+                    show_effects: true,
+                    ..Default::default()
+                }),
+            },
+            None,
+            Some(1),
+            false,
+        )
+        .await?;
+    assert_eq!(1, data.len(), "Did you select right package ID?");
+    assert!(!has_next_page);
+
+    let SuiTransactionBlockEffects::V1(changes) =
+        data.into_iter().next().unwrap().effects.unwrap();
+
+    let object_ids = changes.created.into_iter().map(|r| r.reference.object_id);
+    for object_id in object_ids {
+        let type_ = client
+            .read_api()
+            .get_object_with_options(
+                object_id,
+                SuiObjectDataOptions {
+                    show_type: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .ok()
+            .and_then(|r| r.data)
+            .and_then(|data| data.type_);
+        if let Some(type_) = type_ {
+            if let ObjectType::Struct(type_) = type_ {
+                if type_.module().as_str() == module
+                    && type_.name().as_str() == name
+                {
+                    return Ok(object_id);
+                }
+            }
+        }
+    }
+
+    Err(anyhow::anyhow!("No {module}::{name} found for the package"))
+}
+
+async fn get_db_manager_badge(
+    client: &SuiClient,
+    package: ObjectID,
+    active_address: SuiAddress,
+) -> Result<ObjectID> {
+    let Page {
+        data,
+        has_next_page,
+        ..
+    } = client
+        .read_api()
+        .get_owned_objects(
+            active_address,
+            Some(SuiObjectResponseQuery {
+                filter: Some(SuiObjectDataFilter::Package(package)),
+                options: Some(SuiObjectDataOptions {
+                    show_type: true,
+                    ..Default::default()
+                }),
+            }),
+            None,
+            None,
+        )
+        .await?;
+    assert!(!has_next_page, "We don't support pagination yet");
+
+    data.into_iter()
+        .find_map(|resp| {
+            let object = resp.data?;
+
+            let ObjectType::Struct(type_) = object.type_? else {
+                return None;
+            };
+
+            if type_.module().as_str() == DB_MODULE_NAME
+                && type_.name().as_str() == DB_MANAGER_TYPE_NAME
+            {
+                Some(object.object_id)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!("No {DB_MANAGER_TYPE_NAME} found for the package")
+        })
 }

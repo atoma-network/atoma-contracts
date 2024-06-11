@@ -8,6 +8,7 @@ edition = "2021"
 anyhow = "1.0"
 clap = "4.5"
 dotenvy = "0.15"
+env_home = "0.1"
 env_logger = "0.11"
 fastcrypto = "0.1"
 log = "0.4"
@@ -17,9 +18,9 @@ tokio = { version = "1.2", features = ["full"] }
 [dependencies.sui-sdk]
 git = "https://github.com/mystenlabs/sui"
 package = "sui-sdk"
-tag = "mainnet-v1.26.1"
+tag = "mainnet-v1.26.2"
 
 [dependencies.move-core-types]
 git = "https://github.com/mystenlabs/sui"
 package = "move-core-types"
-tag = "mainnet-v1.26.1"
+tag = "mainnet-v1.26.2"
