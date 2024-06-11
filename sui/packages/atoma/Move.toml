@@ -4,12 +4,8 @@ version = "0.1.0"
 edition = "2024.beta"
 
 [dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/devnet" }
 Toma = { local = "../toma" }
-
-[dependencies.Sui]
-git = "https://github.com/MystenLabs/sui.git"
-subdir = "crates/sui-framework/packages/sui-framework"
-rev = "mainnet-v1.26.2"
 
 [addresses]
 atoma = "0x0"

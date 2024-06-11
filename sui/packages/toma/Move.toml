@@ -1,9 +1,15 @@
+# devnet
+
 [package]
 name = "Toma"
 version = "0.1.0"
 edition = "2024.beta"
+published-at = "0x4a4c4df17ab690b41d6a8a9f93a117741a72555ca68ad4cfcca8963734aeb236"
 
-[dependencies.Sui]
-git = "https://github.com/MystenLabs/sui.git"
-subdir = "crates/sui-framework/packages/sui-framework"
-rev = "mainnet-v1.26.2"
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/devnet" }
+
+[addresses]
+# when you want to deploy Toma, this must be set to 0x0
+# when you want to deploy Atoma, this must equal published-at
+toma = "0x4a4c4df17ab690b41d6a8a9f93a117741a72555ca68ad4cfcca8963734aeb236"

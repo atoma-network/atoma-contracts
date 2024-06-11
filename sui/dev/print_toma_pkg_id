@@ -1,0 +1,34 @@
+#!/bin/bash
+
+#
+# Prints TOMA package ID as defined in the Move.toml
+# Errors if the package ID is not found.
+#
+
+function abs_path_to_git_root_dir() {
+    # Recursively find the repo root directory so that this script can be called
+    # from anywhere
+
+    if [ -d "atoma-contracts" ]; then
+        echo "$(pwd)/atoma-contracts"
+    elif [ "$(pwd)" == "/" ]; then
+        echo "No atoma-contracts directory found"
+        exit 1
+    else
+        cd ..
+        abs_path_to_git_root_dir
+    fi
+}
+
+root_dir=$(abs_path_to_git_root_dir)
+
+toma_move_toml="${root_dir}/sui/packages/toma/Move.toml"
+
+published_at=$(grep -oP '(?<=published-at = ")[^"]+' "${toma_move_toml}")
+
+if [ -z "${published_at}" ]; then
+    echo "Error: TOMA package ID not found in ${toma_move_toml}"
+    exit 1
+fi
+
+echo "${published_at}"

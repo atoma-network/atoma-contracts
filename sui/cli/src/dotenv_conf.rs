@@ -1,3 +1,4 @@
+use core::panic;
 use std::path::{Path, PathBuf};
 
 use sui_sdk::{
@@ -13,18 +14,20 @@ use sui_sdk::{
 
 use crate::{
     prelude::*, DB_MANAGER_TYPE_NAME, DB_MODULE_NAME, DB_NODE_TYPE_NAME,
-    DB_TYPE_NAME, SETTLEMENT_MODULE_NAME, SETTLEMENT_TICKET_TYPE_NAME,
+    DB_TYPE_NAME, FAUCET_TYPE_NAME, SETTLEMENT_MODULE_NAME,
+    SETTLEMENT_TICKET_TYPE_NAME, TOMA_COIN_MODULE_NAME,
 };
 
-pub(crate) const WALLET_PATH: &str = "WALLET_PATH";
-pub(crate) const ATOMA_PACKAGE_ID: &str = "ATOMA_PACKAGE_ID";
-pub(crate) const TOMA_PACKAGE_ID: &str = "TOMA_PACKAGE_ID";
 pub(crate) const ATOMA_DB_ID: &str = "ATOMA_DB_ID";
+pub(crate) const ATOMA_PACKAGE_ID: &str = "ATOMA_PACKAGE_ID";
+pub(crate) const FAUCET_ID: &str = "FAUCET_ID";
+pub(crate) const GAS_BUDGET: &str = "GAS_BUDGET";
 pub(crate) const MANAGER_BADGE_ID: &str = "MANAGER_BADGE_ID";
 pub(crate) const NODE_BADGE_ID: &str = "NODE_BADGE_ID";
 pub(crate) const NODE_ID: &str = "NODE_ID";
+pub(crate) const TOMA_PACKAGE_ID: &str = "TOMA_PACKAGE_ID";
 pub(crate) const TOMA_WALLET_ID: &str = "TOMA_WALLET_ID";
-pub(crate) const GAS_BUDGET: &str = "GAS_BUDGET";
+pub(crate) const WALLET_PATH: &str = "WALLET_PATH";
 
 pub(crate) struct Context {
     pub(crate) conf: DotenvConf,
@@ -40,6 +43,7 @@ pub(crate) struct DotenvConf {
     pub(crate) manager_badge_id: Option<ObjectID>,
     pub(crate) node_badge_id: Option<ObjectID>,
     pub(crate) node_id: Option<u64>,
+    pub(crate) faucet_id: Option<ObjectID>,
     pub(crate) toma_wallet_id: Option<ObjectID>,
     pub(crate) gas_budget: Option<u64>,
 }
@@ -65,6 +69,10 @@ impl DotenvConf {
                 .filter(|s| !s.is_empty())
                 .map(|s| ObjectID::from_str(&s).unwrap()),
             node_badge_id: std::env::var(NODE_BADGE_ID)
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(|s| ObjectID::from_str(&s).unwrap()),
+            faucet_id: std::env::var(FAUCET_ID)
                 .ok()
                 .filter(|s| !s.is_empty())
                 .map(|s| ObjectID::from_str(&s).unwrap()),
@@ -99,12 +107,40 @@ impl Context {
                 debug!("Using Atoma package {new_package_id}, ignoring .env");
                 // since the package id has changed, we need to reset all the
                 // other ids
-                self.conf = Default::default();
+                self.reset_ids();
                 self.conf.atoma_package_id = Some(new_package_id);
             }
         }
 
         self
+    }
+
+    pub(crate) fn with_optional_toma_package_id(
+        mut self,
+        package_id: Option<String>,
+    ) -> Self {
+        if let Some(s) = package_id {
+            let new_package_id = ObjectID::from_str(&s).unwrap();
+            if Some(new_package_id) != self.conf.toma_package_id {
+                debug!("Using Toma package {new_package_id}, ignoring .env");
+                // since the package id has changed, we need to reset all the
+                // other ids
+                self.reset_ids();
+                self.conf.toma_package_id = Some(new_package_id);
+            }
+        }
+
+        self
+    }
+
+    /// Removes all the IDs that have been loaded so far from the config.
+    fn reset_ids(&mut self) {
+        self.conf.atoma_db_id = None;
+        self.conf.faucet_id = None;
+        self.conf.manager_badge_id = None;
+        self.conf.node_badge_id = None;
+        self.conf.node_id = None;
+        self.conf.toma_wallet_id = None;
     }
 
     /// Package of the Atoma network.
@@ -115,11 +151,18 @@ impl Context {
     }
 
     /// Package of the TOMA token.
-    pub(crate) fn unwrap_toma_package_id(&self) -> ObjectID {
-        // TODO: get the TOMA package ID from the Atoma package dependency
-        self.conf
-            .toma_package_id
-            .unwrap_or_else(|| panic!("{} is not set", TOMA_PACKAGE_ID))
+    pub(crate) async fn get_or_load_toma_package_id(
+        &mut self,
+    ) -> Result<ObjectID> {
+        if let Some(toma_package) = self.conf.toma_package_id {
+            Ok(toma_package)
+        } else {
+            let package_id = self.unwrap_atoma_package_id();
+            let toma_package =
+                get_toma_package(&self.get_client().await?, package_id).await?;
+            self.conf.toma_package_id = Some(toma_package);
+            Ok(toma_package)
+        }
     }
 
     /// Some CLI calls don't require a package ID to be provided, because it can
@@ -151,7 +194,7 @@ impl Context {
         self.conf
             .wallet_path
             .as_ref()
-            .unwrap_or_else(|| panic!("{} is not set", WALLET_PATH))
+            .unwrap_or_else(|| panic!("{WALLET_PATH} is not set"))
     }
 
     pub(crate) async fn get_or_load_atoma_db(&mut self) -> Result<ObjectID> {
@@ -163,6 +206,18 @@ impl Context {
                 get_atoma_db(&self.get_client().await?, package_id).await?;
             self.conf.atoma_db_id = Some(atoma_db);
             Ok(atoma_db)
+        }
+    }
+
+    pub(crate) async fn get_or_load_faucet_id(&mut self) -> Result<ObjectID> {
+        if let Some(faucet_id) = self.conf.faucet_id {
+            Ok(faucet_id)
+        } else {
+            let package_id = self.get_or_load_toma_package_id().await?;
+            let faucet_id =
+                get_faucet_id(&self.get_client().await?, package_id).await?;
+            self.conf.faucet_id = Some(faucet_id);
+            Ok(faucet_id)
         }
     }
 
@@ -209,7 +264,7 @@ impl Context {
         if let Some(toma_wallet_id) = self.conf.toma_wallet_id {
             Ok(toma_wallet_id)
         } else {
-            let package_id = self.unwrap_toma_package_id();
+            let package_id = self.get_or_load_toma_package_id().await?;
             let active_address = self.wallet.active_address()?;
             let toma_wallet = find_toma_token_wallet(
                 &self.get_client().await?,
@@ -394,6 +449,19 @@ async fn get_atoma_db(
         .await
 }
 
+async fn get_faucet_id(
+    client: &SuiClient,
+    toma_package: ObjectID,
+) -> Result<ObjectID> {
+    get_publish_tx_created_object(
+        client,
+        toma_package,
+        TOMA_COIN_MODULE_NAME,
+        FAUCET_TYPE_NAME,
+    )
+    .await
+}
+
 async fn get_publish_tx_created_object(
     client: &SuiClient,
     package: ObjectID,
@@ -499,4 +567,48 @@ async fn get_db_manager_badge(
         .ok_or_else(|| {
             anyhow::anyhow!("No {DB_MANAGER_TYPE_NAME} found for the package")
         })
+}
+
+async fn get_toma_package(
+    client: &SuiClient,
+    atoma_package: ObjectID,
+) -> Result<ObjectID> {
+    let xd = client
+        .read_api()
+        .get_object_with_options(
+            atoma_package,
+            SuiObjectDataOptions {
+                show_type: true,
+                show_content: true,
+                ..Default::default()
+            },
+        )
+        .await?
+        .data
+        .expect("Package not found");
+
+    let Some(ObjectType::Package) = xd.type_ else {
+        panic!("Object {atoma_package} is not a package");
+    };
+
+    let Some(SuiParsedData::Package(content)) = xd.content else {
+        panic!("Package {atoma_package} has no content");
+    };
+
+    let hay = content
+        .disassembled
+        .get(DB_MODULE_NAME)
+        .unwrap()
+        .as_str()
+        .unwrap();
+
+    // it's there without the 0x prefix
+    let re = regex::Regex::new(r"use ([a-f0-9]{64})::toma;").unwrap();
+
+    if let Some(needle) = re.captures(hay) {
+        Ok(ObjectID::from_str(&needle[1])
+            .expect("Invalid Toma package ID found in Atoma package"))
+    } else {
+        Err(anyhow::anyhow!("No Toma package ID found in Atoma package"))
+    }
 }

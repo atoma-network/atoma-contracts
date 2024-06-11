@@ -1,7 +1,9 @@
 #!/bin/bash
 
 #
-# Helper script that setups a test Atoma network environment on Sui
+# Helper script that setups a test Atoma network environment on Sui.
+# The TOMA token package must be deployed at this point.
+# See ./publish_toma
 #
 # Usage: ./oneclicksetup.sh
 #
@@ -37,24 +39,16 @@ if [ "${active_env}" != "testnet" ] && [ "${active_env}" != "devnet" ]; then
     exit 1
 fi
 
-# publish the package with TOMA token and faucet
-./dev/publish_toma || exit 1
-# the env var comes from the publish_toma script
-./dev/faucet "${TOMA_FAUCET}" || exit 1
+toma_package=$(./dev/print_toma_pkg_id)
+if [ $? -ne 0 ]; then
+    echo "Failed to get the TOMA package ID. Exiting."
+    exit 1
+fi
 
-echo "TOMA published at address ${TOMA_ADDRESS}"
+echo "TOMA package ID: ${toma_package}"
+./dev/cli toma faucet --toma-package "${toma_package}" --amount 100000000000 || exit 1
 
-# TODO: now we need to change the dependency address of toma package in atoma
-
-json=$(
-    sui client publish \
-        --with-unpublished-dependencies \
-        --skip-dependency-verification \
-        --json \
-        "${root_dir}/sui/packages/atoma"
-)
-
-# if last command failed, print the error
+json=$(sui client publish --json "${root_dir}/sui/packages/atoma")
 if [ $? -ne 0 ]; then
     echo "Failed to publish the package:\n\n"
     echo "${json}"

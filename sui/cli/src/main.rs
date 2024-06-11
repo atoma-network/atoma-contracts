@@ -3,6 +3,7 @@ mod dotenv_conf;
 mod gate;
 mod prelude;
 mod settle;
+mod toma;
 
 use std::{io::Read, path::PathBuf, str::FromStr};
 
@@ -17,13 +18,15 @@ use sui_sdk::types::{dynamic_field::DynamicFieldName, TypeTag};
 
 use crate::{dotenv_conf::DotenvConf, prelude::*};
 
-const DB_MODULE_NAME: &str = "db";
-const PROMPTS_MODULE_NAME: &str = "prompts";
 const DB_MANAGER_TYPE_NAME: &str = "AtomaManagerBadge";
+const DB_MODULE_NAME: &str = "db";
 const DB_NODE_TYPE_NAME: &str = "NodeBadge";
 const DB_TYPE_NAME: &str = "AtomaDb";
+const FAUCET_TYPE_NAME: &str = "Faucet";
+const PROMPTS_MODULE_NAME: &str = "prompts";
 const SETTLEMENT_MODULE_NAME: &str = "settlement";
 const SETTLEMENT_TICKET_TYPE_NAME: &str = "SettlementTicket";
+const TOMA_COIN_MODULE_NAME: &str = "toma";
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -53,6 +56,9 @@ enum Cmds {
     /// Queries and operations related to settling tickets.
     #[command(subcommand)]
     Settle(SettlementCmds),
+    /// TOMA coin package related commands.
+    #[command(subcommand)]
+    Toma(TomaCmds),
 }
 
 #[derive(Subcommand)]
@@ -194,6 +200,18 @@ enum SettlementCmds {
     TryToSettle {
         #[arg(short, long)]
         ticket_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum TomaCmds {
+    /// Admin command to mint TOMA tokens.
+    Faucet {
+        /// If not provided, we take the value from the env vars.
+        #[arg(long)]
+        toma_package: Option<String>,
+        #[arg(short, long)]
+        amount: u64,
     },
 }
 
@@ -401,6 +419,18 @@ async fn main() -> Result<()> {
         Some(Cmds::Settle(SettlementCmds::TryToSettle { ticket_id })) => {
             let digest =
                 settle::try_to_settle(&mut context, &ticket_id).await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Toma(TomaCmds::Faucet {
+            toma_package,
+            amount,
+        })) => {
+            let digest = toma::faucet(
+                &mut context.with_optional_toma_package_id(toma_package),
+                amount,
+            )
+            .await?;
 
             println!("{digest}");
         }
