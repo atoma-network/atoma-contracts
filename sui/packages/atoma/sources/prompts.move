@@ -50,7 +50,6 @@ module atoma::prompts {
         let params = atoma::gate::create_text2text_prompt_params(
             max_tokens,
             model,
-            output_destination,
             pre_prompt_tokens,
             prepend_output_with_input,
             prompt,
@@ -68,6 +67,7 @@ module atoma::prompts {
             params,
             max_fee_per_token,
             nodes_to_sample,
+            output_destination,
             random,
             ctx,
         );
@@ -99,7 +99,6 @@ module atoma::prompts {
         let params = atoma::gate::create_text2text_prompt_params(
             max_tokens,
             model,
-            output_destination,
             pre_prompt_tokens,
             prepend_output_with_input,
             prompt,
@@ -123,6 +122,7 @@ module atoma::prompts {
             // you can set this to none to let Atoma network decide how many
             // nodes to sample
             option::some(1),
+            output_destination,
             random,
             ctx,
         );
@@ -180,6 +180,7 @@ module atoma::prompts {
             // you can set this to none to let Atoma network decide how many
             // nodes to sample
             option::some(1),
+            output_destination,
             random,
             ctx,
         );
