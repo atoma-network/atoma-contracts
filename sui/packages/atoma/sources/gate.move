@@ -32,7 +32,6 @@ module atoma::gate {
     public struct Text2TextPromptParams has store, copy, drop {
         max_tokens: u64,
         model: ascii::String,
-        output_destination: vector<u8>,
         pre_prompt_tokens: vector<u32>,
         prepend_output_with_input: bool,
         prompt: string::String,
@@ -72,6 +71,8 @@ module atoma::gate {
         /// split into several chunks.
         /// See the settlement module for more info.
         nodes: vector<SmallId>,
+        /// This is the output destination where the output will be stored. The output is serialized with a MessagePack.
+        output_destination: vector<u8>,
     }
 
     #[allow(unused_field)]
@@ -123,6 +124,8 @@ module atoma::gate {
         /// split into several chunks.
         /// See the settlement module for more info.
         nodes: vector<SmallId>,
+        /// This is the output destination where the output will be stored. The output is serialized with a MessagePack.
+        output_destination: vector<u8>,
     }
 
     #[allow(lint(public_random))]
@@ -140,6 +143,7 @@ module atoma::gate {
         params: Text2TextPromptParams,
         max_fee_per_token: u64,
         nodes_to_sample: Option<u64>,
+        output_destination: vector<u8>,
         random: &sui::random::Random,
         ctx: &mut TxContext,
     ): ID {
@@ -180,6 +184,7 @@ module atoma::gate {
             ticket_id,
             chunks_count,
             nodes: selected_nodes,
+            output_destination
         });
 
         ticket_id
@@ -202,6 +207,7 @@ module atoma::gate {
         max_fee_per_input_token: u64,
         max_fee_per_output_token: u64,
         nodes_to_sample: Option<u64>,
+        output_destination: vector<u8>,
         random: &sui::random::Random,
         ctx: &mut TxContext,
     ): ID {
@@ -238,6 +244,7 @@ module atoma::gate {
             ticket_id,
             chunks_count,
             nodes: selected_nodes,
+            output_destination
         });
 
         ticket_id
@@ -247,7 +254,6 @@ module atoma::gate {
     public fun create_text2text_prompt_params(
         max_tokens: u64,
         model: ascii::String,
-        output_destination: vector<u8>,
         pre_prompt_tokens: vector<u32>,
         prepend_output_with_input: bool,
         prompt: string::String,
@@ -262,7 +268,6 @@ module atoma::gate {
         Text2TextPromptParams {
             max_tokens,
             model,
-            output_destination,
             pre_prompt_tokens,
             prepend_output_with_input,
             prompt,
