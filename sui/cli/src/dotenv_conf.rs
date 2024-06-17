@@ -508,13 +508,11 @@ async fn get_publish_tx_created_object(
             .ok()
             .and_then(|r| r.data)
             .and_then(|data| data.type_);
-        if let Some(type_) = type_ {
-            if let ObjectType::Struct(type_) = type_ {
-                if type_.module().as_str() == module
-                    && type_.name().as_str() == name
-                {
-                    return Ok(object_id);
-                }
+        if let Some(ObjectType::Struct(type_)) = type_ {
+            if type_.module().as_str() == module
+                && type_.name().as_str() == name
+            {
+                return Ok(object_id);
             }
         }
     }

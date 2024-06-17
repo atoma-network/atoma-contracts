@@ -16,31 +16,49 @@
 # AG2ng6d8wNP3t6MmV9j2XsU/8bxMKjUQ2mDgfCoYoXMm 1
 # '''
 #
-# It defines how many signatures are required to sign a transaction and then
-# lists the public keys and their weights.
+# It defines how the sum of weights of signatures that are required to sign
+# a transaction and then lists the public keys and their weights.
 # You can view your public keys with '$ sui keytool list'
 #
-# The commands:
-# $ ./multisig derive-address
-# - generates a multisig address from the pubkeys and weights
+# The commands in the order you want to execute them:
+#
+# 1. $ ./multisig derive-address
+# - generates a multisig address from the pubkeys and weights stored in the
+#   multisig file
 # - this address can be used as an owner for objects
 # - for example, one can transfer the ownership of 'TreasuryCap<TOMA>' to this
 #   address for multisig minting
+# - the multisig address needs to have a Coin<SUI> gas object
 #
-# $ ./multisig sign --tx <TX_BYTES> --address <SUI-ADDRESS>
+# 2. $ ./multisig sign --tx <TX_BYTES> --address <SUI-ADDRESS>
 # - generates a partial signature on behalf of the given address
 # - the tx bytes can be obtained by running a Sui CLI command with
 #   '--serialize-unsigned-transaction' flag
-#
-
+# - it's important to provide a Coin<SUI> object with --gas parameter when using
+#   the '--serialize-unsigned-transaction' flag so that the sender (the multisig address)
+#   can pay for the transaction
+# - the output of this command is the partial signature for the given address
+#   that participates in the multisig
+# - for example, this generates the TX BYTES parameter for a mint tx:
+# '''
 # sui client call \
 #     --package "0x2" \
 #     --module "coin" \
 #     --function "mint_and_transfer" \
-#     --gas-budget 10000000 \
-#     --type-args "0xea9cd12cb895c7088a13fdc963cbf01c07d422e949ee3838af5dbac3bba2a8d9::toma::TOMA" \
-#     --args "0x2d8eeaa02170f537ab1a992a414602e59cf09861283d6854d6d0335e710ea68c" 1000 $(sui client active-address) \
+#     --gas-budget 1000000000 \
+#     --gas "<MULTISIG OWNED GAS OBJECT ID>" \
+#     --type-args "<TOMA PACKAGE ID>::toma::TOMA" \
+#     --args "<TREASURY OBJECT ID>" <AMOUNT> <RECIPIENT ADDRESS> \
 #     --serialize-unsigned-transaction
+# '''
+#
+# 3. $ ./multisig execute --tx <TX_BYTES> --sigs <SIG-1> ... <SIG-N>
+# - use the partial signatures from the previous step to execute the transaction
+# - the tx bytes are the same as the previous step
+# - this step needs to read the multisig file
+# - THE TRANSACTION IS REPLAYABLE! if you don't like that, you can destroy the
+#   gas coin object after the transaction is executed
+#
 
 function abs_path_to_git_root_dir() {
     # Recursively find the repo root directory so that this script can be called
@@ -156,7 +174,11 @@ function sign_transaction {
         exit 1
     fi
 
+    echo
+    echo "Partial signature:"
+    echo
     sui keytool sign --address "${address}" --data "${tx_bytes}" --json | jq -r '.suiSignature'
+    echo
 }
 
 function execute_transaction {
@@ -192,15 +214,18 @@ function execute_transaction {
         shift
     done
 
-    echo "Here are the sigs: ${sigs[@]}"
-
     if [[ -z $tx_bytes || ${#sigs[@]} -eq 0 ]]; then
         echo "Usage: $0 execute --tx <TX_BYTES> --sigs <SIG-1> ... <SIG-N>"
         exit 1
     fi
 
     echo """
-    sui keytool multi-sig-combine-partial-sig --pks "${pubkeys[@]}" --weights "${weights[@]}" --threshold "${threshold}" --sigs "${sigs[@]}" --json
+    $ sui keytool multi-sig-combine-partial-sig \\
+        --pks "${pubkeys[@]}" \\
+        --weights "${weights[@]}" \\
+        --threshold "${threshold}" \\
+        --sigs "${sigs[@]}" \\
+        --json
     """
 
     json=$(
@@ -217,13 +242,15 @@ function execute_transaction {
     )
 
     echo """
-    sui client execute-signed-tx --tx-bytes "${tx_bytes}" --signatures "${serialized_multisig}" --json
+    $ sui client execute-signed-tx \\
+        --tx-bytes "${tx_bytes}" \\
+        --signatures "${serialized_multisig}" \\
+        --json
     """
 
     sui client execute-signed-tx \
         --tx-bytes "${tx_bytes}" \
-        --signatures "${serialized_multisig}" \
-        --json
+        --signatures "${serialized_multisig}"
 }
 
 case "$1" in
