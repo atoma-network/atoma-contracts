@@ -89,7 +89,7 @@ declare -a weights
 threshold=0
 
 function read_pubkeys {
-    # Reads the miltisig file and populates the pubkeys and weights arrays and
+    # Reads the multisig file and populates the pubkeys and weights arrays and
     # the threshold variable
 
     if [[ ! -f $MULTISIG_FILE ]]; then
