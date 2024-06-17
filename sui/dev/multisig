@@ -1,0 +1,246 @@
+#!/bin/bash
+
+#
+# This script abstracts away Sui's multisig CLI functionality.
+# Useful documentation can be found here:
+# https://docs.sui.io/guides/developer/cryptography/multisig
+#
+# The core concept is the multisig file.
+# It's gitignored but it's not a secret.
+# Here's an example of what such file can look like:
+#
+# '''
+# threshold 3
+# AI+80qL+3B2Qx3003ErOzt7ZE8tQnTRrWyHLK5yi/NMy 1
+# AIyduA2jwVd53R+cWXjLQwtwfuMn16rtRqjDG4blpZ84 1
+# AG2ng6d8wNP3t6MmV9j2XsU/8bxMKjUQ2mDgfCoYoXMm 1
+# '''
+#
+# It defines how many signatures are required to sign a transaction and then
+# lists the public keys and their weights.
+# You can view your public keys with '$ sui keytool list'
+#
+# The commands:
+# $ ./multisig derive-address
+# - generates a multisig address from the pubkeys and weights
+# - this address can be used as an owner for objects
+# - for example, one can transfer the ownership of 'TreasuryCap<TOMA>' to this
+#   address for multisig minting
+#
+# $ ./multisig sign --tx <TX_BYTES> --address <SUI-ADDRESS>
+# - generates a partial signature on behalf of the given address
+# - the tx bytes can be obtained by running a Sui CLI command with
+#   '--serialize-unsigned-transaction' flag
+#
+
+# sui client call \
+#     --package "0x2" \
+#     --module "coin" \
+#     --function "mint_and_transfer" \
+#     --gas-budget 10000000 \
+#     --type-args "0xea9cd12cb895c7088a13fdc963cbf01c07d422e949ee3838af5dbac3bba2a8d9::toma::TOMA" \
+#     --args "0x2d8eeaa02170f537ab1a992a414602e59cf09861283d6854d6d0335e710ea68c" 1000 $(sui client active-address) \
+#     --serialize-unsigned-transaction
+
+function abs_path_to_git_root_dir() {
+    # Recursively find the repo root directory so that this script can be called
+    # from anywhere
+
+    if [ -d "atoma-contracts" ]; then
+        echo "$(pwd)/atoma-contracts"
+    elif [ "$(pwd)" == "/" ]; then
+        echo "No atoma-contracts directory found"
+        exit 1
+    else
+        cd ..
+        abs_path_to_git_root_dir
+    fi
+}
+
+entrance_dir=$(pwd)
+root_dir=$(abs_path_to_git_root_dir)
+
+cd $root_dir/sui
+
+# a file with one pubkey per line, each line in the format "<pubkey> <weight>"
+# this file also must contain a line with the threshold in the format "threshold <threshold>"
+MULTISIG_FILE=".multisig-pubkeys"
+# these values are initialized by read_pubkeys
+declare -a pubkeys
+declare -a weights
+threshold=0
+
+function read_pubkeys {
+    # Reads the miltisig file and populates the pubkeys and weights arrays and
+    # the threshold variable
+
+    if [[ ! -f $MULTISIG_FILE ]]; then
+        echo "File ${MULTISIG_FILE} with multisig pubkeys not found!"
+        exit 1
+    fi
+
+    local total_weights=0
+
+    while IFS=' ' read -r line; do
+        if [[ $line == threshold* ]]; then
+            threshold=$(echo $line | awk '{print $2}')
+        else
+            read -r pubkey weight <<<"$line"
+            if ! [[ $weight =~ ^[0-9]+$ ]]; then
+                echo "Weight for ${pubkey} must be a positive integer"
+                exit 1
+            fi
+            if [[ $weight -eq 0 ]]; then
+                echo "Weight for ${pubkey} must be greater than 0"
+                exit 1
+            fi
+
+            pubkeys+=("$pubkey")
+            weights+=("$weight")
+            total_weights=$((total_weights + weight))
+        fi
+    done <$MULTISIG_FILE
+
+    if ! [[ $threshold =~ ^[0-9]+$ ]]; then
+        echo "Threshold must be a positive integer"
+        exit 1
+    fi
+    if [[ $threshold -eq 0 ]]; then
+        echo "Threshold must be greater than 0"
+        exit 1
+    fi
+    if [[ $threshold -gt $total_weights ]]; then
+        echo "Threshold cannot be more than the sum of all weights"
+        exit 1
+    fi
+}
+
+function derive_address {
+    # Derives a multisig address from the pubkeys and weights in the multisig file.
+    #
+    # https://docs.sui.io/guides/developer/cryptography/multisig#step-3-create-a-multisig-address
+
+    read_pubkeys
+
+    sui keytool multi-sig-address \
+        --pks "${pubkeys[@]}" \
+        --weights "${weights[@]}" \
+        --threshold "${threshold}" \
+        --json
+}
+
+function sign_transaction {
+    # Generates partial signature on behalf of a address.
+    #
+    # https://docs.sui.io/guides/developer/cryptography/multisig#step-6-sign-the-transaction-with-two-keys
+
+    local address
+    local tx_bytes
+
+    while [[ "$1" != "" ]]; do
+        case $1 in
+        --address)
+            shift
+            address=$1
+            ;;
+        --tx)
+            shift
+            tx_bytes=$1
+            ;;
+        *) ;;
+        esac
+        shift
+    done
+    if [[ -z $address || -z $tx_bytes ]]; then
+        echo "Usage: $0 sign --tx <TX_BYTES> --address <SUI-ADDRESS>"
+        exit 1
+    fi
+
+    sui keytool sign --address "${address}" --data "${tx_bytes}" --json | jq -r '.suiSignature'
+}
+
+function execute_transaction {
+    # Combines all the partial signatures into a single multisig signature and
+    # then executes the transaction.
+    #
+    # https://docs.sui.io/guides/developer/cryptography/multisig#step-7-combine-individual-signatures-into-a-multisig
+    # https://docs.sui.io/guides/developer/cryptography/multisig#step-8-execute-a-transaction-with-multisig
+
+    local tx_bytes
+    local sigs
+
+    read_pubkeys
+
+    while [[ "$1" != "" ]]; do
+        case $1 in
+        --tx)
+            shift
+            tx_bytes=$1
+            ;;
+        --sigs)
+            shift
+            # what follows is a space separated list of
+            # partial base64 signatures
+            sigs=()
+            while [[ "$1" != "" && "$1" != --* ]]; do
+                sigs+=("$1")
+                shift
+            done
+            ;;
+        *) ;;
+        esac
+        shift
+    done
+
+    echo "Here are the sigs: ${sigs[@]}"
+
+    if [[ -z $tx_bytes || ${#sigs[@]} -eq 0 ]]; then
+        echo "Usage: $0 execute --tx <TX_BYTES> --sigs <SIG-1> ... <SIG-N>"
+        exit 1
+    fi
+
+    echo """
+    sui keytool multi-sig-combine-partial-sig --pks "${pubkeys[@]}" --weights "${weights[@]}" --threshold "${threshold}" --sigs "${sigs[@]}" --json
+    """
+
+    json=$(
+        sui keytool multi-sig-combine-partial-sig \
+            --pks "${pubkeys[@]}" \
+            --weights "${weights[@]}" \
+            --threshold "${threshold}" \
+            --sigs "${sigs[@]}" \
+            --json
+    )
+
+    serialized_multisig=$(
+        echo "${json}" | jq -cr '.multisigSerialized'
+    )
+
+    echo """
+    sui client execute-signed-tx --tx-bytes "${tx_bytes}" --signatures "${serialized_multisig}" --json
+    """
+
+    sui client execute-signed-tx \
+        --tx-bytes "${tx_bytes}" \
+        --signatures "${serialized_multisig}" \
+        --json
+}
+
+case "$1" in
+derive-address)
+    shift
+    derive_address
+    ;;
+sign)
+    shift
+    sign_transaction "$@"
+    ;;
+execute)
+    shift
+    execute_transaction "$@"
+    ;;
+*)
+    echo "Usage: $0 {derive-address | sign --tx <TX_BYTES> --address <SUI-ADDRESS> | execute --tx <TX_BYTES> --sigs <SIG-1> ... <SIG-N>}"
+    exit 1
+    ;;
+esac
