@@ -59,6 +59,8 @@ if [ "$active_env" == "devnet" ] || [ "$active_env" == "testnet" ]; then
     sui client call \
         --package "${toma_package}" --module "toma" --function "enable_faucet" \
         --args "${faucet}" "${treasury}" || exit 1
+    echo
+    echo "Faucet enabled"
 fi
 
 echo
