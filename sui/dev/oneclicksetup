@@ -1,7 +1,9 @@
 #!/bin/bash
 
 #
-# Helper script that setups a test Atoma network environment on Sui
+# Helper script that setups a test Atoma network environment on Sui.
+# The TOMA token package must be deployed at this point.
+# See ./publish_toma
 #
 # Usage: ./oneclicksetup.sh
 #
@@ -31,16 +33,22 @@ root_dir=$(abs_path_to_git_root_dir)
 
 cd $root_dir/sui
 
-json=$(
-    sui client publish \
-        --with-unpublished-dependencies \
-        --skip-dependency-verification \
-        --gas-budget 1000000000 \
-        --json \
-        "${root_dir}/sui/packages/atoma"
-)
+active_env=$(sui client active-env)
+if [ "${active_env}" != "testnet" ] && [ "${active_env}" != "devnet" ]; then
+    echo "This script is only for testnet or devnet. Exiting."
+    exit 1
+fi
 
-# if last command failed, print the error
+toma_package=$(./dev/print_toma_pkg_id)
+if [ $? -ne 0 ]; then
+    echo "Failed to get the TOMA package ID. Exiting."
+    exit 1
+fi
+
+echo "TOMA package ID: ${toma_package}"
+./dev/cli toma faucet --toma-package "${toma_package}" --amount 100000000000 || exit 1
+
+json=$(sui client publish --json "${root_dir}/sui/packages/atoma")
 if [ $? -ne 0 ]; then
     echo "Failed to publish the package:\n\n"
     echo "${json}"
@@ -57,30 +65,6 @@ if [ -z "${package}" ] || [[ ! "${package}" =~ ^0x ]]; then
     echo "Could not publish the package. Exiting."
     exit 1
 fi
-
-treasury=$(
-    echo "${json}" |
-        jq -r '.objectChanges[] | select(.objectType | type == "string" and startswith("0x2::coin::TreasuryCap")) | .objectId'
-)
-
-if [ -z "${treasury}" ] || [[ ! "${treasury}" =~ ^0x ]]; then
-    echo "Could not find the treasury. Exiting."
-    exit 1
-fi
-
-echo
-active_address=$(sui client active-address)
-echo "Active address: ${active_address}"
-echo "Package: ${package}"
-echo "Treasury: ${treasury}"
-echo
-echo "Minting some TOMA tokens for collateral and fees"
-
-sui client call \
-    --package "0x2" --module "coin" --function "mint_and_transfer" \
-    --gas-budget 10000000 \
-    --args "${treasury}" 10000000 "${active_address}" \
-    --type-args "${package}::toma::TOMA" || exit 1
 
 echo
 echo "Using CLI to setup resource on chain"
@@ -128,9 +112,10 @@ echo "Sending test text prompt"
 
 echo
 echo
-echo "Storing IDs into .env file in the sui directory"
-./cli db print-env --package "${package}" >"${root_dir}/sui/.env"
-cat "${root_dir}/sui/.env"
+env_file_path="${root_dir}/sui/.env.${active_env}"
+echo "Storing IDs into file '${env_file_path}'"
+./cli db print-env --package "${package}" >"${env_file_path}"
+cat "${env_file_path}"
 
 # leave the caller where they started
 cd $entrance_dir

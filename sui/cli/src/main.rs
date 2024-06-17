@@ -3,37 +3,30 @@ mod dotenv_conf;
 mod gate;
 mod prelude;
 mod settle;
+mod toma;
 
 use std::{io::Read, path::PathBuf, str::FromStr};
 
 use clap::{Parser, Subcommand};
+use dotenv_conf::WALLET_PATH;
 use dotenvy::dotenv;
+use env_home::env_home_dir;
 use move_core_types::{
     account_address::AccountAddress, language_storage::StructTag,
 };
-use sui_sdk::{
-    rpc_types::{
-        ObjectChange, Page, SuiData, SuiObjectDataFilter, SuiObjectDataOptions,
-        SuiObjectResponseQuery, SuiTransactionBlockResponseOptions,
-        SuiTransactionBlockResponseQuery, TransactionFilter,
-    },
-    types::{
-        base_types::{ObjectID, ObjectType, SuiAddress},
-        dynamic_field::DynamicFieldName,
-        TypeTag,
-    },
-    SuiClient,
-};
+use sui_sdk::types::{dynamic_field::DynamicFieldName, TypeTag};
 
 use crate::{dotenv_conf::DotenvConf, prelude::*};
 
-const DB_MODULE_NAME: &str = "db";
-const PROMPTS_MODULE_NAME: &str = "prompts";
 const DB_MANAGER_TYPE_NAME: &str = "AtomaManagerBadge";
+const DB_MODULE_NAME: &str = "db";
 const DB_NODE_TYPE_NAME: &str = "NodeBadge";
 const DB_TYPE_NAME: &str = "AtomaDb";
+const FAUCET_TYPE_NAME: &str = "Faucet";
+const PROMPTS_MODULE_NAME: &str = "prompts";
 const SETTLEMENT_MODULE_NAME: &str = "settlement";
 const SETTLEMENT_TICKET_TYPE_NAME: &str = "SettlementTicket";
+const TOMA_COIN_MODULE_NAME: &str = "toma";
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -63,6 +56,9 @@ enum Cmds {
     /// Queries and operations related to settling tickets.
     #[command(subcommand)]
     Settle(SettlementCmds),
+    /// TOMA coin package related commands.
+    #[command(subcommand)]
+    Toma(TomaCmds),
 }
 
 #[derive(Subcommand)]
@@ -207,34 +203,65 @@ enum SettlementCmds {
     },
 }
 
+#[derive(Subcommand)]
+enum TomaCmds {
+    /// Admin command to mint TOMA tokens.
+    Faucet {
+        /// If not provided, we take the value from the env vars.
+        #[arg(long)]
+        toma_package: Option<String>,
+        #[arg(short, long)]
+        amount: u64,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv().ok();
     env_logger::init();
 
-    let mut dotenv_conf = DotenvConf::from_env();
-
     let cli = Cli::parse();
 
-    if cli.wallet.is_some() {
-        dotenv_conf.wallet_path = cli.wallet;
-    }
-
-    if cli.gas_budget.is_some() {
-        dotenv_conf.gas_budget = cli.gas_budget;
-    }
+    let wallet_path = cli
+        .wallet
+        .clone()
+        .or_else(|| std::env::var(WALLET_PATH).ok().map(PathBuf::from))
+        .or_else(|| {
+            // let's try the default path
+            //
+            // TODO: will work badly on windows so if anyone is using windows
+            // insert a match statement here and provide the default path
+            Some(PathBuf::from(format!(
+                "{}/.sui/sui_config/client.yaml",
+                env_home_dir()?.display()
+            )))
+        })
+        .expect("Wallet path must be provided");
 
     let wallet = {
-        let p = dotenv_conf.wallet_path.as_ref().unwrap();
-        if !dotenv_conf.wallet_path.as_ref().unwrap().exists() {
-            return Err(anyhow::anyhow!("Wallet path does not exist"));
+        if !wallet_path.exists() {
+            return Err(anyhow::anyhow!(
+                "Wallet does not exist at {wallet_path:?}"
+            ));
         }
 
-        let mut wallet = WalletContext::new(p, None, None)?;
+        let mut wallet = WalletContext::new(&wallet_path, None, None)?;
         let active_address = wallet.active_address()?;
         info!("Active address: {active_address}");
         wallet
     };
+
+    if let Some(active_env) = wallet.config.active_env.as_ref() {
+        // loads env specific for the current active environment
+        dotenvy::from_filename_override(format!(".env.{active_env}")).ok();
+    }
+
+    let mut dotenv_conf = DotenvConf::from_env();
+    dotenv_conf.wallet_path = Some(wallet_path);
+
+    if cli.gas_budget.is_some() {
+        dotenv_conf.gas_budget = cli.gas_budget;
+    }
 
     let mut context = Context {
         conf: dotenv_conf,
@@ -243,7 +270,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Some(Cmds::Db(DbCmds::PrintEnv { package })) => {
-            db::print_env(&mut context.with_optional_package_id(package))
+            db::print_env(&mut context.with_optional_atoma_package_id(package))
                 .await?;
         }
         Some(Cmds::Db(DbCmds::AddModel {
@@ -253,7 +280,7 @@ async fn main() -> Result<()> {
             text2image,
         })) => {
             let digest = db::add_model(
-                &mut context.with_optional_package_id(package),
+                &mut context.with_optional_atoma_package_id(package),
                 &name,
                 match (text2text, text2image) {
                     // this is defined in the gate module
@@ -279,7 +306,7 @@ async fn main() -> Result<()> {
             relative_performance,
         })) => {
             let digest = db::add_model_echelon(
-                &mut context.with_optional_package_id(package),
+                &mut context.with_optional_atoma_package_id(package),
                 &model,
                 echelon,
                 input_fee_per_token,
@@ -295,7 +322,7 @@ async fn main() -> Result<()> {
             new_amount,
         })) => {
             let digest = db::set_required_registration_collateral(
-                &mut context.with_optional_package_id(package),
+                &mut context.with_optional_atoma_package_id(package),
                 new_amount,
             )
             .await?;
@@ -304,7 +331,7 @@ async fn main() -> Result<()> {
         }
         Some(Cmds::Db(DbCmds::RegisterNode { package })) => {
             let digest = db::register_node(
-                &mut context.with_optional_package_id(package),
+                &mut context.with_optional_atoma_package_id(package),
             )
             .await?;
 
@@ -316,7 +343,7 @@ async fn main() -> Result<()> {
             echelon,
         })) => {
             let digest = db::add_node_to_model(
-                &mut context.with_optional_package_id(package),
+                &mut context.with_optional_atoma_package_id(package),
                 &model,
                 echelon,
             )
@@ -326,7 +353,7 @@ async fn main() -> Result<()> {
         }
         Some(Cmds::Db(DbCmds::RemoveNodeFromModel { package, model })) => {
             let digest = db::remove_node_from_model(
-                &mut context.with_optional_package_id(package),
+                &mut context.with_optional_atoma_package_id(package),
                 &model,
             )
             .await?;
@@ -335,13 +362,13 @@ async fn main() -> Result<()> {
         }
         Some(Cmds::Db(DbCmds::PermanentlyDisableNode { package })) => {
             db::permanently_disable_node(
-                &mut context.with_optional_package_id(package),
+                &mut context.with_optional_atoma_package_id(package),
             )
             .await?;
         }
         Some(Cmds::Db(DbCmds::DestroyDisabledNode { package })) => {
             db::destroy_disabled_node(
-                &mut context.with_optional_package_id(package),
+                &mut context.with_optional_atoma_package_id(package),
             )
             .await?;
         }
@@ -351,7 +378,7 @@ async fn main() -> Result<()> {
             max_fee_per_token,
         })) => {
             let digest = gate::submit_tell_me_a_joke_prompt(
-                &mut context.with_optional_package_id(package),
+                &mut context.with_optional_atoma_package_id(package),
                 &model,
                 max_fee_per_token,
             )
@@ -365,7 +392,7 @@ async fn main() -> Result<()> {
             max_fee_per_token,
         })) => {
             let digest = gate::submit_generate_nft_prompt(
-                &mut context.with_optional_package_id(package),
+                &mut context.with_optional_atoma_package_id(package),
                 &model,
                 max_fee_per_token,
             )
@@ -375,7 +402,7 @@ async fn main() -> Result<()> {
         }
         Some(Cmds::Settle(SettlementCmds::ListTickets { package })) => {
             settle::list_tickets(
-                &mut context.with_optional_package_id(package),
+                &mut context.with_optional_atoma_package_id(package),
             )
             .await?;
         }
@@ -395,200 +422,22 @@ async fn main() -> Result<()> {
 
             println!("{digest}");
         }
+        Some(Cmds::Toma(TomaCmds::Faucet {
+            toma_package,
+            amount,
+        })) => {
+            let digest = toma::faucet(
+                &mut context.with_optional_toma_package_id(toma_package),
+                amount,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
         None => {}
     }
 
     Ok(())
-}
-
-async fn get_atoma_db(
-    client: &SuiClient,
-    package: ObjectID,
-) -> Result<ObjectID> {
-    get_publish_tx_created_object(client, package, DB_MODULE_NAME, DB_TYPE_NAME)
-        .await
-}
-
-async fn get_publish_tx_created_object(
-    client: &SuiClient,
-    package: ObjectID,
-    module: &str,
-    name: &str,
-) -> Result<ObjectID> {
-    let Page {
-        data,
-        has_next_page,
-        ..
-    } = client
-        .read_api()
-        .query_transaction_blocks(
-            SuiTransactionBlockResponseQuery {
-                filter: Some(TransactionFilter::ChangedObject(package)),
-                options: Some(SuiTransactionBlockResponseOptions {
-                    show_object_changes: true,
-                    ..Default::default()
-                }),
-            },
-            None,
-            Some(1),
-            false,
-        )
-        .await?;
-    assert_eq!(1, data.len(), "Did you select right package ID?");
-    assert!(!has_next_page);
-
-    let changes = data.into_iter().next().unwrap().object_changes.unwrap();
-
-    changes
-        .into_iter()
-        .find_map(|change| {
-            if let ObjectChange::Created {
-                object_type,
-                object_id,
-                ..
-            } = change
-            {
-                if object_type.module.as_str() == module
-                    && object_type.name.as_str() == name
-                {
-                    Some(object_id)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| {
-            anyhow::anyhow!("No {module}::{name} found for the package")
-        })
-}
-
-async fn get_db_manager_badge(
-    client: &SuiClient,
-    package: ObjectID,
-    active_address: SuiAddress,
-) -> Result<ObjectID> {
-    let Page {
-        data,
-        has_next_page,
-        ..
-    } = client
-        .read_api()
-        .get_owned_objects(
-            active_address,
-            Some(SuiObjectResponseQuery {
-                filter: Some(SuiObjectDataFilter::Package(package)),
-                options: Some(SuiObjectDataOptions {
-                    show_type: true,
-                    ..Default::default()
-                }),
-            }),
-            None,
-            None,
-        )
-        .await?;
-    assert!(!has_next_page, "We don't support pagination yet");
-
-    data.into_iter()
-        .find_map(|resp| {
-            let object = resp.data?;
-
-            let ObjectType::Struct(type_) = object.type_? else {
-                return None;
-            };
-
-            if type_.module().as_str() == DB_MODULE_NAME
-                && type_.name().as_str() == DB_MANAGER_TYPE_NAME
-            {
-                Some(object.object_id)
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| {
-            anyhow::anyhow!("No {DB_MANAGER_TYPE_NAME} found for the package")
-        })
-}
-
-/// Returns the ID of the node badge and the small ID of the node.
-async fn get_node_badge(
-    client: &SuiClient,
-    package: ObjectID,
-    active_address: SuiAddress,
-) -> Result<(ObjectID, u64)> {
-    let Page {
-        data,
-        has_next_page,
-        ..
-    } = client
-        .read_api()
-        .get_owned_objects(
-            active_address,
-            Some(SuiObjectResponseQuery {
-                filter: Some(SuiObjectDataFilter::Package(package)),
-                options: Some(SuiObjectDataOptions {
-                    show_type: true,
-                    show_content: true,
-                    ..Default::default()
-                }),
-            }),
-            None,
-            None,
-        )
-        .await?;
-    assert!(!has_next_page, "We don't support pagination yet");
-
-    data.into_iter()
-        .find_map(|resp| {
-            let object = resp.data?;
-
-            let ObjectType::Struct(type_) = object.type_? else {
-                return None;
-            };
-
-            if type_.module().as_str() == DB_MODULE_NAME
-                && type_.name().as_str() == DB_NODE_TYPE_NAME
-            {
-                let id = object
-                    .content?
-                    .try_as_move()?
-                    .clone()
-                    .fields
-                    .to_json_value();
-
-                Some((
-                    object.object_id,
-                    id["small_id"]["inner"].as_str()?.parse().ok()?,
-                ))
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| {
-            anyhow::anyhow!("No {DB_NODE_TYPE_NAME} found for the package")
-        })
-}
-
-async fn find_toma_token_wallet(
-    client: &SuiClient,
-    package: ObjectID,
-    active_address: SuiAddress,
-) -> Result<ObjectID> {
-    let Page { data: coins, .. } = client
-        .coin_read_api()
-        .get_coins(
-            active_address,
-            Some(format!("{package}::toma::TOMA")),
-            None,
-            None,
-        )
-        .await?;
-    coins
-        .into_iter()
-        .max_by_key(|coin| coin.balance)
-        .map(|coin| coin.coin_object_id)
-        .ok_or_else(|| anyhow::anyhow!("No TOMA coins for {active_address}"))
 }
 
 /// Waits for the user to confirm an action.

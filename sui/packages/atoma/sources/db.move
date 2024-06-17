@@ -64,6 +64,13 @@ module atoma::db {
     const ENodeMustWaitBeforeDestroy: u64 = EBase + 13;
     const ECannotSampleZeroNodes: u64 = EBase + 14;
 
+    /// Emitted once upon publishing.
+    public struct PublishedEvent has copy, drop {
+        /// ID of the AtomaDb object
+        db: ID,
+        manager_badge: ID,
+    }
+
     public struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
         badge_id: ID,
@@ -271,13 +278,19 @@ module atoma::db {
             cross_validation_extra_nodes_count:
                 InitialCrossValidationExtraNodesCount,
         };
-        transfer::share_object(atoma_db);
 
         // Create a manager badge for the package owner for convenience.
         // More can be created later.
         let atoma_manager_badge = AtomaManagerBadge {
             id: object::new(ctx),
         };
+
+        sui::event::emit(PublishedEvent {
+            db: object::id(&atoma_db),
+            manager_badge: object::id(&atoma_manager_badge),
+        });
+
+        transfer::share_object(atoma_db);
         transfer::transfer(atoma_manager_badge, ctx.sender());
     }
 

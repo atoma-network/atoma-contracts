@@ -8,14 +8,11 @@ module atoma::atoma {
     //! - Asserter: the first node to provide a commitment.
     //! - Validator: any other node that provides a commitment and is not the asserter.
 
-    use sui::package;
-
     public struct ATOMA has drop {}
 
     /// The package publisher allows upgrades and admin access to other modules.
     fun init(otw: ATOMA, ctx: &mut TxContext) {
         // https://examples.sui.io/basics/publisher.html
-        let pub = package::claim(otw, ctx);
-        transfer::public_transfer(pub, ctx.sender());
+        sui::package::claim_and_keep(otw, ctx);
     }
 }

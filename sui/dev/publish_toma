@@ -1,0 +1,102 @@
+#!/bin/bash
+
+#
+# Publishes the package with TOMA token to the currently selected environment.
+# If it's devnet or testnet, it also enables the faucet.
+#
+# In the end, exports these environment variables:
+# - TOMA_PACKAGE: the package ID of the TOMA token
+# - TOMA_FAUCET: the address of the faucet
+# - TOMA_TREASURY: the address of the treasury
+#
+# # Important for mainnet
+# When publishing on mainnet, set 'published-at = ""' in the Move.toml file to
+# the package address.
+#
+
+function abs_path_to_git_root_dir() {
+    # Recursively find the repo root directory so that this script can be called
+    # from anywhere
+
+    if [ -d "atoma-contracts" ]; then
+        echo "$(pwd)/atoma-contracts"
+    elif [ "$(pwd)" == "/" ]; then
+        echo "No atoma-contracts directory found"
+        exit 1
+    else
+        cd ..
+        abs_path_to_git_root_dir
+    fi
+}
+
+entrance_dir=$(pwd)
+root_dir=$(abs_path_to_git_root_dir)
+
+cd $root_dir/sui/packages/toma
+
+# make sure Move.toml address is set to 0x0 otherwise we cannot deploy
+if ! grep -q '^toma = "0x0"$' "Move.toml"; then
+    echo "Please set toma address to 0x0 in sui/packages/toma/Move.toml"
+    echo "Otherwise Sui CLI will not be able to deploy the TOMA package"
+    exit 1
+fi
+
+# skip dependency verification is useful to allow publishing to different
+# environments without having to change the Sui Std version in Move.toml
+publish_event=$(sui client publish --skip-dependency-verification --json | jq '.events[0]')
+
+toma_package=$(echo "${publish_event}" | jq -r '.packageId')
+faucet=$(echo "${publish_event}" | jq -r '.parsedJson.faucet')
+treasury=$(echo "${publish_event}" | jq -r '.parsedJson.treasury')
+
+active_env=$(sui client active-env)
+if [ "$active_env" == "devnet" ] || [ "$active_env" == "testnet" ]; then
+    read -p "Enable faucet? [y/N] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Faucet not enabled"
+    else
+        sui client call \
+            --package "${toma_package}" --module "toma" --function "enable_faucet" \
+            --args "${faucet}" "${treasury}" || exit 1
+        echo "Faucet enabled"
+    fi
+fi
+
+echo
+echo "Please add/change these properties in the sui/packages/toma/Move.toml:"
+echo
+echo "[package]"
+echo "..."
+echo "published-at = \"${toma_package}\""
+echo "..."
+echo "[addresses]"
+echo "toma = \"${toma_package}\""
+echo
+
+export TOMA_PACKAGE="${toma_package}"
+export TOMA_FAUCET="${faucet}"
+export TOMA_TREASURY="${treasury}"
+
+echo
+echo "Toma package: ${toma_package}"
+echo "Faucet: ${faucet}"
+echo "Treasury: ${treasury}"
+
+if [ "$active_env" == "mainnet" ]; then
+    echo
+    echo "To transfer the minting/burning capability to a multisig address, run:"
+    echo "$ sui client transfer --object-id ${treasury} --to <MULTISIG-ADDRESS>"
+fi
+
+# An example of minting 1234 TOMA tokens with Sui CLI (assuming no faucet):
+#
+# sui client call \
+#     --package "0x2" \
+#     --module "coin" \
+#     --function "mint_and_transfer" \
+#     --type-args "${toma_package}::toma::TOMA" \
+#     --args "${treasury}" 1234 $(sui client active-address)
+#
+
+cd "${entrance_dir}"

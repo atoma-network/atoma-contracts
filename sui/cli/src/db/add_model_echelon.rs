@@ -11,7 +11,7 @@ pub(crate) async fn command(
     relative_performance: u64,
 ) -> Result<TransactionDigest> {
     let active_address = context.wallet.active_address()?;
-    let package = context.unwrap_package_id();
+    let atoma_package = context.unwrap_atoma_package_id();
     let atoma_db = context.get_or_load_atoma_db().await?;
     let manager_badge = context.get_or_load_db_manager_badge().await?;
 
@@ -21,7 +21,7 @@ pub(crate) async fn command(
         .transaction_builder()
         .move_call(
             active_address,
-            package,
+            atoma_package,
             DB_MODULE_NAME,
             ENDPOINT_NAME,
             vec![],
