@@ -49,18 +49,18 @@ toma_package=$(echo "${publish_event}" | jq -r '.packageId')
 faucet=$(echo "${publish_event}" | jq -r '.parsedJson.faucet')
 treasury=$(echo "${publish_event}" | jq -r '.parsedJson.treasury')
 
-echo "Toma package: ${toma_package}"
-echo "Faucet: ${faucet}"
-echo "Treasury: ${treasury}"
-
 active_env=$(sui client active-env)
 if [ "$active_env" == "devnet" ] || [ "$active_env" == "testnet" ]; then
-    echo "Enabling faucet"
-    sui client call \
-        --package "${toma_package}" --module "toma" --function "enable_faucet" \
-        --args "${faucet}" "${treasury}" || exit 1
+    read -p "Enable faucet? [y/N] " -n 1 -r
     echo
-    echo "Faucet enabled"
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Faucet not enabled"
+    else
+        sui client call \
+            --package "${toma_package}" --module "toma" --function "enable_faucet" \
+            --args "${faucet}" "${treasury}" || exit 1
+        echo "Faucet enabled"
+    fi
 fi
 
 echo
@@ -74,10 +74,29 @@ echo "[addresses]"
 echo "toma = \"${toma_package}\""
 echo
 
-read -p "Click any key to confirm you have changed the values" -n 1 -r
-
 export TOMA_PACKAGE="${toma_package}"
 export TOMA_FAUCET="${faucet}"
 export TOMA_TREASURY="${treasury}"
+
+echo
+echo "Toma package: ${toma_package}"
+echo "Faucet: ${faucet}"
+echo "Treasury: ${treasury}"
+
+if [ "$active_env" == "mainnet" ]; then
+    echo
+    echo "To transfer the minting/burning capability to a multisig address, run:"
+    echo "$ sui client transfer --object-id ${treasury} --to <MULTISIG-ADDRESS>"
+fi
+
+# An example of minting 1234 TOMA tokens with Sui CLI (assuming no faucet):
+#
+# sui client call \
+#     --package "0x2" \
+#     --module "coin" \
+#     --function "mint_and_transfer" \
+#     --type-args "${toma_package}::toma::TOMA" \
+#     --args "${treasury}" 1234 $(sui client active-address)
+#
 
 cd "${entrance_dir}"

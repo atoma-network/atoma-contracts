@@ -9,3 +9,5 @@ target
 .env.devnet
 .env.testnet
 .env.mainnet
+# ignore multisig configuration
+.multisig-pubkeys
