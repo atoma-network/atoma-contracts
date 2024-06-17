@@ -62,7 +62,7 @@ if [ "$active_env" == "devnet" ] || [ "$active_env" == "testnet" ]; then
 fi
 
 echo
-echo "Please add/change these property in the sui/packages/toma/Move.toml:"
+echo "Please add/change these properties in the sui/packages/toma/Move.toml:"
 echo
 echo "[package]"
 echo "..."
