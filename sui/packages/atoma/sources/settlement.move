@@ -4,7 +4,7 @@ module atoma::settlement {
     use sui::balance;
     use sui::dynamic_object_field;
 
-    /// We resampled timed out nodes at most this many times before we dispute.
+    /// We resample timed out nodes at most this many times before we dispute.
     /// This number needs to be quite low otherwise the user might wait too long
     /// for the prompt to be settled.
     const MaxTicketTimeouts: u64 = 3;
@@ -209,7 +209,8 @@ module atoma::settlement {
 
     public struct TimeoutInfo has store, copy, drop {
         /// How many times has the settlement timed out.
-        /// Once this reaches a threshold, the ticket is being disputed.
+        /// Once this reaches a threshold `MaxTicketTimeouts`, the ticket
+        /// will be disputed.
         timed_out_count: u64,
         /// If the settlement takes more than this, the settlement can be cut
         /// short.
