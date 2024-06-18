@@ -43,7 +43,15 @@ fi
 
 # skip dependency verification is useful to allow publishing to different
 # environments without having to change the Sui Std version in Move.toml
-publish_event=$(sui client publish --skip-dependency-verification --json | jq '.events[0]')
+publish_json=$(sui client publish --skip-dependency-verification --json)
+if [ $? -ne 0 ]; then
+    echo "Failed to publish TOMA package:"
+    echo
+    echo "${publish_json}"
+    exit 1
+fi
+
+publish_event=$(echo "${publish_json}" | jq -r '.events[0]')
 
 toma_package=$(echo "${publish_event}" | jq -r '.packageId')
 faucet=$(echo "${publish_event}" | jq -r '.parsedJson.faucet')
