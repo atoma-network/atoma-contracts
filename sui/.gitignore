@@ -11,3 +11,6 @@ target
 .env.mainnet
 # ignore multisig configuration
 .multisig-pubkeys
+# ignore test coverage reports
+.coverage_map.mvcov
+.trace
