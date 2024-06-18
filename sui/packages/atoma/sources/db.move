@@ -254,30 +254,9 @@ module atoma::db {
         id: u64
     }
 
-    #[allow(unused_function)]
+    #[allow(unused_function, lint(share_owned))]
     fun init(ctx: &mut TxContext) {
-        let atoma_db = AtomaDb {
-            id: object::new(ctx),
-            tickets: object::new(ctx),
-            nodes: table::new(ctx),
-            models: object_table::new(ctx),
-            fee_treasury: balance::zero(),
-            communal_treasury: balance::zero(),
-            // IMPORTANT: we start from 1 because 0 is reserved
-            next_node_small_id: SmallId { inner: 1 },
-            is_registration_disabled: false,
-            registration_collateral_in_protocol_token:
-                InitialCollateralRequiredForRegistration,
-            permille_to_slash_node_on_timeout:
-                InitialPermilleToSlashNodeOnTimeout,
-            permille_for_oracle_on_dispute: InitialPermilleForOracleOnDispute,
-            permille_for_honest_nodes_on_dispute:
-                InitialPermilleForHonestNodesOnDispute,
-            cross_validation_probability_permille:
-                InitialCrossValidationProbabilityPermille,
-            cross_validation_extra_nodes_count:
-                InitialCrossValidationExtraNodesCount,
-        };
+        let atoma_db = new_atoma_db(ctx);
 
         // Create a manager badge for the package owner for convenience.
         // More can be created later.
@@ -706,6 +685,32 @@ module atoma::db {
         let model = self.models.borrow_mut(model_name);
         let echelon = model.echelons.borrow_mut(echelon_index);
         sample_unique_nodes(&self.nodes, &mut echelon.nodes, count, rng)
+    }
+
+    /// Public package so that it can be used for testing.
+    public(package) fun new_atoma_db(ctx: &mut TxContext): AtomaDb {
+        AtomaDb {
+            id: object::new(ctx),
+            tickets: object::new(ctx),
+            nodes: table::new(ctx),
+            models: object_table::new(ctx),
+            fee_treasury: balance::zero(),
+            communal_treasury: balance::zero(),
+            // IMPORTANT: we start from 1 because 0 is reserved
+            next_node_small_id: SmallId { inner: 1 },
+            is_registration_disabled: false,
+            registration_collateral_in_protocol_token:
+                InitialCollateralRequiredForRegistration,
+            permille_to_slash_node_on_timeout:
+                InitialPermilleToSlashNodeOnTimeout,
+            permille_for_oracle_on_dispute: InitialPermilleForOracleOnDispute,
+            permille_for_honest_nodes_on_dispute:
+                InitialPermilleForHonestNodesOnDispute,
+            cross_validation_probability_permille:
+                InitialCrossValidationProbabilityPermille,
+            cross_validation_extra_nodes_count:
+                InitialCrossValidationExtraNodesCount,
+        }
     }
 
     // =========================================================================
@@ -1240,6 +1245,16 @@ module atoma::db {
         echelon_nodes.swap_remove(node_index);
 
         option::none()
+    }
+
+    #[test_only]
+    public(package) fun create_manager_badge_for_testing(ctx: &mut TxContext): AtomaManagerBadge {
+        AtomaManagerBadge { id: object::new(ctx) }
+    }
+
+    #[test_only]
+    public(package) fun share_db_for_testing(db: AtomaDb) {
+        sui::transfer::share_object(db);
     }
 
     #[test_only]
