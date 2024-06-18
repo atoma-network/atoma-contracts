@@ -91,6 +91,9 @@ cd $root_dir/sui/dev
     --package "${package}" \
     --new-amount 1
 
+# sometimes the RPC takes a bit of time to index the airdropped TOMA
+# tokens, so we give it some extra time
+sleep 2
 ./cli db register-node --package "${package}"
 
 ./cli db add-node-to-model \

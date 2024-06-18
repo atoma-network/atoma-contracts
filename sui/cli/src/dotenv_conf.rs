@@ -264,11 +264,11 @@ impl Context {
         if let Some(toma_wallet_id) = self.conf.toma_wallet_id {
             Ok(toma_wallet_id)
         } else {
-            let package_id = self.get_or_load_toma_package_id().await?;
+            let toma_package_id = self.get_or_load_toma_package_id().await?;
             let active_address = self.wallet.active_address()?;
             let toma_wallet = find_toma_token_wallet(
                 &self.get_client().await?,
-                package_id,
+                toma_package_id,
                 active_address,
             )
             .await;
@@ -438,7 +438,14 @@ async fn find_toma_token_wallet(
         .into_iter()
         .max_by_key(|coin| coin.balance)
         .map(|coin| coin.coin_object_id)
-        .ok_or_else(|| anyhow::anyhow!("No TOMA coins for {active_address}"))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "No TOMA coins for {active_address}. \
+                Have you just received them? \
+                It may take a few seconds for cache to refresh. \
+                Double check that your address owns TOMA coins and try again."
+            )
+        })
 }
 
 async fn get_atoma_db(

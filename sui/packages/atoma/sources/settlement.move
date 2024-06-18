@@ -4,6 +4,11 @@ module atoma::settlement {
     use sui::balance;
     use sui::dynamic_object_field;
 
+    /// We resample timed out nodes at most this many times before we dispute.
+    /// This number needs to be quite low otherwise the user might wait too long
+    /// for the prompt to be settled.
+    const MaxTicketTimeouts: u64 = 3;
+
     /// To be able to identify the errors faster in the logs, we start the
     /// counter from a number that's leet for "error_000".
     const EBase: u64 = 312012_200;
@@ -203,6 +208,10 @@ module atoma::settlement {
     }
 
     public struct TimeoutInfo has store, copy, drop {
+        /// How many times has the settlement timed out.
+        /// Once this reaches a threshold `MaxTicketTimeouts`, the ticket
+        /// will be disputed.
+        timed_out_count: u64,
         /// If the settlement takes more than this, the settlement can be cut
         /// short.
         /// See the `try_to_settle` endpoint.
@@ -322,7 +331,7 @@ module atoma::settlement {
     /// - Each node along with submitting the commitment tries to settle.
     /// - Some arbitrary party calls this at the appropriate time.
     ///
-    /// # Two paths
+    /// # Branches
     /// 1. All nodes have submitted their commitment.
     ///    a) If probabilistic cross validation is enabled and the node provided
     ///       it's commitment, we either accept it or sample more nodes, randomly.
@@ -331,9 +340,10 @@ module atoma::settlement {
     ///    c) If it doesn't, the ticket is being disputed.
     /// 2. The timeout to settle has passed but not all nodes have submitted
     ///    their commitment.
-    ///    In this case, we slash the nodes that have not submitted their
-    ///    commitment and sample other nodes that must do so in their stead.
-    ///    If the ticket is already being disputed, skip this step.
+    ///    a) Maximum timeout attempts reached, the ticket is being disputed.
+    ///    b) We slash the nodes that have not submitted their
+    ///       commitment and sample other nodes that must do so in their stead.
+    ///       If the ticket is already being disputed, skip this step.
     ///
     /// # Randomness safety
     /// There are two ways we use randomness: (1) sampling nodes and (2) rolling
@@ -411,57 +421,42 @@ module atoma::settlement {
         // 2.
         //
         else if (ticket.did_timeout(ctx) && !ticket.is_being_disputed) {
-            let mut new_nodes = vector::empty();
-            let mut i = 0;
-            while (i < sampled_nodes_count) {
-                let node_id = ticket.all[i];
+            // a)
+            if (ticket.max_timeout_attempts_reached()) {
+                ticket.is_being_disputed = true;
+                return_settlement_ticket(atoma, ticket);
+                sui::event::emit(DisputeEvent {
+                    ticket_id,
+                    timeout: option::none(),
+                });
+            }
+            // b
+            else {
+                let new_nodes =
+                    replace_timed_out_nodes(&mut ticket, atoma, &mut rng);
 
-                if (!ticket.completed.contains(&node_id)) {
-                    let confiscated = atoma.slash_node_on_timeout(node_id);
-                    atoma.deposit_to_communal_treasury(confiscated);
-
-                    // sample another node to replace the slashed one
-                    let mut perhaps_new_node_id = atoma
-                        .sample_node_by_echelon_id(
-                            ticket.model_name,
-                            ticket.echelon_id,
-                            &mut rng,
-                        );
-                    // TBD: should we try to sample again if node already in the list?
-
+                if (new_nodes.is_empty()) {
                     // if there are no more nodes to sample in this echelon
                     // we start a dispute instead
-                    if (perhaps_new_node_id.is_none()) {
-                        ticket.is_being_disputed = true;
-                        return_settlement_ticket(atoma, ticket);
-                        sui::event::emit(DisputeEvent {
-                            ticket_id,
-                            timeout: option::none(),
-                        });
-                        return
-                    };
-
-                    let new_node_id = perhaps_new_node_id.extract();
-
-                    new_nodes.push_back(MapNodeToChunk {
-                        node_id: new_node_id,
-                        order: i,
+                    ticket.is_being_disputed = true;
+                    return_settlement_ticket(atoma, ticket);
+                    sui::event::emit(DisputeEvent {
+                        ticket_id,
+                        timeout: option::none(),
                     });
-                    *ticket.all.borrow_mut(i) = new_node_id;
-                };
+                } else {
+                    ticket.timeout.started_in_epoch = ctx.epoch();
+                    ticket.timeout.started_at_epoch_timestamp_ms =
+                        ctx.epoch_timestamp_ms();
+                    return_settlement_ticket(atoma, ticket);
 
-                i = i + 1;
-            };
+                    sui::event::emit(NewlySampledNodesEvent {
+                        ticket_id,
+                        new_nodes,
+                    });
+                }
+            }
 
-            // TODO: https://github.com/atoma-network/atoma-contracts/issues/17
-            ticket.timeout.started_in_epoch = ctx.epoch();
-            ticket.timeout.started_at_epoch_timestamp_ms = ctx.epoch_timestamp_ms();
-            return_settlement_ticket(atoma, ticket);
-
-            sui::event::emit(NewlySampledNodesEvent {
-                ticket_id,
-                new_nodes,
-            });
         }
         else {
             // nothing to do, but exit with a success code anyway
@@ -704,6 +699,7 @@ module atoma::settlement {
             token_counts_disputed_by: option::none(),
             payer: ctx.sender(),
             timeout: TimeoutInfo {
+                timed_out_count: 0,
                 timeout_ms,
                 started_in_epoch: ctx.epoch(),
                 started_at_epoch_timestamp_ms: ctx.epoch_timestamp_ms(),
@@ -875,14 +871,21 @@ module atoma::settlement {
         return_settlement_ticket(atoma, ticket);
     }
 
+    /// We can replace timed out nodes at most `MaxTicketTimeouts` times, after
+    /// that the ticket goes to dispute.
+    fun max_timeout_attempts_reached(self: &SettlementTicket): bool {
+        self.timeout.timed_out_count >= MaxTicketTimeouts
+    }
+
     /// # How the timeout works?
     ///
     /// When creating a ticket, we store Sui epoch id and MS since epoch started.
     /// When checking for timeout, we check it against the current epoch and
     /// current MS since it started.
-    /// 1. If the epoch is the same (hot path because epoch takes 24 hours),
+    /// 1. If the timeout threshold has been reached, the ticket is timed out.
+    /// 2. If the epoch is the same (hot path because epoch takes 24 hours),
     ////   check the diff between current ms and the stored one.
-    /// 2. If the current epoch is +1 of the stored ones, the epoch just got
+    /// 3. If the current epoch is +1 of the stored ones, the epoch just got
     ///    bumped.
     ///    We don't know exactly how long since the epoch changed unfortunately,
     ///    but because timeouts are short we give the nodes some extra time by
@@ -890,29 +893,78 @@ module atoma::settlement {
     ///    This means that those prompts submitted at the border of an epoch bump
     ///    are more graceful with timeouts by having timeouts at most twice as
     ///    long.
-    /// 3. The scenario where epoch is more than +1 should not happen bcs of
+    /// 4. The scenario where epoch is more than +1 should not happen bcs of
     ///    the aforementioned 24h epoch period being less than the timeout, but
     ///    for the sake of completeness, we can just return true.
     fun did_timeout(self: &SettlementTicket, ctx: &TxContext): bool {
         let current_epoch = ctx.epoch();
         let TimeoutInfo {
+            timed_out_count: _,
             timeout_ms,
             started_in_epoch,
             started_at_epoch_timestamp_ms,
         } = self.timeout;
 
         // 1.
-        if (current_epoch == started_in_epoch) {
-            ctx.epoch_timestamp_ms() - started_at_epoch_timestamp_ms > timeout_ms
+        if (self.max_timeout_attempts_reached()) {
+            true
         }
         // 2.
+        else if (current_epoch == started_in_epoch) {
+            ctx.epoch_timestamp_ms() - started_at_epoch_timestamp_ms > timeout_ms
+        }
+        // 3.
         else if (current_epoch == started_in_epoch + 1) {
             ctx.epoch_timestamp_ms() > timeout_ms
         }
-        // 3.
+        // 4.
         else {
             true
         }
+    }
+
+    fun replace_timed_out_nodes(
+        ticket: &mut SettlementTicket,
+        atoma: &mut AtomaDb,
+        rng: &mut sui::random::RandomGenerator,
+    ): vector<MapNodeToChunk> {
+        let mut new_nodes = vector::empty();
+        let mut i = 0;
+        while (i < ticket.all.length()) {
+            let node_id = ticket.all[i];
+
+            if (!ticket.completed.contains(&node_id)) {
+                let confiscated = atoma.slash_node_on_timeout(node_id);
+                atoma.deposit_to_communal_treasury(confiscated);
+
+                // sample another node to replace the slashed one
+                let mut perhaps_new_node_id = atoma
+                    .sample_node_by_echelon_id(
+                        ticket.model_name,
+                        ticket.echelon_id,
+                        rng,
+                    );
+                // TBD: should we try to sample again if node already in the list?
+
+                if (perhaps_new_node_id.is_none()) {
+                    // no more nodes, return an empty vector which will start
+                    // a dispute
+                    break
+                };
+
+                let new_node_id = perhaps_new_node_id.extract();
+
+                new_nodes.push_back(MapNodeToChunk {
+                    node_id: new_node_id,
+                    order: i,
+                });
+                *ticket.all.borrow_mut(i) = new_node_id;
+            };
+
+            i = i + 1;
+        };
+
+        new_nodes
     }
 
     fun get_settlement_ticket_mut(
