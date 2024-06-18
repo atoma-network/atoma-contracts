@@ -967,7 +967,8 @@ module atoma::settlement {
         new_nodes
     }
 
-    fun get_settlement_ticket_mut(
+    /// Must not be public.
+    public(package) fun get_settlement_ticket_mut(
         atoma: &mut AtomaDb,
         ticket: ID,
     ): &mut SettlementTicket {
@@ -981,5 +982,29 @@ module atoma::settlement {
     ): SettlementTicket {
         let uid = atoma.get_tickets_uid_mut();
         dynamic_object_field::remove(uid, ticket)
+    }
+
+    #[test_only]
+    public(package) fun has_ticket(
+        atoma: &mut AtomaDb,
+        ticket: ID,
+    ): bool {
+        let uid = atoma.get_tickets_uid_mut();
+        dynamic_object_field::exists_(uid, ticket)
+    }
+
+    #[test_only]
+    public(package) fun has_cross_validation(self: &SettlementTicket): bool {
+        self.cross_validation.is_some()
+    }
+
+    #[test_only]
+    public(package) fun get_all_sampled_nodes(self: &SettlementTicket): vector<SmallId> {
+        self.all
+    }
+
+    #[test_only]
+    public(package) fun is_being_disputed(self: &SettlementTicket): bool {
+        self.is_being_disputed
     }
 }
