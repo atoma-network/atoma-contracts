@@ -254,30 +254,9 @@ module atoma::db {
         id: u64
     }
 
-    #[allow(unused_function)]
+    #[allow(unused_function, lint(share_owned))]
     fun init(ctx: &mut TxContext) {
-        let atoma_db = AtomaDb {
-            id: object::new(ctx),
-            tickets: object::new(ctx),
-            nodes: table::new(ctx),
-            models: object_table::new(ctx),
-            fee_treasury: balance::zero(),
-            communal_treasury: balance::zero(),
-            // IMPORTANT: we start from 1 because 0 is reserved
-            next_node_small_id: SmallId { inner: 1 },
-            is_registration_disabled: false,
-            registration_collateral_in_protocol_token:
-                InitialCollateralRequiredForRegistration,
-            permille_to_slash_node_on_timeout:
-                InitialPermilleToSlashNodeOnTimeout,
-            permille_for_oracle_on_dispute: InitialPermilleForOracleOnDispute,
-            permille_for_honest_nodes_on_dispute:
-                InitialPermilleForHonestNodesOnDispute,
-            cross_validation_probability_permille:
-                InitialCrossValidationProbabilityPermille,
-            cross_validation_extra_nodes_count:
-                InitialCrossValidationExtraNodesCount,
-        };
+        let atoma_db = new_atoma_db(ctx);
 
         // Create a manager badge for the package owner for convenience.
         // More can be created later.
@@ -706,6 +685,32 @@ module atoma::db {
         let model = self.models.borrow_mut(model_name);
         let echelon = model.echelons.borrow_mut(echelon_index);
         sample_unique_nodes(&self.nodes, &mut echelon.nodes, count, rng)
+    }
+
+    /// Public package so that it can be used for testing.
+    public(package) fun new_atoma_db(ctx: &mut TxContext): AtomaDb {
+        AtomaDb {
+            id: object::new(ctx),
+            tickets: object::new(ctx),
+            nodes: table::new(ctx),
+            models: object_table::new(ctx),
+            fee_treasury: balance::zero(),
+            communal_treasury: balance::zero(),
+            // IMPORTANT: we start from 1 because 0 is reserved
+            next_node_small_id: SmallId { inner: 1 },
+            is_registration_disabled: false,
+            registration_collateral_in_protocol_token:
+                InitialCollateralRequiredForRegistration,
+            permille_to_slash_node_on_timeout:
+                InitialPermilleToSlashNodeOnTimeout,
+            permille_for_oracle_on_dispute: InitialPermilleForOracleOnDispute,
+            permille_for_honest_nodes_on_dispute:
+                InitialPermilleForHonestNodesOnDispute,
+            cross_validation_probability_permille:
+                InitialCrossValidationProbabilityPermille,
+            cross_validation_extra_nodes_count:
+                InitialCrossValidationExtraNodesCount,
+        }
     }
 
     // =========================================================================
@@ -1201,7 +1206,7 @@ module atoma::db {
             let mut iteration = 0;
             let max_iterations = how_many_nodes_to_sample * 4;
             while (sampled_nodes.length() < how_many_nodes_to_sample
-                || iteration <= max_iterations) {
+                && iteration <= max_iterations) {
                 let mut node_id = sample_node(nodes, echelon_nodes, rng);
 
                 if (node_id.is_none()) {
@@ -1243,6 +1248,16 @@ module atoma::db {
     }
 
     #[test_only]
+    public(package) fun create_manager_badge_for_testing(ctx: &mut TxContext): AtomaManagerBadge {
+        AtomaManagerBadge { id: object::new(ctx) }
+    }
+
+    #[test_only]
+    public(package) fun share_db_for_testing(db: AtomaDb) {
+        sui::transfer::share_object(db);
+    }
+
+    #[test_only]
     /// So that we don't have to manually destroy table in the tests.
     public struct NodeEntryBin has key {
         id: UID,
@@ -1254,8 +1269,101 @@ module atoma::db {
         let mut ctx = sui::tx_context::dummy();
         let mut rng = sui::random::new_generator_for_testing();
 
-        let mut nodes = sui::table::new(&mut ctx);
-        let mut echelon_nodes = sui::table_vec::empty(&mut ctx);
+        let (nodes, mut echelon_nodes) = create_nodes(&mut ctx);
+
+        let sampled_nodes =
+            sample_unique_nodes(&nodes, &mut echelon_nodes, 2, &mut rng);
+        assert!(sampled_nodes.length() == 2);
+
+        // get rid of created resources
+        sui::transfer::share_object(NodeEntryBin {
+            id: object::new(&mut ctx),
+            entries: nodes,
+        });
+        sui::table_vec::drop(echelon_nodes);
+    }
+
+    #[test]
+    fun it_samples_unique_random_nodes_with_slashed_nodes() {
+        let mut ctx = sui::tx_context::dummy();
+        let mut rng = sui::random::new_generator_for_testing();
+
+        let (mut nodes, mut echelon_nodes) = create_nodes(&mut ctx);
+
+        // slash some nodes
+        sui::balance::destroy_for_testing(
+            nodes.borrow_mut(SmallId { inner: 1 }).collateral.withdraw_all()
+        );
+        sui::balance::destroy_for_testing(
+            nodes.borrow_mut(SmallId { inner: 3 }).collateral.withdraw_all()
+        );
+        sui::balance::destroy_for_testing(
+            nodes.borrow_mut(SmallId { inner: 5 }).collateral.withdraw_all()
+        );
+        sui::balance::destroy_for_testing(
+            nodes.borrow_mut(SmallId { inner: 7 }).collateral.withdraw_all()
+        );
+        sui::balance::destroy_for_testing(
+            nodes.borrow_mut(SmallId { inner: 9 }).collateral.withdraw_all()
+        );
+
+        let sampled_nodes =
+            sample_unique_nodes(&nodes, &mut echelon_nodes, 4, &mut rng);
+        assert!(sampled_nodes.length() == 4);
+
+        // get rid of created resources
+        sui::transfer::share_object(NodeEntryBin {
+            id: object::new(&mut ctx),
+            entries: nodes,
+        });
+        sui::table_vec::drop(echelon_nodes);
+    }
+
+    #[test]
+    fun it_samples_as_many_unique_nodes_as_possible() {
+        let mut ctx = sui::tx_context::dummy();
+        let mut rng = sui::random::new_generator_for_testing();
+
+        let (mut nodes, mut echelon_nodes) = create_nodes(&mut ctx);
+
+        // slash some nodes
+        sui::balance::destroy_for_testing(
+            nodes.borrow_mut(SmallId { inner: 1 }).collateral.withdraw_all()
+        );
+        sui::balance::destroy_for_testing(
+            nodes.borrow_mut(SmallId { inner: 3 }).collateral.withdraw_all()
+        );
+        sui::balance::destroy_for_testing(
+            nodes.borrow_mut(SmallId { inner: 5 }).collateral.withdraw_all()
+        );
+        sui::balance::destroy_for_testing(
+            nodes.borrow_mut(SmallId { inner: 7 }).collateral.withdraw_all()
+        );
+        sui::balance::destroy_for_testing(
+            nodes.borrow_mut(SmallId { inner: 9 }).collateral.withdraw_all()
+        );
+
+        let sampled_nodes =
+            sample_unique_nodes(&nodes, &mut echelon_nodes, 6, &mut rng);
+        // we could not have sampled more nodes bcs of slashing
+        assert!(sampled_nodes.length() == 5);
+        // slashed nodes removed
+        assert!(echelon_nodes.length() == 5);
+
+        // get rid of created resources
+        sui::transfer::share_object(NodeEntryBin {
+            id: object::new(&mut ctx),
+            entries: nodes,
+        });
+        sui::table_vec::drop(echelon_nodes);
+    }
+
+    #[test_only]
+    fun create_nodes(
+        ctx: &mut TxContext,
+    ): (Table<SmallId, NodeEntry>, TableVec<SmallId>) {
+        let mut nodes = sui::table::new(ctx);
+        let mut echelon_nodes = sui::table_vec::empty(ctx);
 
         while (nodes.length() < 10) {
             let node_id = SmallId { inner: nodes.length() + 1 };
@@ -1269,15 +1377,6 @@ module atoma::db {
             echelon_nodes.push_back(node_id);
         };
 
-        let sampled_nodes =
-            sample_unique_nodes(&nodes, &mut echelon_nodes, 2, &mut rng);
-        assert!(sampled_nodes.length() == 2);
-
-        // get rid of created resources
-        sui::transfer::share_object(NodeEntryBin {
-            id: object::new(&mut ctx),
-            entries: nodes,
-        });
-        sui::table_vec::drop(echelon_nodes);
+        (nodes, echelon_nodes)
     }
 }

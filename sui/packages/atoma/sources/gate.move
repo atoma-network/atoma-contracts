@@ -541,4 +541,559 @@ module atoma::gate {
             };
         }
     }
+
+    #[test]
+    fun it_selects_correct_echelon() {
+        let mut ctx = sui::tx_context::dummy();
+        let mut rng = sui::random::new_generator_for_testing();
+        let mut toma_wallet = sui::balance::create_for_testing(100_000_000);
+        let model_name = ascii::string(b"model");
+        let echelon_a = 1;
+        let echelon_b = 2;
+        let manager = atoma::db::create_manager_badge_for_testing(&mut ctx);
+        let mut atoma = atoma::db::new_atoma_db(&mut ctx);
+
+        atoma.add_model_entry(&manager, model_name, Text2TextModality, &mut ctx);
+        atoma.add_model_echelon_entry(
+            &manager,
+            model_name,
+            echelon_a,
+            150, // input fee
+            100, // output fee
+            100, // performance
+            &mut ctx,
+        );
+        atoma.add_model_echelon_entry(
+            &manager,
+            model_name,
+            echelon_b,
+            200, // input fee
+            130, // output fee
+            400, // performance
+            &mut ctx,
+        );
+        let mut node_badge_1 = atoma.register_node(&mut toma_wallet, &mut ctx);
+        let mut node_badge_2 = atoma.register_node(&mut toma_wallet, &mut ctx);
+        let mut node_badge_3 = atoma.register_node(&mut toma_wallet, &mut ctx);
+        let mut node_badge_4 = atoma.register_node(&mut toma_wallet, &mut ctx);
+        let mut node_badge_5 = atoma.register_node(&mut toma_wallet, &mut ctx);
+        atoma.add_node_to_model(&mut node_badge_1, model_name, echelon_a);
+        atoma.add_node_to_model(&mut node_badge_2, model_name, echelon_a);
+        atoma.add_node_to_model(&mut node_badge_3, model_name, echelon_a);
+        atoma.add_node_to_model(&mut node_badge_4, model_name, echelon_b);
+        atoma.add_node_to_model(&mut node_badge_5, model_name, echelon_b);
+
+        let mut i = 0;
+        // perform many submissions to take away random luck, always the first
+        // echelon must be sampled because of fees
+        while (i < 10) {
+            let value_before_submission = toma_wallet.value();
+            let (ticket, chunks, sampled_nodes) = submit_prompt(
+                &mut atoma,
+                &mut toma_wallet,
+                model_name,
+                Text2TextModality,
+                160, // input fee
+                5, // input tokens
+                160, // output fee
+                5, // output tokens
+                option::some(2), // nodes
+                &mut rng,
+                &mut ctx,
+            );
+            sui::transfer::public_share_object(ticket);
+            assert!(
+                sampled_nodes.contains(&node_badge_1.get_node_id()) ||
+                sampled_nodes.contains(&node_badge_2.get_node_id()) ||
+                sampled_nodes.contains(&node_badge_3.get_node_id())
+            );
+            assert!(
+                !sampled_nodes.contains(&node_badge_4.get_node_id()) &&
+                !sampled_nodes.contains(&node_badge_5.get_node_id())
+            );
+            assert!(toma_wallet.value() < value_before_submission);
+            assert!(chunks == sampled_nodes.length());
+
+            i = i + 1;
+        };
+
+        let mut i = 0;
+        // perform many submissions to take away random luck, always the first
+        // echelon must be sampled because of number of nodes
+        while (i < 10) {
+            let (ticket, _, sampled_nodes) = submit_prompt(
+                &mut atoma,
+                &mut toma_wallet,
+                model_name,
+                Text2TextModality,
+                1000, // input fee
+                5, // input tokens
+                1000, // output fee
+                5, // output tokens
+                option::some(3), // nodes
+                &mut rng,
+                &mut ctx,
+            );
+            sui::transfer::public_share_object(ticket);
+            assert!(
+                sampled_nodes.contains(&node_badge_1.get_node_id()) ||
+                sampled_nodes.contains(&node_badge_2.get_node_id()) ||
+                sampled_nodes.contains(&node_badge_3.get_node_id())
+            );
+            assert!(
+                !sampled_nodes.contains(&node_badge_4.get_node_id()) &&
+                !sampled_nodes.contains(&node_badge_5.get_node_id())
+            );
+
+            i = i + 1;
+        };
+
+        // either echelon can be chosen now, but echelon b has higher
+        // performance so it should be chosen more often even though it has
+        // less nodes
+        let mut i = 0;
+        let mut echelon_a_count = 0;
+        let mut echelon_b_count = 0;
+        while (i < 100) {
+            let (ticket, _, sampled_nodes) = submit_prompt(
+                &mut atoma,
+                &mut toma_wallet,
+                model_name,
+                Text2TextModality,
+                1000, // input fee
+                5, // input tokens
+                1000, // output fee
+                5, // output tokens
+                option::some(2), // nodes
+                &mut rng,
+                &mut ctx,
+            );
+            sui::transfer::public_share_object(ticket);
+            let echelon_a_sampled =
+                sampled_nodes.contains(&node_badge_1.get_node_id()) ||
+                sampled_nodes.contains(&node_badge_2.get_node_id()) ||
+                sampled_nodes.contains(&node_badge_3.get_node_id());
+            let echelon_b_sampled =
+                sampled_nodes.contains(&node_badge_4.get_node_id()) ||
+                sampled_nodes.contains(&node_badge_5.get_node_id());
+
+            if (echelon_a_sampled) {
+                assert!(!echelon_b_sampled);
+                echelon_a_count = echelon_a_count + 1;
+            } else {
+                assert!(echelon_b_sampled);
+                echelon_b_count = echelon_b_count + 1;
+            };
+
+            i = i + 1;
+        };
+        // The chance that by random luck echelon a is chosen more often
+        // compared to the number of times this test will ever run is zero.
+        assert!(echelon_b_count > echelon_a_count);
+
+        // clean up
+        atoma.share_db_for_testing();
+        sui::transfer::public_share_object(manager);
+        sui::transfer::public_share_object(node_badge_1);
+        sui::transfer::public_share_object(node_badge_2);
+        sui::transfer::public_share_object(node_badge_3);
+        sui::transfer::public_share_object(node_badge_4);
+        sui::transfer::public_share_object(node_badge_5);
+        sui::balance::destroy_for_testing(toma_wallet);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = ENoEligibleEchelons)]
+    fun it_fails_if_not_enough_nodes() {
+        let mut ctx = sui::tx_context::dummy();
+        let mut rng = sui::random::new_generator_for_testing();
+        let mut toma_wallet = sui::balance::create_for_testing(100_000_000);
+        let model_name = ascii::string(b"model");
+        let echelon_id = 1;
+        let manager = atoma::db::create_manager_badge_for_testing(&mut ctx);
+        let mut atoma = atoma::db::new_atoma_db(&mut ctx);
+
+        atoma.add_model_entry(&manager, model_name, Text2TextModality, &mut ctx);
+        atoma.add_model_echelon_entry(
+            &manager,
+            model_name,
+            echelon_id,
+            150, // input fee
+            100, // output fee
+            100, // performance
+            &mut ctx,
+        );
+        let mut node_badge_1 = atoma.register_node(&mut toma_wallet, &mut ctx);
+        atoma.add_node_to_model(&mut node_badge_1, model_name, echelon_id);
+
+        let (ticket, _, _) = submit_prompt(
+                &mut atoma,
+                &mut toma_wallet,
+                model_name,
+                Text2TextModality,
+                160, // input fee
+                5, // input tokens
+                160, // output fee
+                5, // output tokens
+                option::some(2), // not enough nodes in the echelon, hence fails
+                &mut rng,
+                &mut ctx,
+            );
+            sui::transfer::public_share_object(ticket);
+
+        // clean up
+        atoma.share_db_for_testing();
+        sui::transfer::public_share_object(manager);
+        sui::transfer::public_share_object(node_badge_1);
+        sui::balance::destroy_for_testing(toma_wallet);
+    }
+
+    #[test]
+    fun it_enables_cross_validation() {
+        let mut ctx = sui::tx_context::dummy();
+        let mut rng = sui::random::new_generator_for_testing();
+        let mut toma_wallet = sui::balance::create_for_testing(100_000_000);
+        let model_name = ascii::string(b"model");
+        let echelon_id = 1;
+        let manager = atoma::db::create_manager_badge_for_testing(&mut ctx);
+        let mut atoma = atoma::db::new_atoma_db(&mut ctx);
+
+        atoma.add_model_entry(&manager, model_name, Text2TextModality, &mut ctx);
+        atoma.add_model_echelon_entry(
+            &manager,
+            model_name,
+            echelon_id,
+            150, // input fee
+            100, // output fee
+            100, // performance
+            &mut ctx,
+        );
+        let mut node_badge_1 = atoma.register_node(&mut toma_wallet, &mut ctx);
+        let mut node_badge_2 = atoma.register_node(&mut toma_wallet, &mut ctx);
+        atoma.add_node_to_model(&mut node_badge_1, model_name, echelon_id);
+        atoma.add_node_to_model(&mut node_badge_2, model_name, echelon_id);
+
+
+        let (ticket, _, _) = submit_prompt(
+            &mut atoma,
+            &mut toma_wallet,
+            model_name,
+            Text2TextModality,
+            160, // input fee
+            5, // input tokens
+            160, // output fee
+            5, // output tokens
+            option::none(), // cross validation
+            &mut rng,
+            &mut ctx,
+        );
+        assert!(ticket.has_cross_validation());
+
+        // clean up
+        atoma.share_db_for_testing();
+        sui::transfer::public_share_object(ticket);
+        sui::transfer::public_share_object(manager);
+        sui::transfer::public_share_object(node_badge_1);
+        sui::transfer::public_share_object(node_badge_2);
+        sui::balance::destroy_for_testing(toma_wallet);
+    }
+
+    #[test]
+    fun it_settles_ticket() {
+        let mut scenario = sui::test_scenario::begin(@0x0);
+        sui::random::create_for_testing(scenario.ctx());
+        sui::test_scenario::next_tx(&mut scenario, @0x1);
+        let rnd = sui::test_scenario::take_shared<sui::random::Random>(&scenario);
+        let mut toma_wallet = sui::balance::create_for_testing(100_000_000);
+        let model_name = ascii::string(b"model");
+        let echelon_id = 1;
+        let manager = atoma::db::create_manager_badge_for_testing(scenario.ctx());
+        let mut atoma = atoma::db::new_atoma_db(scenario.ctx());
+        let txt2txt_modality = 0;
+
+        atoma.add_model_entry(&manager, model_name, txt2txt_modality, scenario.ctx());
+        atoma.add_model_echelon_entry(
+            &manager,
+            model_name,
+            echelon_id,
+            150, // input fee
+            100, // output fee
+            100, // performance
+            scenario.ctx(),
+        );
+        let mut node_badge_1 = atoma.register_node(&mut toma_wallet, scenario.ctx());
+        let mut node_badge_2 = atoma.register_node(&mut toma_wallet, scenario.ctx());
+        atoma.add_node_to_model(&mut node_badge_1, model_name, echelon_id);
+        atoma.add_node_to_model(&mut node_badge_2, model_name, echelon_id);
+
+        let (root, chunk_hashes) = example_hashes(2);
+
+        let (ticket_id, node_order) = submit_test_prompt(
+            &mut atoma,
+            &mut toma_wallet,
+            model_name,
+            &rnd,
+            &mut scenario,
+        );
+        let (node_chunk_1, node_chunk_2) = if (node_order[0] == node_badge_1.get_node_id()) {
+            (chunk_hashes[0], chunk_hashes[1])
+        } else {
+            (chunk_hashes[1], chunk_hashes[0])
+        };
+
+        atoma::settlement::submit_commitment(
+            &mut atoma,
+            &node_badge_1,
+            ticket_id,
+            1,
+            1,
+            root,
+            node_chunk_1,
+            &rnd,
+            scenario.ctx(),
+        );
+        let ticket =
+            atoma::settlement::get_settlement_ticket_mut(&mut atoma, ticket_id);
+        assert!(!ticket.is_being_disputed());
+        atoma::settlement::submit_commitment(
+            &mut atoma,
+            &node_badge_2,
+            ticket_id,
+            1,
+            1,
+            root,
+            node_chunk_2,
+            &rnd,
+            scenario.ctx(),
+        );
+        // ticket successfully closed
+        assert!(!atoma::settlement::has_ticket(&mut atoma, ticket_id));
+
+        // clean up
+        atoma.share_db_for_testing();
+        sui::transfer::public_share_object(manager);
+        sui::transfer::public_share_object(node_badge_1);
+        sui::transfer::public_share_object(node_badge_2);
+        sui::balance::destroy_for_testing(toma_wallet);
+        sui::test_scenario::return_shared(rnd);
+        sui::test_scenario::end(scenario);
+    }
+
+    #[test]
+    fun it_disputes_if_input_tokens_mismatch() {
+        let mut scenario = sui::test_scenario::begin(@0x0);
+        sui::random::create_for_testing(scenario.ctx());
+        sui::test_scenario::next_tx(&mut scenario, @0x1);
+        let rnd = sui::test_scenario::take_shared<sui::random::Random>(&scenario);
+        let mut toma_wallet = sui::balance::create_for_testing(100_000_000);
+        let model_name = ascii::string(b"model");
+        let echelon_id = 1;
+        let manager = atoma::db::create_manager_badge_for_testing(scenario.ctx());
+        let mut atoma = atoma::db::new_atoma_db(scenario.ctx());
+        let txt2txt_modality = 0;
+
+        atoma.add_model_entry(&manager, model_name, txt2txt_modality, scenario.ctx());
+        atoma.add_model_echelon_entry(
+            &manager,
+            model_name,
+            echelon_id,
+            150, // input fee
+            100, // output fee
+            100, // performance
+            scenario.ctx(),
+        );
+        let mut node_badge_1 = atoma.register_node(&mut toma_wallet, scenario.ctx());
+        let mut node_badge_2 = atoma.register_node(&mut toma_wallet, scenario.ctx());
+        atoma.add_node_to_model(&mut node_badge_1, model_name, echelon_id);
+        atoma.add_node_to_model(&mut node_badge_2, model_name, echelon_id);
+
+        let (root, chunk_hashes) = example_hashes(2);
+
+        let (ticket_id, node_order) = submit_test_prompt(
+            &mut atoma,
+            &mut toma_wallet,
+            model_name,
+            &rnd,
+            &mut scenario,
+        );
+        let (node_chunk_1, node_chunk_2) = if (node_order[0] == node_badge_1.get_node_id()) {
+            (chunk_hashes[0], chunk_hashes[1])
+        } else {
+            (chunk_hashes[1], chunk_hashes[0])
+        };
+
+        atoma::settlement::submit_commitment(
+            &mut atoma,
+            &node_badge_1,
+            ticket_id,
+            1,
+            1,
+            root,
+            node_chunk_1,
+            &rnd,
+            scenario.ctx(),
+        );
+        let ticket =
+            atoma::settlement::get_settlement_ticket_mut(&mut atoma, ticket_id);
+        assert!(!ticket.is_being_disputed());
+        atoma::settlement::submit_commitment(
+            &mut atoma,
+            &node_badge_2,
+            ticket_id,
+            2, // does not match
+            1,
+            root,
+            node_chunk_2,
+            &rnd,
+            scenario.ctx(),
+        );
+        let ticket =
+            atoma::settlement::get_settlement_ticket_mut(&mut atoma, ticket_id);
+        assert!(ticket.is_being_disputed());
+
+        // clean up
+        atoma.share_db_for_testing();
+        sui::transfer::public_share_object(manager);
+        sui::transfer::public_share_object(node_badge_1);
+        sui::transfer::public_share_object(node_badge_2);
+        sui::balance::destroy_for_testing(toma_wallet);
+        sui::test_scenario::return_shared(rnd);
+        sui::test_scenario::end(scenario);
+    }
+
+    #[test]
+    fun it_disputes_if_chunks_dont_hash() {
+        let mut scenario = sui::test_scenario::begin(@0x0);
+        sui::random::create_for_testing(scenario.ctx());
+        sui::test_scenario::next_tx(&mut scenario, @0x1);
+        let rnd = sui::test_scenario::take_shared<sui::random::Random>(&scenario);
+        let mut toma_wallet = sui::balance::create_for_testing(100_000_000);
+        let model_name = ascii::string(b"model");
+        let echelon_id = 1;
+        let manager = atoma::db::create_manager_badge_for_testing(scenario.ctx());
+        let mut atoma = atoma::db::new_atoma_db(scenario.ctx());
+        let txt2txt_modality = 0;
+
+        atoma.add_model_entry(&manager, model_name, txt2txt_modality, scenario.ctx());
+        atoma.add_model_echelon_entry(
+            &manager,
+            model_name,
+            echelon_id,
+            150, // input fee
+            100, // output fee
+            100, // performance
+            scenario.ctx(),
+        );
+        let mut node_badge_1 = atoma.register_node(&mut toma_wallet, scenario.ctx());
+        let mut node_badge_2 = atoma.register_node(&mut toma_wallet, scenario.ctx());
+        atoma.add_node_to_model(&mut node_badge_1, model_name, echelon_id);
+        atoma.add_node_to_model(&mut node_badge_2, model_name, echelon_id);
+
+        let (root, chunk_hashes) = example_hashes(2);
+
+        let (ticket_id, node_order) = submit_test_prompt(
+            &mut atoma,
+            &mut toma_wallet,
+            model_name,
+            &rnd,
+            &mut scenario,
+        );
+        // this is wrong and will make the ticket disputed
+        let (node_chunk_1, node_chunk_2) = if (node_order[0] == node_badge_1.get_node_id()) {
+            (chunk_hashes[1], chunk_hashes[0])
+        } else {
+            (chunk_hashes[0], chunk_hashes[1])
+        };
+
+        atoma::settlement::submit_commitment(
+            &mut atoma,
+            &node_badge_1,
+            ticket_id,
+            1,
+            1,
+            root,
+            node_chunk_1,
+            &rnd,
+            scenario.ctx(),
+        );
+        let ticket =
+            atoma::settlement::get_settlement_ticket_mut(&mut atoma, ticket_id);
+        assert!(!ticket.is_being_disputed());
+        atoma::settlement::submit_commitment(
+            &mut atoma,
+            &node_badge_2,
+            ticket_id,
+            2, // does not match
+            1,
+            root,
+            node_chunk_2,
+            &rnd,
+            scenario.ctx(),
+        );
+        let ticket =
+            atoma::settlement::get_settlement_ticket_mut(&mut atoma, ticket_id);
+        assert!(ticket.is_being_disputed());
+
+        // clean up
+        atoma.share_db_for_testing();
+        sui::transfer::public_share_object(manager);
+        sui::transfer::public_share_object(node_badge_1);
+        sui::transfer::public_share_object(node_badge_2);
+        sui::balance::destroy_for_testing(toma_wallet);
+        sui::test_scenario::return_shared(rnd);
+        sui::test_scenario::end(scenario);
+    }
+
+    #[test_only]
+    fun example_hashes(number_of_nodes: u64): (vector<u8>, vector<vector<u8>>) {
+        let mut collector = vector::empty();
+        let mut chunk_hashes = vector::empty();
+
+        let mut i = 0;
+        while (i < number_of_nodes) {
+            let chunk_hash = sui::hash::blake2b256(&vector::empty());
+            collector.append(chunk_hash);
+            chunk_hashes.push_back(chunk_hash);
+            i = i + 1;
+        };
+
+        (sui::hash::blake2b256(&collector), chunk_hashes)
+    }
+
+    #[test_only]
+    fun submit_test_prompt(
+        atoma: &mut AtomaDb,
+        toma_wallet: &mut Balance<TOMA>,
+        model_name: ascii::String,
+        rnd: &sui::random::Random,
+        scenario: &mut sui::test_scenario::Scenario,
+    ): (ID, vector<SmallId>) {
+        let ticket_id = atoma::gate::submit_text2text_prompt(
+            atoma,
+            toma_wallet,
+            atoma::gate::create_text2text_prompt_params(
+                1,
+                model_name,
+                vector::empty(),
+                false,
+                std::string::utf8(b"prompt"),
+                1,
+                1,
+                1,
+                false,
+                1,
+                1,
+                1,
+            ),
+            1000, // max fee
+            option::some(2), // nodes
+            vector::empty(), // output_destination
+            rnd,
+            scenario.ctx(),
+        );
+        let ticket = atoma::settlement::get_settlement_ticket_mut(atoma, ticket_id);
+        let node_order = ticket.get_all_sampled_nodes();
+
+        (ticket_id, node_order)
+    }
 }
