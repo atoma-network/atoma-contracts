@@ -6,9 +6,8 @@ Useful links:
 - [Sui Move Analyzer][sui-analyzer]
 - [Sui standard lib on Github][github-sui-std]
 
-The packages and CLI is pointed to the currently released Sui _mainnet_ version tag.
-
-Upgrade your CLI to the appropriate mainnet version that matches the [`Move.toml`](packages/atoma/Move.toml):
+The packages and CLI are pointed to the currently released Sui version tag.
+Upgrade your CLI to the appropriate version that matches the [`Move.toml`](packages/atoma/Move.toml):
 
 ```sh
 cargo install --locked --git https://github.com/MystenLabs/sui.git --tag mainnet-vX.Y.Z sui
@@ -31,6 +30,8 @@ When upgrading, the version needs to be changed in
   Now, we want for an oracle to resolve the dispute.
 - `settlement::SettledEvent` is emitted when a ticket is settled and fee is distributed.
 - `settlement::NewlySampledNodesEvent` is emitted when a new set of nodes is sampled for a prompt because of timeout.
+- `settlement::RetrySettlementEvent` is emitted when settlement cannot progress because there are not enough nodes in the ticket's selected echelon.
+  It has a property that tells the off chain clients how many nodes are required before retry.
 
 ## How to use the atoma protocol
 
@@ -123,19 +124,24 @@ As of right now we don't use `localnet` for testing because the Sui CLI support 
 
 The CLI loads values from environment variables.
 You can set these in your shell or in a `.env` file in the root of the repository.
+Also, for different environments you can have more specific `.env` files like `.env.mainnet`, `.env.devnet`, `.env.testnet`.
 
 If any value is not provided, the CLI does best effort to figure it out from the context.
 For example, if you provide package ID but not atoma DB object ID, the CLI will query Sui to find it.
 
 ```text
-WALLET_PATH=
-PACKAGE_ID=
 ATOMA_DB_ID=
+ATOMA_PACKAGE_ID=
+CHAIN_ENV=
+FAUCET_ID=
+GAS_BUDGET=
 MANAGER_BADGE_ID=
 NODE_BADGE_ID=
 NODE_ID=
+TOMA_PACKAGE_ID=
 TOMA_WALLET_ID=
-GAS_BUDGET=
+TOMA_WALLET_ID=
+WALLET_PATH=
 ```
 
 You can also generate these values by running the following command:
@@ -157,6 +163,19 @@ sui client active-address
 sui client faucet
 ```
 
+Then, publish the `toma` package that contains the `TOMA` token.
+
+```sh
+./publish_toma
+```
+
+Mint some `TOMA` tokens to the active address.
+
+```sh
+# TOMA_PACKAGE is exported by the publish_toma script
+./cli toma faucet --toma-package "${TOMA_PACKAGE}" --amount 100000000
+```
+
 Following series of commands can be replicated all in one go with [`oneclicksetup`](./dev/oneclicksetup) script.
 
 This publishes both `atoma` package and `toma` coin package into a single on-chain package.
@@ -164,12 +183,7 @@ We skip dependency verification because testnet and mainnet use different stdlib
 Your current directory has to be where this README is located.
 
 ```sh
-sui client publish \
-    --with-unpublished-dependencies \
-    --skip-dependency-verification \
-    --gas-budget 1000000000 \
-    --json \
-    packages/atoma
+sui client publish  --json packages/atoma
 ```
 
 Use the CLI tool to add a model to the previously published package.
@@ -239,7 +253,6 @@ Use the following template to mint yourself some `TOMA` tokens.
 ```sh
 sui client call \
     --package "0x2" --module "coin" --function "mint_and_transfer" \
-    --gas-budget 10000000 \
     --args YOUR_TOMA_MINT_CAP 1000000 $(sui client active-address) \
     --type-args YOUR_TOMA_PACKAGE_ID::toma::TOMA
 ```

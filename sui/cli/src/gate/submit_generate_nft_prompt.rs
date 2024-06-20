@@ -1,3 +1,5 @@
+use sui_sdk::types::SUI_RANDOMNESS_STATE_OBJECT_ID;
+
 use crate::{prelude::*, PROMPTS_MODULE_NAME};
 
 const ENDPOINT_NAME: &str = "generate_nft";
@@ -8,7 +10,7 @@ pub(crate) async fn command(
     max_fee_per_token: u64,
 ) -> Result<TransactionDigest> {
     let active_address = context.wallet.active_address()?;
-    let package = context.unwrap_package_id();
+    let atoma_package = context.unwrap_atoma_package_id();
     let atoma_db = context.get_or_load_atoma_db().await?;
     let toma_wallet = context.get_or_load_toma_wallet().await?;
 
@@ -21,7 +23,7 @@ pub(crate) async fn command(
         .transaction_builder()
         .move_call(
             active_address,
-            package,
+            atoma_package,
             PROMPTS_MODULE_NAME,
             ENDPOINT_NAME,
             vec![],
@@ -31,6 +33,7 @@ pub(crate) async fn command(
                 SuiJsonValue::new(model_name.into())?,
                 SuiJsonValue::new(output_destination.into())?,
                 SuiJsonValue::new(max_fee_per_token.to_string().into())?,
+                SuiJsonValue::from_object_id(SUI_RANDOMNESS_STATE_OBJECT_ID),
             ],
             None,
             context.gas_budget(),

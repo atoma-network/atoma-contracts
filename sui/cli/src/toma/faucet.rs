@@ -1,28 +1,28 @@
-use crate::{prelude::*, DB_MODULE_NAME};
+use crate::{prelude::*, TOMA_COIN_MODULE_NAME};
 
-const ENDPOINT_NAME: &str = "register_node_entry";
+const ENDPOINT_NAME: &str = "faucet";
 
+/// If Toma package ID is not provided, we use the env vars.
 pub(crate) async fn command(
     context: &mut Context,
+    amount: u64,
 ) -> Result<TransactionDigest> {
     let active_address = context.wallet.active_address()?;
-    let atoma_package = context.unwrap_atoma_package_id();
-    let atoma_db = context.get_or_load_atoma_db().await?;
-    let toma_wallet = context.get_or_load_toma_wallet().await?;
+    let sui = context.get_client().await?;
+    let toma_package = context.get_or_load_toma_package_id().await?;
+    let faucet = context.get_or_load_faucet_id().await?;
 
-    let tx = context
-        .get_client()
-        .await?
+    let tx = sui
         .transaction_builder()
         .move_call(
             active_address,
-            atoma_package,
-            DB_MODULE_NAME,
+            toma_package,
+            TOMA_COIN_MODULE_NAME,
             ENDPOINT_NAME,
             vec![],
             vec![
-                SuiJsonValue::from_object_id(atoma_db),
-                SuiJsonValue::from_object_id(toma_wallet),
+                SuiJsonValue::from_object_id(faucet),
+                SuiJsonValue::new(amount.to_string().into())?,
             ],
             None,
             context.gas_budget(),

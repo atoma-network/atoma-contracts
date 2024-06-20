@@ -29,6 +29,13 @@ module atoma::db {
     /// Nodes that submitted correct (according to the oracle) results will get
     /// this ‰ of the slashed tokens.
     const InitialPermilleForHonestNodesOnDispute: u64 = 200;
+    /// The probability of cross validation.
+    /// We perform cross validation when the user does not specify how many
+    /// nodes to sampled.
+    /// See `gate` and `settlement` modules for more info.
+    const InitialCrossValidationProbabilityPermille: u64 = 500;
+    /// How many extra nodes to sample when cross validating.
+    const InitialCrossValidationExtraNodesCount: u64 = 10;
 
     /// To be able to identify the errors faster in the logs, we start the
     /// counter from a number that's leet for "error_000".
@@ -55,6 +62,14 @@ module atoma::db {
     /// Ie., if you disable a node in epoch N, you can only destroy it in epoch
     /// N + 2.
     const ENodeMustWaitBeforeDestroy: u64 = EBase + 13;
+    const ECannotSampleZeroNodes: u64 = EBase + 14;
+
+    /// Emitted once upon publishing.
+    public struct PublishedEvent has copy, drop {
+        /// ID of the AtomaDb object
+        db: ID,
+        manager_badge: ID,
+    }
 
     public struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
@@ -123,6 +138,14 @@ module atoma::db {
         fee_treasury: Balance<TOMA>,
         /// When nodes get slashed, some of the collateral goes here.
         communal_treasury: Balance<TOMA>,
+        /// We have a probabilistic cross validation feature.
+        /// If the user submits a prompt but does not specify number of nodes
+        /// to sample, we sample just one.
+        /// Then, with this probability, we sample extra nodes to verify the
+        /// results.
+        cross_validation_probability_permille: u64,
+        /// If we decide to sample extra nodes, this is how many we sample.
+        cross_validation_extra_nodes_count: u64,
 
         // Configuration
 
@@ -250,14 +273,24 @@ module atoma::db {
             permille_for_oracle_on_dispute: InitialPermilleForOracleOnDispute,
             permille_for_honest_nodes_on_dispute:
                 InitialPermilleForHonestNodesOnDispute,
+            cross_validation_probability_permille:
+                InitialCrossValidationProbabilityPermille,
+            cross_validation_extra_nodes_count:
+                InitialCrossValidationExtraNodesCount,
         };
-        transfer::share_object(atoma_db);
 
         // Create a manager badge for the package owner for convenience.
         // More can be created later.
         let atoma_manager_badge = AtomaManagerBadge {
             id: object::new(ctx),
         };
+
+        sui::event::emit(PublishedEvent {
+            db: object::id(&atoma_db),
+            manager_badge: object::id(&atoma_manager_badge),
+        });
+
+        transfer::share_object(atoma_db);
         transfer::transfer(atoma_manager_badge, ctx.sender());
     }
 
@@ -509,6 +542,14 @@ module atoma::db {
         self.models.borrow(model_name).modality
     }
 
+    public fun get_cross_validation_probability_permille(self: &AtomaDb): u64 {
+        self.cross_validation_probability_permille
+    }
+
+    public fun get_cross_validation_extra_nodes_count(self: &AtomaDb): u64 {
+        self.cross_validation_extra_nodes_count
+    }
+
     // =========================================================================
     //                          Package private functions
     // =========================================================================
@@ -527,6 +568,7 @@ module atoma::db {
     }
 
     /// Settlement tickets are dynamic objects of this UID.
+    /// Tickets must not be accessible outside of the package.
     public(package) fun get_tickets_uid_mut(self: &mut AtomaDb): &mut UID { &mut self.tickets }
 
     /// When a node does not respond to a prompt within the timeout, it is
@@ -632,27 +674,38 @@ module atoma::db {
         self: &mut AtomaDb,
         model_name: ascii::String,
         echelon_id: EchelonId,
-        ctx: &mut TxContext,
+        rng: &mut sui::random::RandomGenerator,
     ): Option<SmallId> {
         let model = self.models.borrow_mut(model_name);
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
-        sample_node(&self.nodes, echelon, ctx)
+        sample_node(&self.nodes, &mut echelon.nodes, rng)
     }
 
-    /// From the given model's echelon, pick a random node.
-    /// If the picked node has been slashed, remove it from the echelon and
-    /// repeat until a valid node is found.
-    ///
-    /// In case all nodes have been slashed returns none.
-    public(package) fun sample_node_by_echelon_index(
+    /// Attempts to sample `count` unique nodes from the given model's echelon.
+    /// It's possible that there are not enough nodes to sample.
+    public(package) fun sample_unique_nodes_by_echelon_id(
+        self: &mut AtomaDb,
+        model_name: ascii::String,
+        echelon_id: EchelonId,
+        count: u64,
+        rng: &mut sui::random::RandomGenerator,
+    ): vector<SmallId> {
+        let model = self.models.borrow_mut(model_name);
+        let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
+        sample_unique_nodes(&self.nodes, &mut echelon.nodes, count, rng)
+    }
+
+    /// Same as `sample_unique_nodes_by_echelon_id` but uses echelon index instead.
+    public(package) fun sample_unique_nodes_by_echelon_index(
         self: &mut AtomaDb,
         model_name: ascii::String,
         echelon_index: u64,
-        ctx: &mut TxContext,
-    ): Option<SmallId> {
+        count: u64,
+        rng: &mut sui::random::RandomGenerator,
+    ): vector<SmallId> {
         let model = self.models.borrow_mut(model_name);
         let echelon = model.echelons.borrow_mut(echelon_index);
-        sample_node(&self.nodes, echelon, ctx)
+        sample_unique_nodes(&self.nodes, &mut echelon.nodes, count, rng)
     }
 
     // =========================================================================
@@ -916,10 +969,10 @@ module atoma::db {
 
     public entry fun remove_model_echelon_oracle_node(
         self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
         model_name: ascii::String,
         echelon: u64,
         node_small_id: u64,
-        _: &AtomaManagerBadge,
     ) {
         let model = self.models.borrow_mut(model_name);
         let echelon_id = EchelonId { id: echelon };
@@ -929,15 +982,31 @@ module atoma::db {
 
     public entry fun set_model_echelon_settlement_timeout_ms(
         self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
         model_name: ascii::String,
         echelon: u64,
         new_timeout_ms: u64,
-        _: &AtomaManagerBadge,
     ) {
         let model = self.models.borrow_mut(model_name);
         let echelon_id = EchelonId { id: echelon };
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
         echelon.settlement_timeout_ms = new_timeout_ms;
+    }
+
+    public entry fun set_cross_validation_probability_permille(
+        self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
+        new_probability_permille: u64,
+    ) {
+        self.cross_validation_probability_permille = new_probability_permille;
+    }
+
+    public entry fun set_cross_validation_extra_nodes_count(
+        self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
+        new_extra_nodes_count: u64,
+    ) {
+        self.cross_validation_extra_nodes_count = new_extra_nodes_count;
     }
 
     // =========================================================================
@@ -1015,23 +1084,22 @@ module atoma::db {
     /// In case all nodes have been slashed returns none.
     fun sample_node(
         nodes: &Table<SmallId, NodeEntry>,
-        echelon: &mut ModelEchelon,
-        ctx: &mut TxContext,
+        echelon_nodes: &mut TableVec<SmallId>,
+        rng: &mut sui::random::RandomGenerator,
     ): Option<SmallId> {
         loop {
-            let nodes_count = echelon.nodes.length();
+            let nodes_count = echelon_nodes.length();
             if (nodes_count == 0) {
                 // Pathological scenario where all nodes have been slashed.
                 // When user samples node, they perform clean up for us.
                 // In a healthy ecosystem with enough nodes per echelon, this
                 // should not happen.
-                // TODO: https://github.com/atoma-network/atoma-contracts/issues/13
                 std::debug::print(&b"All echelon nodes have been slashed");
                 break option::none()
             };
 
-            let node_index = atoma::utils::random_u64(ctx) % nodes_count;
-            let node_id = *echelon.nodes.borrow(node_index);
+            let node_index = rng.generate_u64() % nodes_count;
+            let node_id = *echelon_nodes.borrow(node_index);
             let has_node = nodes.contains(node_id);
             if (has_node) {
                 let node = nodes.borrow(node_id);
@@ -1042,7 +1110,174 @@ module atoma::db {
             };
 
             // node has been slashed so remove it from the echelon
-            echelon.nodes.swap_remove(node_index);
+            echelon_nodes.swap_remove(node_index);
         }
+    }
+
+    /// Attempts to sample `how_many_nodes_to_sample` unique nodes from the
+    /// given echelon.
+    ///
+    /// # Important
+    /// In a pathological scenario where there are few unslashed nodes
+    /// in the echelon, this function might return less nodes than requested.
+    /// It's also possible there are no unslashed nodes at all, returning
+    /// an empty vector.
+    fun sample_unique_nodes(
+        nodes: &Table<SmallId, NodeEntry>,
+        echelon_nodes: &mut TableVec<SmallId>,
+        how_many_nodes_to_sample: u64,
+        rng: &mut sui::random::RandomGenerator,
+    ): vector<SmallId> {
+        assert!(how_many_nodes_to_sample > 0, ECannotSampleZeroNodes);
+
+        let mut sampled_nodes = vector::empty();
+
+        let total_echelon_nodes = echelon_nodes.length();
+        // how many nodes do we sample from in each chunk
+        let base_nodes_per_chunk = total_echelon_nodes / how_many_nodes_to_sample;
+        // first this many chunks will sample from one extra node
+        let total_chunks_with_extra_node_count = total_echelon_nodes % how_many_nodes_to_sample;
+
+        // when 0 then we no longer sample from extra node
+        let mut extra_node_chunks_remaining = total_chunks_with_extra_node_count;
+        // We keep track of the index of the first node in the chunk.
+        // This also tells us whether we iterated all the chunks or not yet
+        let mut from_node_index = 0;
+        while (from_node_index < total_echelon_nodes) {
+            // sample in interval <from_node_index; from_node_index + nodes_to_pick_from)
+            let nodes_to_pick_from = base_nodes_per_chunk
+            + if (extra_node_chunks_remaining > 0) {
+                extra_node_chunks_remaining = extra_node_chunks_remaining - 1;
+                // add 1 because of the residual from modulo when dividing
+                // total_echelon_nodes by how_many_nodes_to_sample
+                1
+            } else {
+                0
+            };
+
+            let node_index = from_node_index
+                + rng.generate_u64() % nodes_to_pick_from;
+
+            // We want to sample from the end of the echelon for two reasons:
+            // - Primarily, since we remove nodes from the echelon, we want to
+            //   use swap remove and not invalidate the indices.
+            // - The first `total_chunks_with_extra_node_count` chunks have one
+            //   extra node, decreasing the chance of sampling of each node.
+            //   Ever so slightly, it's better NOT to unsubscribe and to
+            //   subscribe early.
+            // Therefore we inverse the index such that 0 becomes the last
+            // index, 1 the second to last and so on.
+            // The rest of the algorithm is simpler if we start from the
+            // beginning, so we do this transformation here.
+            let inverse_node_index = total_echelon_nodes - 1 - node_index;
+            let mut node_id = get_node_id_if_unslashed_or_swap_remove(
+                nodes, echelon_nodes, inverse_node_index,
+            );
+            if (node_id.is_some()) {
+                // this node is fine to use, happy path
+                vector::push_back(&mut sampled_nodes, node_id.extract());
+            } else {
+                // this node has been slashed, we finish our chunk iterations
+                // and deal with the situation later
+            };
+
+            from_node_index = from_node_index + nodes_to_pick_from;
+        };
+
+        if (sampled_nodes.length() == how_many_nodes_to_sample) {
+            // happy path! the chunk iterations did not hit any slashed nodes
+            sampled_nodes
+        } else {
+            // We sampled some slashed nodes and so we need to fill in the
+            // missing nodes.
+
+            // We remember how many times have we iterated and we retry
+            // either until user requested number of nodes is sampled or
+            // we hit a max number of iterations.
+            // This means everything is ok in the non-pathological scenario with
+            // many unslashed nodes in the echelon and does not loop forever
+            // (hence exhausting the budget) in the pathological scenario.
+            let mut sampled_nodes = vector::empty();
+            let mut iteration = 0;
+            let max_iterations = how_many_nodes_to_sample * 4;
+            while (sampled_nodes.length() < how_many_nodes_to_sample
+                || iteration <= max_iterations) {
+                let mut node_id = sample_node(nodes, echelon_nodes, rng);
+
+                if (node_id.is_none()) {
+                    // return what we have
+                    return sampled_nodes
+                };
+
+                let node_id = node_id.extract();
+                if (!sampled_nodes.contains(&node_id)) {
+                    sampled_nodes.push_back(node_id);
+                };
+
+                iteration = iteration + 1;
+            };
+
+            sampled_nodes
+        }
+    }
+
+    fun get_node_id_if_unslashed_or_swap_remove(
+        nodes: &Table<SmallId, NodeEntry>,
+        echelon_nodes: &mut TableVec<SmallId>,
+        node_index: u64,
+    ): Option<SmallId> {
+        let node_id = *echelon_nodes.borrow(node_index);
+        let has_node = nodes.contains(node_id);
+        if (has_node) {
+            let node = nodes.borrow(node_id);
+            if (node.collateral.value() > 0
+                && node.was_disabled_in_epoch.is_none()) {
+                return option::some(node_id)
+            }
+        };
+
+        // node has been slashed so remove it from the echelon
+        echelon_nodes.swap_remove(node_index);
+
+        option::none()
+    }
+
+    #[test_only]
+    /// So that we don't have to manually destroy table in the tests.
+    public struct NodeEntryBin has key {
+        id: UID,
+        entries: Table<SmallId, NodeEntry>,
+    }
+
+    #[test]
+    fun it_samples_unique_random_nodes() {
+        let mut ctx = sui::tx_context::dummy();
+        let mut rng = sui::random::new_generator_for_testing();
+
+        let mut nodes = sui::table::new(&mut ctx);
+        let mut echelon_nodes = sui::table_vec::empty(&mut ctx);
+
+        while (nodes.length() < 10) {
+            let node_id = SmallId { inner: nodes.length() + 1 };
+            nodes.add(node_id, NodeEntry {
+                collateral: sui::balance::create_for_testing(100),
+                was_disabled_in_epoch: option::none(),
+                last_fee_epoch: 0,
+                last_fee_epoch_amount: 0,
+                available_fee_amount: 0,
+            });
+            echelon_nodes.push_back(node_id);
+        };
+
+        let sampled_nodes =
+            sample_unique_nodes(&nodes, &mut echelon_nodes, 2, &mut rng);
+        assert!(sampled_nodes.length() == 2);
+
+        // get rid of created resources
+        sui::transfer::share_object(NodeEntryBin {
+            id: object::new(&mut ctx),
+            entries: nodes,
+        });
+        sui::table_vec::drop(echelon_nodes);
     }
 }
