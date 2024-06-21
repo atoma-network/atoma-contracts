@@ -15,7 +15,7 @@ pub(crate) async fn command(
     let toma_wallet = context.get_or_load_toma_wallet().await?;
 
     // TODO: agree with nodes on some output destination format
-    let output_destination: Vec<u8> = vec![];
+    let output_destination: Vec<u8> = rmp_serde::to_vec("Firebase")?;
 
     let tx = context
         .get_client()
