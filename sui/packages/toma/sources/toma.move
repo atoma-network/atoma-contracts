@@ -3,8 +3,8 @@ module toma::toma {
     use sui::package::Publisher;
 
     const DECIMALS: u8 = 9;
-    const SYMBOL: vector<u8> = b"TOMA";
-    const NAME: vector<u8> = b"TOMA";
+    const SYMBOL: vector<u8> = b"ALPHA_TOMA";
+    const NAME: vector<u8> = b"ALPHA_TOMA";
     const DESCRIPTION: vector<u8> = b"Atoma network coin";
 
     /// The coin type.

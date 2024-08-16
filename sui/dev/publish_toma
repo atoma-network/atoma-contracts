@@ -58,17 +58,15 @@ faucet=$(echo "${publish_event}" | jq -r '.parsedJson.faucet')
 treasury=$(echo "${publish_event}" | jq -r '.parsedJson.treasury')
 
 active_env=$(sui client active-env)
-if [ "$active_env" == "devnet" ] || [ "$active_env" == "testnet" ]; then
-    read -p "Enable faucet? [y/N] " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Faucet not enabled"
-    else
-        sui client call \
-            --package "${toma_package}" --module "toma" --function "enable_faucet" \
-            --args "${faucet}" "${treasury}" || exit 1
-        echo "Faucet enabled"
-    fi
+read -p "Enable faucet? [y/N] " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Faucet not enabled"
+else
+    sui client call \
+        --package "${toma_package}" --module "toma" --function "enable_faucet" \
+        --args "${faucet}" "${treasury}" || exit 1
+    echo "Faucet enabled"
 fi
 
 echo
