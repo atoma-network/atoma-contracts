@@ -33,9 +33,9 @@ module atoma::db {
     /// We perform cross validation when the user does not specify how many
     /// nodes to sampled.
     /// See `gate` and `settlement` modules for more info.
-    const InitialCrossValidationProbabilityPermille: u64 = 500;
+    const InitialCrossValidationProbabilityPermille: u64 = 10;
     /// How many extra nodes to sample when cross validating.
-    const InitialCrossValidationExtraNodesCount: u64 = 10;
+    const InitialCrossValidationExtraNodesCount: u64 = 1;
 
     /// To be able to identify the errors faster in the logs, we start the
     /// counter from a number that's leet for "error_000".
