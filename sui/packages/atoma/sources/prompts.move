@@ -22,6 +22,9 @@ module atoma::prompts {
     use sui::random::Random;
     use toma::toma::TOMA;
 
+    const ATOMA_FEE: u64 = 500_000_000; // 0.5 SUI
+    const ATOMA_FEE_RECIPIENT: address = @0x0;
+    const EInsufficientFee: u64 = 312012_200;
 
     /// Submits an arbitrary text prompt.
     /// The other alternative is to use programmable txs on client.
@@ -43,8 +46,13 @@ module atoma::prompts {
         top_p: u32,
         nodes_to_sample: Option<u64>,
         random: &Random,
+        payment: &mut Coin<TOMA>,
         ctx: &mut TxContext,
     ) {
+        assert!(payment.value() >= ATOMA_FEE, EInsufficientFee);
+        let fee = coin::split(payment, ATOMA_FEE, ctx);
+        transfer::public_transfer(fee, ATOMA_FEE_RECIPIENT);
+
         let mut rng = random.new_generator(ctx);
         let random_seed = rng.generate_u64();
         let params = atoma::gate::create_text2text_prompt_params(
