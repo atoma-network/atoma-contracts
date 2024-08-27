@@ -23,7 +23,7 @@ module atoma::prompts {
     use toma::toma::TOMA;
 
     const ATOMA_FEE: u64 = 500_000_000; // 0.5 SUI
-    const ATOMA_FEE_RECIPIENT: address = @0x0;
+    const ATOMA_FEE_RECIPIENT: address = @0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040; // TODO: only for testing
     const EInsufficientFee: u64 = 312012_200;
 
     /// Submits an arbitrary text prompt.
@@ -50,8 +50,8 @@ module atoma::prompts {
         ctx: &mut TxContext,
     ) {
         assert!(payment.value() >= ATOMA_FEE, EInsufficientFee);
-        let fee = coin::split(payment, ATOMA_FEE, ctx);
-        transfer::public_transfer(fee, ATOMA_FEE_RECIPIENT);
+        let fee = sui::coin::split(payment, ATOMA_FEE, ctx);
+        sui::transfer::public_transfer(fee, ATOMA_FEE_RECIPIENT);
 
         let mut rng = random.new_generator(ctx);
         let random_seed = rng.generate_u64();
