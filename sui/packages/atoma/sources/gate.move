@@ -34,7 +34,7 @@ module atoma::gate {
         model: ascii::String,
         pre_prompt_tokens: vector<u32>,
         prepend_output_with_input: bool,
-        prompt: string::String,
+        prompt: vector<u8>,
         random_seed: u64,
         repeat_last_n: u64,
         /// Represents a floating point number, little endian.
@@ -256,7 +256,7 @@ module atoma::gate {
         model: ascii::String,
         pre_prompt_tokens: vector<u32>,
         prepend_output_with_input: bool,
-        prompt: string::String,
+        prompt: vector<u8>,
         random_seed: u64,
         repeat_last_n: u64,
         repeat_penalty: u32,

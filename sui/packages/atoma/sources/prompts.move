@@ -33,7 +33,7 @@ module atoma::prompts {
         pre_prompt_tokens: vector<u32>,
         prepend_output_with_input: bool,
         max_fee_per_token: u64,
-        prompt: string::String,
+        prompt: vector<u8>,
         should_stream_output: bool,
         max_tokens: u64,
         repeat_last_n: u64,
@@ -67,61 +67,6 @@ module atoma::prompts {
             params,
             max_fee_per_token,
             nodes_to_sample,
-            output_destination,
-            random,
-            ctx,
-        );
-    }
-
-    /// Submits a text prompt to Atoma network that asks for a joke.
-    entry fun tell_me_a_joke(
-        atoma: &mut AtomaDb,
-        wallet: &mut Coin<TOMA>,
-        model: ascii::String,
-        output_destination: vector<u8>,
-        max_fee_per_token: u64,
-        random: &Random,
-        ctx: &mut TxContext,
-    ) {
-        let mut rng = random.new_generator(ctx);
-
-        let max_tokens = 64;
-        let pre_prompt_tokens = vector::empty();
-        let prepend_output_with_input = false;
-        let prompt = string::utf8(b"Tell me a joke please");
-        let random_seed = rng.generate_u64();
-        let repeat_last_n = 1;
-        let repeat_penalty = 1066192077; // 1.1
-        let should_stream_output = false;
-        let temperature = 1048576000; // 0.25
-        let top_k = 1;
-        let top_p = 1063675494; // 0.9
-        let params = atoma::gate::create_text2text_prompt_params(
-            max_tokens,
-            model,
-            pre_prompt_tokens,
-            prepend_output_with_input,
-            prompt,
-            random_seed,
-            repeat_last_n,
-            repeat_penalty,
-            should_stream_output,
-            temperature,
-            top_k,
-            top_p,
-        );
-        atoma::gate::submit_text2text_prompt(
-            atoma,
-            wallet.balance_mut(),
-            params,
-            max_fee_per_token,
-            // we sample just one node because of the illustrative purposes of
-            // this prompt, so that we can deploy this contract on devnet and
-            // have it produce output without many nodes
-            //
-            // you can set this to none to let Atoma network decide how many
-            // nodes to sample
-            option::some(1),
             output_destination,
             random,
             ctx,
