@@ -1,0 +1,139 @@
+Transaction Digest: HUbpJXgHjRGf1k2HcgRy5czb7uQddp8UUraDy82w8YQv
+╭─────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Transaction Data                                                                                │
+├─────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Sender: 0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040                      │
+│ Gas Owner: 0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040                   │
+│ Gas Budget: 1506000 MIST                                                                        │
+│ Gas Price: 753 MIST                                                                             │
+│ Gas Payment:                                                                                    │
+│  ┌──                                                                                            │
+│  │ ID: 0xb1646ab4f1887a3e7de2e5128a44b69e58f283855982358bc9dfed8ae52f5f7b                       │
+│  │ Version: 283040745                                                                           │
+│  │ Digest: 3TGmUu9vaBTUZ288u42h6nqzc7mS3VatjwSjRNJETu4t                                         │
+│  └──                                                                                            │
+│                                                                                                 │
+│ Transaction Kind: Programmable                                                                  │
+│ ╭─────────────────────────────────────────────────────────────────────────────────────────────╮ │
+│ │ Input Objects                                                                               │ │
+│ ├─────────────────────────────────────────────────────────────────────────────────────────────┤ │
+│ │ 0   Shared Object    ID: 0xeef012ef16681b151db14110266c218e7485eaef806aa4e6655690d6723f12f5 │ │
+│ │ 1   Imm/Owned Object ID: 0xa1ff9e4a5e4e145b70fb0ceeea44d93b7ebffac1ccd95cd06eddded9e7939d4c │ │
+│ ╰─────────────────────────────────────────────────────────────────────────────────────────────╯ │
+│ ╭──────────────────────────────────────────────────────────────────────────────────╮            │
+│ │ Commands                                                                         │            │
+│ ├──────────────────────────────────────────────────────────────────────────────────┤            │
+│ │ 0  MoveCall:                                                                     │            │
+│ │  ┌                                                                               │            │
+│ │  │ Function:  enable_faucet                                                      │            │
+│ │  │ Module:    toma                                                               │            │
+│ │  │ Package:   0x85b33c1dee78a671da8c7f3b666e8699a8e122865aae37a94b5e3de9499662d7 │            │
+│ │  │ Arguments:                                                                    │            │
+│ │  │   Input  0                                                                    │            │
+│ │  │   Input  1                                                                    │            │
+│ │  └                                                                               │            │
+│ ╰──────────────────────────────────────────────────────────────────────────────────╯            │
+│                                                                                                 │
+│ Signatures:                                                                                     │
+│    GK1pxHcgblViEvyX7NdHGdle2EhQp8zg8k5E1xhnY5h5btBHLGsqBF9hdjGw3YOox9lD0vDi3v2gQNAZML1sDg==     │
+│                                                                                                 │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭───────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Transaction Effects                                                                               │
+├───────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Digest: HUbpJXgHjRGf1k2HcgRy5czb7uQddp8UUraDy82w8YQv                                              │
+│ Status: Success                                                                                   │
+│ Executed Epoch: 505                                                                               │
+│ Mutated Objects:                                                                                  │
+│  ┌──                                                                                              │
+│  │ ID: 0xb1646ab4f1887a3e7de2e5128a44b69e58f283855982358bc9dfed8ae52f5f7b                         │
+│  │ Owner: Account Address ( 0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040 )  │
+│  │ Version: 283040746                                                                             │
+│  │ Digest: HdknMwdt5kpGGxKKkfk2k8nP9LpML91qcECU4WngSPka                                           │
+│  └──                                                                                              │
+│  ┌──                                                                                              │
+│  │ ID: 0xeef012ef16681b151db14110266c218e7485eaef806aa4e6655690d6723f12f5                         │
+│  │ Owner: Shared( 283040745 )                                                                     │
+│  │ Version: 283040746                                                                             │
+│  │ Digest: ZyqAfeLVpzDatL7Zk82AY8KUp86TsZwdqVu5UaLtvEV                                            │
+│  └──                                                                                              │
+│ Shared Objects:                                                                                   │
+│  ┌──                                                                                              │
+│  │ ID: 0xeef012ef16681b151db14110266c218e7485eaef806aa4e6655690d6723f12f5                         │
+│  │ Version: 283040745                                                                             │
+│  │ Digest: 4aSG3niKsz53mKfrZ3kVZ5dRuiYDELr8pjsbXf6uvz1F                                           │
+│  └──                                                                                              │
+│ Wrapped Objects:                                                                                  │
+│  ┌──                                                                                              │
+│  │ ID: 0xa1ff9e4a5e4e145b70fb0ceeea44d93b7ebffac1ccd95cd06eddded9e7939d4c                         │
+│  │ Version: 283040746                                                                             │
+│  │ Digest: 6ws1bVyu3F8wGy1fPHhrc2v8UyWiGbRAAuek8SwikKPD                                           │
+│  └──                                                                                              │
+│ Gas Object:                                                                                       │
+│  ┌──                                                                                              │
+│  │ ID: 0xb1646ab4f1887a3e7de2e5128a44b69e58f283855982358bc9dfed8ae52f5f7b                         │
+│  │ Owner: Account Address ( 0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040 )  │
+│  │ Version: 283040746                                                                             │
+│  │ Digest: HdknMwdt5kpGGxKKkfk2k8nP9LpML91qcECU4WngSPka                                           │
+│  └──                                                                                              │
+│ Gas Cost Summary:                                                                                 │
+│    Storage Cost: 2568800 MIST                                                                     │
+│    Computation Cost: 753000 MIST                                                                  │
+│    Storage Rebate: 3927528 MIST                                                                   │
+│    Non-refundable Storage Fee: 39672 MIST                                                         │
+│                                                                                                   │
+│ Transaction Dependencies:                                                                         │
+│    EcfRigSYH7FRw3TvpfvL2vtJ1p4rJQ9bSceHBm1FuTAM                                                   │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─────────────────────────────╮
+│ No transaction block events │
+╰─────────────────────────────╯
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Object Changes                                                                                   │
+├──────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Mutated Objects:                                                                                 │
+│  ┌──                                                                                             │
+│  │ ObjectID: 0xb1646ab4f1887a3e7de2e5128a44b69e58f283855982358bc9dfed8ae52f5f7b                  │
+│  │ Sender: 0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040                    │
+│  │ Owner: Account Address ( 0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040 ) │
+│  │ ObjectType: 0x2::coin::Coin<0x2::sui::SUI>                                                    │
+│  │ Version: 283040746                                                                            │
+│  │ Digest: HdknMwdt5kpGGxKKkfk2k8nP9LpML91qcECU4WngSPka                                          │
+│  └──                                                                                             │
+│  ┌──                                                                                             │
+│  │ ObjectID: 0xeef012ef16681b151db14110266c218e7485eaef806aa4e6655690d6723f12f5                  │
+│  │ Sender: 0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040                    │
+│  │ Owner: Shared( 283040745 )                                                                    │
+│  │ ObjectType: 0x85b33c1dee78a671da8c7f3b666e8699a8e122865aae37a94b5e3de9499662d7::toma::Faucet  │
+│  │ Version: 283040746                                                                            │
+│  │ Digest: ZyqAfeLVpzDatL7Zk82AY8KUp86TsZwdqVu5UaLtvEV                                           │
+│  └──                                                                                             │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭───────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Balance Changes                                                                                   │
+├───────────────────────────────────────────────────────────────────────────────────────────────────┤
+│  ┌──                                                                                              │
+│  │ Owner: Account Address ( 0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040 )  │
+│  │ CoinType: 0x2::sui::SUI                                                                        │
+│  │ Amount: 605728                                                                                 │
+│  └──                                                                                              │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────╯
+Faucet enabled
+
+Please add/change these properties in the sui/packages/toma/Move.toml:
+
+[package]
+...
+published-at = "0x85b33c1dee78a671da8c7f3b666e8699a8e122865aae37a94b5e3de9499662d7"
+...
+[addresses]
+toma = "0x85b33c1dee78a671da8c7f3b666e8699a8e122865aae37a94b5e3de9499662d7"
+
+
+Toma package: 0x85b33c1dee78a671da8c7f3b666e8699a8e122865aae37a94b5e3de9499662d7
+Faucet: 0xeef012ef16681b151db14110266c218e7485eaef806aa4e6655690d6723f12f5
+Treasury: 0xa1ff9e4a5e4e145b70fb0ceeea44d93b7ebffac1ccd95cd06eddded9e7939d4c
+
+To transfer the minting/burning capability to a multisig address, run:
+$ sui client transfer --object-id 0xa1ff9e4a5e4e145b70fb0ceeea44d93b7ebffac1ccd95cd06eddded9e7939d4c --to <MULTISIG-ADDRESS>
