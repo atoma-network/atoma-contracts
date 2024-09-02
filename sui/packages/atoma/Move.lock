@@ -2,7 +2,7 @@
 
 [move]
 version = 1
-manifest_digest = "C013B115F412F4F1BE50D17FB31C32194E59E31CD1DAF75CE4E340EC1A3FB34B"
+manifest_digest = "E1362A73A44B1F18B9629B74775DE6F23BA62A2DC27551FAE9A25D9E538948D8"
 deps_digest = "3C4103934B1E040BB6B23F1D610B4EF9F2F1166A50A104EADCF77467C004C600"
 dependencies = [
   { name = "Sui" },
@@ -11,11 +11,11 @@ dependencies = [
 
 [[move.package]]
 name = "MoveStdlib"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/devnet", subdir = "crates/sui-framework/packages/move-stdlib" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/testnet", subdir = "crates/sui-framework/packages/move-stdlib" }
 
 [[move.package]]
 name = "Sui"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/devnet", subdir = "crates/sui-framework/packages/sui-framework" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/testnet", subdir = "crates/sui-framework/packages/sui-framework" }
 
 dependencies = [
   { name = "MoveStdlib" },
@@ -30,20 +30,20 @@ dependencies = [
 ]
 
 [move.toolchain-version]
-compiler-version = "1.27.0"
+compiler-version = "1.32.0"
 edition = "2024.beta"
 flavor = "sui"
 
 [env]
 
 [env.devnet]
-chain-id = "49fe5305"
-original-published-id = "0xa75d72553309ff050b51d2b15b4bc9792c10d9297a0e343fc4423cee6b5b07d0"
-latest-published-id = "0xa75d72553309ff050b51d2b15b4bc9792c10d9297a0e343fc4423cee6b5b07d0"
+chain-id = "814c79df"
+original-published-id = "0x36ef18f7879d8dfbfd72ee9202aa3c6f2e19e4e18e58d856dc21b4b90b6eef7c"
+latest-published-id = "0x36ef18f7879d8dfbfd72ee9202aa3c6f2e19e4e18e58d856dc21b4b90b6eef7c"
 published-version = "1"
 
 [env.testnet]
 chain-id = "4c78adac"
-original-published-id = "0x9898f7681fe314ab69b512e69efee5c9b0f814fe4ae258b83c33f0272b0e504e"
-latest-published-id = "0x9898f7681fe314ab69b512e69efee5c9b0f814fe4ae258b83c33f0272b0e504e"
+original-published-id = "0x4f704c71427cc065631de993b9d1b94427f09e980fd91fa83d882e3da07a23a6"
+latest-published-id = "0x4f704c71427cc065631de993b9d1b94427f09e980fd91fa83d882e3da07a23a6"
 published-version = "1"

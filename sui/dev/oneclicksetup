@@ -7,7 +7,7 @@
 #
 # Usage: ./oneclicksetup.sh
 #
-# When this script is done, we will have a model named "llama" with one echelon
+# When this script is done, we will have a model named "llama31_instruct8b" with one echelon
 # ID 1, and a node registered to that model echelon.
 # Also, it will create .env file in the sui directory with configuration that
 # this script generated.
@@ -77,12 +77,12 @@ cd $root_dir/sui/dev
 
 ./cli db add-model \
     --package "${package}" \
-    --name "llama" \
+    --name "llama31_instruct8b" \
     --text2text
 
 ./cli db add-model-echelon \
     --package "${package}" \
-    --model "llama" \
+    --model "llama31_instruct8b" \
     --echelon 1 \
     --input-fee-per-token 1 \
     --relative-performance 100
@@ -98,7 +98,7 @@ sleep 2
 
 ./cli db add-node-to-model \
     --package "${package}" \
-    --model "llama" \
+    --model "llama31_instruct8b" \
     --echelon 1
 
 echo
@@ -111,7 +111,7 @@ echo "Sending test text prompt"
 
 ./cli gate submit-tell-me-a-joke-prompt \
     --package "${package}" \
-    --model "llama"
+    --model "llama31_instruct8b"
 
 echo
 echo

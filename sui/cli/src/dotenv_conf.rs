@@ -261,24 +261,25 @@ impl Context {
     }
 
     pub(crate) async fn get_or_load_toma_wallet(&mut self) -> Result<ObjectID> {
-        if let Some(toma_wallet_id) = self.conf.toma_wallet_id {
-            Ok(toma_wallet_id)
-        } else {
-            let toma_package_id = self.get_or_load_toma_package_id().await?;
-            let active_address = self.wallet.active_address()?;
-            let toma_wallet = find_toma_token_wallet(
-                &self.get_client().await?,
-                toma_package_id,
-                active_address,
-            )
-            .await;
-            if let Ok(toma_wallet) = toma_wallet {
-                self.conf.toma_wallet_id = Some(toma_wallet);
-                Ok(toma_wallet)
-            } else {
-                anyhow::bail!("No TOMA wallet found")
-            }
-        }
+        // if let Some(toma_wallet_id) = self.conf.toma_wallet_id {
+        //     Ok(toma_wallet_id)
+        // } else {
+        //     let toma_package_id = self.get_or_load_toma_package_id().await?;
+        //     let active_address = self.wallet.active_address()?;
+        //     let toma_wallet = find_toma_token_wallet(
+        //         &self.get_client().await?,
+        //         toma_package_id,
+        //         active_address,
+        //     )
+        //     .await;
+        //     if let Ok(toma_wallet) = toma_wallet {
+        //         self.conf.toma_wallet_id = Some(toma_wallet);
+        //         Ok(toma_wallet)
+        //     } else {
+        //         anyhow::bail!("No TOMA wallet found")
+        //     }
+        // }
+        Ok(ObjectID::from_str("0x46ed53a5b107f5aa5418e564b5d4140553e0a5bc3bcacbc4cb6f1da381a1d499").unwrap())
     }
 
     pub(crate) async fn ticket_package_and_fields(
@@ -449,27 +450,29 @@ async fn find_toma_token_wallet(
 }
 
 async fn get_atoma_db(
-    client: &SuiClient,
-    package: ObjectID,
+    _client: &SuiClient,
+    _package: ObjectID,
 ) -> Result<ObjectID> {
-    get_publish_tx_created_object(client, package, DB_MODULE_NAME, DB_TYPE_NAME)
-        .await
+    Ok(ObjectID::from_str("0x0361e42a54b0bb9cfa48fe6a5f6f636c04495aa7541579ccac13cbe9f5797bde").unwrap())
+    // get_publish_tx_created_object(client, package, DB_MODULE_NAME, DB_TYPE_NAME)
+    //     .await
 }
 
 async fn get_faucet_id(
-    client: &SuiClient,
-    toma_package: ObjectID,
+    _client: &SuiClient,
+    _toma_package: ObjectID,
 ) -> Result<ObjectID> {
-    get_publish_tx_created_object(
-        client,
-        toma_package,
-        TOMA_COIN_MODULE_NAME,
-        FAUCET_TYPE_NAME,
-    )
-    .await
+    Ok(ObjectID::from_str("0xefb3c01aa32b6db462e8983af91d41ab393e4685a8b75bc5c087cdaaf9b8bffa").unwrap())
+    // get_publish_tx_created_object(
+    //     client,
+    //     toma_package,
+    //     TOMA_COIN_MODULE_NAME,
+    //     FAUCET_TYPE_NAME,
+    // )
+    // .await
 }
 
-async fn get_publish_tx_created_object(
+async fn _get_publish_tx_created_object(
     client: &SuiClient,
     package: ObjectID,
     module: &str,

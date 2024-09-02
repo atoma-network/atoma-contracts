@@ -24,7 +24,7 @@ root_dir=$(abs_path_to_git_root_dir)
 
 toma_move_toml="${root_dir}/sui/packages/toma/Move.toml"
 
-published_at=$(grep -oP '(?<=published-at = ")[^"]+' "${toma_move_toml}")
+published_at=$(grep 'published-at' "${toma_move_toml}" | sed -E 's/.*"([^"]+)".*/\1/')
 
 if [ -z "${published_at}" ]; then
     echo "Error: TOMA package ID not found in ${toma_move_toml}"
