@@ -22,7 +22,7 @@ module atoma::prompts {
     use sui::random::Random;
     use toma::toma::TOMA;
 
-    const ATOMA_FEE: u64 = 500_000_000; // 0.5 SUI
+    const ATOMA_FEE: u64 = 250_000_000; // 0.25 SUI
     const ATOMA_FEE_RECIPIENT: address = @0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040; // TODO: only for testing
     const EInsufficientFee: u64 = 312012_200;
 

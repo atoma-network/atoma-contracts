@@ -77,19 +77,19 @@ cd $root_dir/sui/dev
 
 ./cli db add-model \
     --package "${package}" \
-    --name "llama" \
+    --name "llama31_instruct8b" \
     --text2text
 
 ./cli db add-model-echelon \
     --package "${package}" \
-    --model "llama" \
+    --model "llama31_instruct8b" \
     --echelon 1 \
     --input-fee-per-token 1 \
     --relative-performance 100
 
 ./cli db set-required-registration-toma-collateral \
     --package "${package}" \
-    --new-amount 1
+    --new-amount 100
 
 # sometimes the RPC takes a bit of time to index the airdropped TOMA
 # tokens, so we give it some extra time
@@ -98,7 +98,7 @@ sleep 2
 
 ./cli db add-node-to-model \
     --package "${package}" \
-    --model "llama" \
+    --model "llama31_instruct8b" \
     --echelon 1
 
 echo
@@ -111,7 +111,7 @@ echo "Sending test text prompt"
 
 ./cli gate submit-tell-me-a-joke-prompt \
     --package "${package}" \
-    --model "llama"
+    --model "llama31_instruct8b"
 
 echo
 echo
