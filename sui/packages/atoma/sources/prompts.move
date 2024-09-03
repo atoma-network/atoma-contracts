@@ -18,12 +18,15 @@ module atoma::prompts {
     use atoma::db::AtomaDb;
     use std::ascii;
     use std::string;
+    use sui::coin;
     use sui::coin::Coin;
     use sui::random::Random;
+    use sui::sui::SUI;
     use toma::toma::TOMA;
 
+
     const ATOMA_FEE: u64 = 250_000_000; // 0.25 SUI
-    const ATOMA_FEE_RECIPIENT: address = @0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040; // TODO: only for testing
+    const ATOMA_FEE_RECIPIENT: address = @0xe88fd4d088ca81163ec59813196a33aab710a2f378eef6dc4a8af02ea8e8e3b7;
     const EInsufficientFee: u64 = 312012_200;
 
     /// Submits an arbitrary text prompt.
@@ -31,6 +34,7 @@ module atoma::prompts {
     entry fun send_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
+        payment: &mut Coin<SUI>,
         model: ascii::String,
         output_destination: vector<u8>,
         pre_prompt_tokens: vector<u32>,
@@ -46,10 +50,9 @@ module atoma::prompts {
         top_p: u32,
         nodes_to_sample: Option<u64>,
         random: &Random,
-        payment: &mut Coin<TOMA>,
         ctx: &mut TxContext,
     ) {
-        assert!(payment.value() >= ATOMA_FEE, EInsufficientFee);
+        assert!(coin::value(payment) >= ATOMA_FEE, EInsufficientFee);
         let fee = sui::coin::split(payment, ATOMA_FEE, ctx);
         sui::transfer::public_transfer(fee, ATOMA_FEE_RECIPIENT);
 
