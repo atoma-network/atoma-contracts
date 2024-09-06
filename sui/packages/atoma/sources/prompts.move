@@ -27,14 +27,14 @@ module atoma::prompts {
 
     const ATOMA_FEE: u64 = 250_000_000; // 0.25 SUI
     const ATOMA_FEE_RECIPIENT: address = @0xe88fd4d088ca81163ec59813196a33aab710a2f378eef6dc4a8af02ea8e8e3b7;
-    const EInsufficientFee: u64 = 312012_200;
+    const EMustBeExactFee: u64 = 312012_200;
 
     /// Submits an arbitrary text prompt.
     /// The other alternative is to use programmable txs on client.
     entry fun send_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
-        payment: &mut Coin<SUI>,
+        payment: Coin<SUI>,
         model: ascii::String,
         output_destination: vector<u8>,
         pre_prompt_tokens: vector<u32>,
@@ -52,9 +52,8 @@ module atoma::prompts {
         random: &Random,
         ctx: &mut TxContext,
     ) {
-        assert!(coin::value(payment) >= ATOMA_FEE, EInsufficientFee);
-        let fee = sui::coin::split(payment, ATOMA_FEE, ctx);
-        sui::transfer::public_transfer(fee, ATOMA_FEE_RECIPIENT);
+        assert!(coin::value(&payment) == ATOMA_FEE, EMustBeExactFee);
+        sui::transfer::public_transfer(payment, ATOMA_FEE_RECIPIENT);
 
         let mut rng = random.new_generator(ctx);
         let random_seed = rng.generate_u64();
