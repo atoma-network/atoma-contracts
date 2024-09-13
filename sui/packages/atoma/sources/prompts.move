@@ -17,7 +17,6 @@ module atoma::prompts {
 
     use atoma::db::AtomaDb;
     use std::ascii;
-    use std::string;
     use sui::coin::Coin;
     use sui::random::Random;
     use toma::toma::TOMA;
@@ -75,13 +74,15 @@ module atoma::prompts {
 
     /// Submits a text prompt to Atoma network that asks for an image of
     /// a pixel art Colosseum.
-    entry fun generate_nft(
+    entry fun send_image_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
         model: ascii::String,
         output_destination: vector<u8>,
         max_fee_per_input_token: u64,
         max_fee_per_output_pixel: u64,
+        prompt: vector<u8>,
+        uncond_prompt: vector<u8>,
         random: &Random,
         ctx: &mut TxContext,
     ) {
@@ -91,8 +92,6 @@ module atoma::prompts {
         let height = 256;
         let n_steps = 40;
         let num_samples = 2;
-        let prompt = string::utf8(b"Generate a bored ape NFT");
-        let uncond_prompt = string::utf8(b"Shinny, bright, bored, blue background");
         let random_seed = rng.generate_u64();
         let width = 256;
         let img2img_strength = 1065353216; // 1.0

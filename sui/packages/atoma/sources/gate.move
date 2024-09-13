@@ -2,7 +2,6 @@ module atoma::gate {
     use atoma::db::{SmallId, ModelEchelon, AtomaDb};
     use atoma::settlement::SettlementTicket;
     use std::ascii;
-    use std::string;
     use sui::balance::Balance;
     use sui::dynamic_field;
     use toma::toma::TOMA;
@@ -85,7 +84,7 @@ module atoma::gate {
         /// Represents a floating point number, little endian.
         guidance_scale: u32,
         height: u64,
-        img2img: Option<string::String>,
+        img2img: Option<vector<u8>>,
         /// Represents a floating point number, little endian
         img2img_strength: u32,
         model: ascii::String,
@@ -94,9 +93,9 @@ module atoma::gate {
         /// The user pays for each image.
         num_samples: u64,
         output_destination: vector<u8>,
-        prompt: string::String,
+        prompt: vector<u8>,
         random_seed: u64,
-        uncond_prompt: string::String,
+        uncond_prompt: vector<u8>,
         width: u64,
     }
 
@@ -286,14 +285,14 @@ module atoma::gate {
         guidance_scale: u32,
         height: u64,
         img2img_strength: u32,
-        img2img: Option<string::String>,
+        img2img: Option<vector<u8>>,
         model: ascii::String,
         n_steps: u64,
         num_samples: u64,
         output_destination: vector<u8>,
-        prompt: string::String,
+        prompt: vector<u8>,
         random_seed: u64,
-        uncond_prompt: string::String,
+        uncond_prompt: vector<u8>,
         width: u64,
     ): Text2ImagePromptParams {
         Text2ImagePromptParams {
