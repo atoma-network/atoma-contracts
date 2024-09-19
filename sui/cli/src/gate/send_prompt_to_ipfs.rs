@@ -39,10 +39,6 @@ pub(crate) async fn command(
     rmp_serde::encode::write(&mut prompt_encoding, &raw_prompt_json)
         .expect("Failed to rmp encode raw prompt");
 
-    let nodes_to_sample = match nodes_to_sample {
-        Some(nodes_to_sample) => vec![nodes_to_sample.to_string()],
-        None => vec![],
-    };
     let tx = context
         .get_client()
         .await?
@@ -69,7 +65,7 @@ pub(crate) async fn command(
                 SuiJsonValue::new(temperature.to_string().into())?,
                 SuiJsonValue::new(top_k.to_string().into())?,
                 SuiJsonValue::new(top_p.to_string().into())?,
-                SuiJsonValue::new(nodes_to_sample.into())?,
+                SuiJsonValue::new(nodes_to_sample.map(|s| s.to_string()).into())?,
                 SuiJsonValue::from_object_id(SUI_RANDOMNESS_STATE_OBJECT_ID),
             ],
             None,
