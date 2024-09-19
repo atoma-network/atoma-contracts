@@ -84,7 +84,7 @@ module atoma::prompts {
         prompt: vector<u8>,
         uncond_prompt: vector<u8>,
         height: u64,
-        img2img: Option<ascii::String>,
+        img2img: Option<vector<u8>>,
         img2img_strength: u32,
         num_samples: u64,
         n_steps: u64,
