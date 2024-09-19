@@ -33,6 +33,10 @@ pub(crate) async fn command(
     rmp_serde::encode::write(&mut prompt_encoding, &raw_prompt_json)
         .expect("Failed to rmp encode raw prompt");
 
+    let nodes_to_sample = match nodes_to_sample {
+        Some(nodes_to_sample) => vec![nodes_to_sample.to_string()],
+        None => vec![],
+    };
     let tx = context
         .get_client()
         .await?

@@ -38,6 +38,10 @@ pub(crate) async fn command(
     let num_samples = 1;
     let n_steps = 32;
 
+    let nodes_to_sample = match nodes_to_sample {
+        Some(nodes_to_sample) => vec![nodes_to_sample.to_string()],
+        None => vec![],
+    };
     let tx = context
         .get_client()
         .await?
