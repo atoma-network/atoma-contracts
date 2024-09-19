@@ -18,15 +18,11 @@ module atoma::prompts {
     use atoma::db::AtomaDb;
     use std::ascii;
     use std::string;
-    use sui::coin;
     use sui::coin::Coin;
     use sui::random::Random;
     use sui::sui::SUI;
     use toma::toma::TOMA;
 
-
-    const ATOMA_FEE: u64 = 250_000_000; // 0.25 SUI
-    const ATOMA_FEE_RECIPIENT: address = @0xe88fd4d088ca81163ec59813196a33aab710a2f378eef6dc4a8af02ea8e8e3b7;
     const EMustBeExactFee: u64 = 312012_200;
 
     /// Submits an arbitrary text prompt.
@@ -34,7 +30,6 @@ module atoma::prompts {
     entry fun send_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
-        payment: Coin<SUI>,
         model: ascii::String,
         output_destination: vector<u8>,
         pre_prompt_tokens: vector<u32>,
@@ -52,9 +47,6 @@ module atoma::prompts {
         random: &Random,
         ctx: &mut TxContext,
     ) {
-        assert!(coin::value(&payment) == ATOMA_FEE, EMustBeExactFee);
-        sui::transfer::public_transfer(payment, ATOMA_FEE_RECIPIENT);
-
         let mut rng = random.new_generator(ctx);
         let random_seed = rng.generate_u64();
         let params = atoma::gate::create_text2text_prompt_params(
@@ -83,30 +75,29 @@ module atoma::prompts {
         );
     }
 
-    /// Submits a text prompt to Atoma network that asks for an image of
-    /// a pixel art Colosseum.
-    entry fun generate_nft(
+    /// Submits a text prompt to Atoma network to generate a new image
+    entry fun send_image_generation_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
         model: ascii::String,
+        prompt: vector<u8>,
+        uncond_prompt: vector<u8>,
+        height: u64,
+        width: u64,
+        guidance_scale: u32,
+        img2img: Option<vector<u8>>,
+        img2img_strength: u32,
+        num_samples: u64,
+        n_steps: u64,
         output_destination: vector<u8>,
         max_fee_per_input_token: u64,
         max_fee_per_output_pixel: u64,
+        nodes_to_sample: Option<u64>,
         random: &Random,
         ctx: &mut TxContext,
     ) {
         let mut rng = random.new_generator(ctx);
-
-        let guidance_scale = 1065353216; // 1.0
-        let height = 256;
-        let n_steps = 40;
-        let num_samples = 2;
-        let prompt = string::utf8(b"Generate a bored ape NFT");
-        let uncond_prompt = string::utf8(b"Shinny, bright, bored, blue background");
         let random_seed = rng.generate_u64();
-        let width = 256;
-        let img2img_strength = 1065353216; // 1.0
-        let img2img = option::none();
 
         let params = atoma::gate::create_text2image_prompt_params(
             guidance_scale,
@@ -128,13 +119,7 @@ module atoma::prompts {
             params,
             max_fee_per_input_token,
             max_fee_per_output_pixel,
-            // we sample just one node because of the illustrative purposes of
-            // this prompt, so that we can deploy this contract on devnet and
-            // have it produce output without many nodes
-            //
-            // you can set this to none to let Atoma network decide how many
-            // nodes to sample
-            option::some(1),
+            nodes_to_sample,
             output_destination,
             random,
             ctx,

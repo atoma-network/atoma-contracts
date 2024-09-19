@@ -19,6 +19,7 @@ use crate::{
 };
 
 pub(crate) const ATOMA_DB_ID: &str = "ATOMA_DB_ID";
+pub(crate) const ATOMA_DB_OBJECT_ID: &str = "0x47c59c6ad16e0c0724b4a835e06daeea6c6885c49d6458d3727359dae1f2d0ef";
 pub(crate) const ATOMA_PACKAGE_ID: &str = "ATOMA_PACKAGE_ID";
 pub(crate) const FAUCET_ID: &str = "FAUCET_ID";
 pub(crate) const GAS_BUDGET: &str = "GAS_BUDGET";
@@ -198,15 +199,16 @@ impl Context {
     }
 
     pub(crate) async fn get_or_load_atoma_db(&mut self) -> Result<ObjectID> {
-        if let Some(atoma_db_id) = self.conf.atoma_db_id {
-            Ok(atoma_db_id)
-        } else {
-            let package_id = self.unwrap_atoma_package_id();
-            let atoma_db =
-                get_atoma_db(&self.get_client().await?, package_id).await?;
-            self.conf.atoma_db_id = Some(atoma_db);
-            Ok(atoma_db)
-        }
+        // if let Some(atoma_db_id) = self.conf.atoma_db_id {
+        //     Ok(atoma_db_id)
+        // } else {
+        //     let package_id = self.unwrap_atoma_package_id();
+        //     let atoma_db =
+        //         get_atoma_db(&self.get_client().await?, package_id).await?;
+        //     self.conf.atoma_db_id = Some(atoma_db);
+        //     Ok(atoma_db)
+        // }
+        Ok(ObjectID::from_str(ATOMA_DB_OBJECT_ID).unwrap())
     }
 
     pub(crate) async fn get_or_load_faucet_id(&mut self) -> Result<ObjectID> {
@@ -448,13 +450,13 @@ async fn find_toma_token_wallet(
         })
 }
 
-async fn get_atoma_db(
-    client: &SuiClient,
-    package: ObjectID,
-) -> Result<ObjectID> {
-    get_publish_tx_created_object(client, package, DB_MODULE_NAME, DB_TYPE_NAME)
-        .await
-}
+// async fn get_atoma_db(
+//     client: &SuiClient,
+//     package: ObjectID,
+// ) -> Result<ObjectID> {
+//     get_publish_tx_created_object(client, package, DB_MODULE_NAME, DB_TYPE_NAME)
+//         .await
+// }
 
 async fn get_faucet_id(
     client: &SuiClient,

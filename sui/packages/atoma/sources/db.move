@@ -591,7 +591,7 @@ module atoma::db {
             balance::zero()
         } else {
             let p = self.permille_to_slash_node_on_timeout;
-            let amount_to_slash = sui::math::divide_and_round_up(
+            let amount_to_slash = std::u64::divide_and_round_up(
                    collateral * p,
             // -------------------
                        1000
