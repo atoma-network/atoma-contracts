@@ -76,30 +76,29 @@ module atoma::prompts {
         );
     }
 
-    /// Submits a text prompt to Atoma network that asks for an image of
-    /// a pixel art Colosseum.
-    entry fun generate_nft(
+    /// Submits a text prompt to Atoma network to generate a new image
+    entry fun send_image_generation_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
         model: ascii::String,
+        guidance_scale: u32,
+        prompt: vector<u8>,
+        uncond_prompt: vector<u8>,
+        height: u64,
+        img2img: Option<ascii::String>,
+        img2img_strength: u32,
+        num_samples: u64,
+        n_steps: u64,
         output_destination: vector<u8>,
+        width: u64,
         max_fee_per_input_token: u64,
         max_fee_per_output_pixel: u64,
+        nodes_to_sample: Option<u64>,
         random: &Random,
         ctx: &mut TxContext,
     ) {
         let mut rng = random.new_generator(ctx);
-
-        let guidance_scale = 1065353216; // 1.0
-        let height = 256;
-        let n_steps = 40;
-        let num_samples = 2;
-        let prompt = string::utf8(b"Generate a bored ape NFT");
-        let uncond_prompt = string::utf8(b"Shinny, bright, bored, blue background");
         let random_seed = rng.generate_u64();
-        let width = 256;
-        let img2img_strength = 1065353216; // 1.0
-        let img2img = option::none();
 
         let params = atoma::gate::create_text2image_prompt_params(
             guidance_scale,
@@ -121,13 +120,7 @@ module atoma::prompts {
             params,
             max_fee_per_input_token,
             max_fee_per_output_pixel,
-            // we sample just one node because of the illustrative purposes of
-            // this prompt, so that we can deploy this contract on devnet and
-            // have it produce output without many nodes
-            //
-            // you can set this to none to let Atoma network decide how many
-            // nodes to sample
-            option::some(1),
+            nodes_to_sample,
             output_destination,
             random,
             ctx,

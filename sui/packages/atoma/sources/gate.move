@@ -94,9 +94,9 @@ module atoma::gate {
         /// The user pays for each image.
         num_samples: u64,
         output_destination: vector<u8>,
-        prompt: string::String,
+        prompt: vector<u8>,
         random_seed: u64,
-        uncond_prompt: string::String,
+        uncond_prompt: vector<u8>,
         width: u64,
     }
 

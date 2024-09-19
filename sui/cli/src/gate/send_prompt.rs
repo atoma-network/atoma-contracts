@@ -2,7 +2,7 @@ use sui_sdk::types::SUI_RANDOMNESS_STATE_OBJECT_ID;
 
 use crate::{prelude::*, PROMPTS_MODULE_NAME};
 
-const ENDPOINT_NAME: &str = "send_text_prompt_to_ipfs";
+const ENDPOINT_NAME: &str = "send_prompt";
 
 pub(crate) async fn command(
     context: &mut Context,
@@ -27,11 +27,10 @@ pub(crate) async fn command(
     let top_k = 0;
     let top_p = 1065353216; // 1.0 in f32 representation
 
-    let prompt =
-        serde_json::from_value::<Vec<u8>>(serde_json::json!({"raw": prompt}))
-            .expect(
-                "Failed to serialize the submitted prompt to binary format",
-            );
+    let raw_prompt_json = serde_json::json!({"Raw": prompt});
+    let mut prompt_encoding = Vec::new();
+    rmp_serde::encode::write(&mut prompt_encoding, &raw_prompt_json)
+        .expect("Failed to rmp encode raw prompt");
 
     let tx = context
         .get_client()
@@ -51,7 +50,7 @@ pub(crate) async fn command(
                 SuiJsonValue::new(pre_prompt_tokens.into())?,
                 SuiJsonValue::new(prepend_output_with_input.into())?,
                 SuiJsonValue::new(max_fee_per_token.to_string().into())?,
-                SuiJsonValue::new(prompt.into())?,
+                SuiJsonValue::new(prompt_encoding.into())?,
                 SuiJsonValue::new(should_stream_output.into())?,
                 SuiJsonValue::new(max_tokens.to_string().into())?,
                 SuiJsonValue::new(repeat_last_n.to_string().into())?,
