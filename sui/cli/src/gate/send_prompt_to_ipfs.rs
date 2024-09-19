@@ -1,6 +1,5 @@
-use crate::{prelude::*, PROMPTS_MODULE_NAME};
-use bcs;
 use sui_sdk::types::SUI_RANDOMNESS_STATE_OBJECT_ID;
+use crate::{prelude::*, PROMPTS_MODULE_NAME};
 
 const ENDPOINT_NAME: &str = "send_prompt";
 
@@ -40,7 +39,10 @@ pub(crate) async fn command(
     rmp_serde::encode::write(&mut prompt_encoding, &raw_prompt_json)
         .expect("Failed to rmp encode raw prompt");
 
-    let nodes_to_sample = bcs::to_bytes(&value)?;
+    let nodes_to_sample = match nodes_to_sample {
+        Some(nodes_to_sample) => vec![nodes_to_sample],
+        None => vec![],
+    };
     let tx = context
         .get_client()
         .await?
@@ -67,10 +69,7 @@ pub(crate) async fn command(
                 SuiJsonValue::new(temperature.to_string().into())?,
                 SuiJsonValue::new(top_k.to_string().into())?,
                 SuiJsonValue::new(top_p.to_string().into())?,
-                SuiJsonValue::from_bcs_bytes(
-                    Some(&sui_sdk::json::MoveTypeLayout::U64),
-                    &nodes_to_sample,
-                )?,
+                SuiJsonValue::new(nodes_to_sample.into())?,
                 SuiJsonValue::from_object_id(SUI_RANDOMNESS_STATE_OBJECT_ID),
             ],
             None,
