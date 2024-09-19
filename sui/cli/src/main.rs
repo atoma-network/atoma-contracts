@@ -162,123 +162,123 @@ enum DbCmds {
 enum GateCmds {
     /// Sends a text prompt to the network to a user specified output destination
     SendPrompt {
-        #[arg(short, long)]
+        #[arg(long)]
         package: Option<String>,
-        #[arg(short, long)]
+        #[arg(long)]
         model: String,
-        #[arg(short, long)]
+        #[arg(long)]
         prompt: String,
-        #[arg(short, long)]
+        #[arg(long)]
         max_tokens: u64,
-        #[arg(short, long)]
-        temperature: u32,
-        #[arg(short, long)]
+        #[arg(long)]
+        temperature: f32,
+        #[arg(long)]
         output_destination: Vec<u8>,
-        #[arg(short, long)]
+        #[arg(long)]
         max_fee_per_token: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         nodes_to_sample: Option<u64>,
     },
 
     /// Sends a text prompt to the network and stores the output on IPFS
     SendPromptToIpfs {
-        #[arg(short, long)]
+        #[arg(long)]
         package: Option<String>,
-        #[arg(short, long)]
+        #[arg(long)]
         model: String,
-        #[arg(short, long)]
+        #[arg(long)]
         prompt: String,
-        #[arg(short, long)]
+        #[arg(long)]
         max_tokens: u64,
-        #[arg(short, long)]
-        temperature: u32,
-        #[arg(short, long)]
+        #[arg(long)]
+        temperature: f32,
+        #[arg(long)]
         max_fee_per_token: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         nodes_to_sample: Option<u64>,
     },
 
     /// Sends a text prompt to the network and stores the output on Gateway
     SendPromptToGateway {
-        #[arg(short, long)]
+        #[arg(long)]
         package: Option<String>,
-        #[arg(short, long)]
+        #[arg(long)]
         model: String,
-        #[arg(short, long)]
+        #[arg(long)]
         prompt: String,
-        #[arg(short, long)]
+        #[arg(long)]
         max_tokens: u64,
-        #[arg(short, long)]
-        temperature: u32,
-        #[arg(short, long)]
+        #[arg(long)]
+        temperature: f32,
+        #[arg(long)]
         gateway_user_id: String,
-        #[arg(short, long)]
+        #[arg(long)]
         max_fee_per_token: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         nodes_to_sample: Option<u64>,
     },
 
     /// Sends a image generation text prompt to the network with specified output destination
     SendImagePrompt {
-        #[arg(short, long)]
+        #[arg(long)]
         package: Option<String>,
-        #[arg(short, long)]
+        #[arg(long)]
         model: String,
-        #[arg(short, long)]
+        #[arg(long)]
         prompt: String,
-        #[arg(short, long)]
+        #[arg(long)]
         height: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         width: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         max_fee_per_input_token: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         max_fee_per_output_token: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         output_destination: Vec<u8>,
-        #[arg(short, long)]
+        #[arg(long)]
         nodes_to_sample: Option<u64>,
     },
 
     /// Sends a image generation text prompt to the network to be stored on IPFS
     SendImagePromptToIpfs {
-        #[arg(short, long)]
+        #[arg(long)]
         package: Option<String>,
-        #[arg(short, long)]
+        #[arg(long)]
         model: String,
-        #[arg(short, long)]
+        #[arg(long)]
         prompt: String,
-        #[arg(short, long)]
+        #[arg(long)]
         height: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         width: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         max_fee_per_input_token: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         max_fee_per_output_token: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         nodes_to_sample: Option<u64>,
     },
 
     /// Sends a image generation text prompt to the network and stores the output on Gateway
     SendImagePromptToGateway {
-        #[arg(short, long)]
+        #[arg(long)]
         package: Option<String>,
-        #[arg(short, long)]
+        #[arg(long)]
         model: String,
-        #[arg(short, long)]
+        #[arg(long)]
         prompt: String,
-        #[arg(short, long)]
+        #[arg(long)]
         height: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         width: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         gateway_user_id: String,
-        #[arg(short, long)]
+        #[arg(long)]
         max_fee_per_input_token: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         max_fee_per_output_token: u64,
-        #[arg(short, long)]
+        #[arg(long)]
         nodes_to_sample: Option<u64>,
     },
 }

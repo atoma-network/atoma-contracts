@@ -9,7 +9,7 @@ pub(crate) async fn command(
     model: &str,
     prompt: &str,
     max_tokens: u64,
-    temperature: u32,
+    temperature: f32,
     max_fee_per_token: u64,
     output_destination: Vec<u8>,
     nodes_to_sample: Option<u64>,
@@ -26,6 +26,7 @@ pub(crate) async fn command(
     let repeat_penalty = 1065353216; // 1.0 in f32 representation
     let top_k = 0;
     let top_p = 1065353216; // 1.0 in f32 representation
+    let temperature = u32::from_le_bytes(temperature.to_le_bytes());
 
     let raw_prompt_json = serde_json::json!({"Raw": prompt});
     let mut prompt_encoding = Vec::new();
