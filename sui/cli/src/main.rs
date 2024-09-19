@@ -160,23 +160,62 @@ enum DbCmds {
 
 #[derive(Subcommand)]
 enum GateCmds {
-    /// Submits an example prompt to the network.
-    SubmitTellMeAJokePrompt {
+    /// Sends a text prompt to the network to a user specified output destination
+    SendPrompt {
         #[arg(short, long)]
         package: Option<String>,
         #[arg(short, long)]
         model: String,
-        #[arg(long, default_value_t = 1_000)]
+        #[arg(short, long)]
+        prompt: String,
+        #[arg(short, long)]
+        max_tokens: u64,
+        #[arg(short, long)]
+        temperature: u32,
+        #[arg(short, long)]
+        output_destination: Vec<u8>,
+        #[arg(short, long)]
         max_fee_per_token: u64,
+        #[arg(short, long)]
+        nodes_to_sample: Option<u64>,
     },
-    /// Submits an example prompt to the network.
-    SubmitGenerateNftPrompt {
+
+    /// Sends a text prompt to the network and stores the output on IPFS
+    SendPromptToIpfs {
         #[arg(short, long)]
         package: Option<String>,
         #[arg(short, long)]
         model: String,
-        #[arg(long, default_value_t = 1_000)]
+        #[arg(short, long)]
+        prompt: String,
+        #[arg(short, long)]
+        max_tokens: u64,
+        #[arg(short, long)]
+        temperature: u32,
+        #[arg(short, long)]
         max_fee_per_token: u64,
+        #[arg(short, long)]
+        nodes_to_sample: Option<u64>,
+    },
+
+    /// Sends a text prompt to the network and stores the output on Gateway
+    SendPromptToGateway {
+        #[arg(short, long)]
+        package: Option<String>,
+        #[arg(short, long)]
+        model: String,
+        #[arg(short, long)]
+        prompt: String,
+        #[arg(short, long)]
+        max_tokens: u64,
+        #[arg(short, long)]
+        temperature: u32,
+        #[arg(short, long)]
+        gateway_user_id: String,
+        #[arg(short, long)]
+        max_fee_per_token: u64,
+        #[arg(short, long)]
+        nodes_to_sample: Option<u64>,
     },
 }
 
@@ -372,29 +411,71 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
-        Some(Cmds::Gate(GateCmds::SubmitTellMeAJokePrompt {
+        Some(Cmds::Gate(GateCmds::SendPrompt {
             package,
             model,
             max_fee_per_token,
+            max_tokens,
+            prompt,
+            temperature,
+            output_destination,
+            nodes_to_sample,
         })) => {
-            let digest = gate::submit_tell_me_a_joke_prompt(
+            let digest = gate::send_prompt(
                 &mut context.with_optional_atoma_package_id(package),
                 &model,
+                &prompt,
+                max_tokens,
+                temperature,
                 max_fee_per_token,
+                output_destination,
+                nodes_to_sample,
             )
             .await?;
 
             println!("{digest}");
         }
-        Some(Cmds::Gate(GateCmds::SubmitGenerateNftPrompt {
+        Some(Cmds::Gate(GateCmds::SendPromptToIpfs {
             package,
             model,
             max_fee_per_token,
+            max_tokens,
+            prompt,
+            temperature,
+            nodes_to_sample,
         })) => {
-            let digest = gate::submit_generate_nft_prompt(
+            let digest = gate::send_prompt_to_ipfs(
                 &mut context.with_optional_atoma_package_id(package),
                 &model,
+                &prompt,
+                max_tokens,
+                temperature,
                 max_fee_per_token,
+                nodes_to_sample,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Gate(GateCmds::SendPromptToGateway {
+            package,
+            model,
+            prompt,
+            max_tokens,
+            temperature,
+            gateway_user_id,
+            max_fee_per_token,
+            nodes_to_sample,
+        })) => {
+            let digest = gate::send_prompt_to_gateway(
+                &mut context.with_optional_atoma_package_id(package),
+                &model,
+                &prompt,
+                max_tokens,
+                temperature,
+                max_fee_per_token,
+                &gateway_user_id,
+                nodes_to_sample,
             )
             .await?;
 

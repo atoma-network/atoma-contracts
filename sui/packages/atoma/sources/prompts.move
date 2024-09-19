@@ -24,9 +24,6 @@ module atoma::prompts {
     use sui::sui::SUI;
     use toma::toma::TOMA;
 
-
-    const ATOMA_FEE: u64 = 250_000_000; // 0.25 SUI
-    const ATOMA_FEE_RECIPIENT: address = @0xe88fd4d088ca81163ec59813196a33aab710a2f378eef6dc4a8af02ea8e8e3b7;
     const EMustBeExactFee: u64 = 312012_200;
 
     /// Submits an arbitrary text prompt.
@@ -34,7 +31,6 @@ module atoma::prompts {
     entry fun send_prompt(
         atoma: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
-        payment: Coin<SUI>,
         model: ascii::String,
         output_destination: vector<u8>,
         pre_prompt_tokens: vector<u32>,
@@ -52,9 +48,6 @@ module atoma::prompts {
         random: &Random,
         ctx: &mut TxContext,
     ) {
-        assert!(coin::value(&payment) == ATOMA_FEE, EMustBeExactFee);
-        sui::transfer::public_transfer(payment, ATOMA_FEE_RECIPIENT);
-
         let mut rng = random.new_generator(ctx);
         let random_seed = rng.generate_u64();
         let params = atoma::gate::create_text2text_prompt_params(

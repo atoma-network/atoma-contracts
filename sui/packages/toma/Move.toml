@@ -4,7 +4,7 @@
 name = "Toma"
 version = "0.1.0"
 edition = "2024.beta"
-published-at = "0x85b33c1dee78a671da8c7f3b666e8699a8e122865aae37a94b5e3de9499662d7"
+published-at = "0x0"
 
 [dependencies]
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/mainnet" }
@@ -12,4 +12,4 @@ Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fram
 [addresses]
 # when you want to deploy Toma, this must be set to 0x0
 # when you want to deploy Atoma, this must equal published-at
-toma = "0x85b33c1dee78a671da8c7f3b666e8699a8e122865aae37a94b5e3de9499662d7"
+toma = "0x0"
