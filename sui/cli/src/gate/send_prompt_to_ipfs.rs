@@ -1,5 +1,5 @@
-use sui_sdk::types::SUI_RANDOMNESS_STATE_OBJECT_ID;
 use crate::{prelude::*, PROMPTS_MODULE_NAME};
+use sui_sdk::types::SUI_RANDOMNESS_STATE_OBJECT_ID;
 
 const ENDPOINT_NAME: &str = "send_prompt";
 

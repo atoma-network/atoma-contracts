@@ -19,6 +19,7 @@ use crate::{
 };
 
 pub(crate) const ATOMA_DB_ID: &str = "ATOMA_DB_ID";
+pub(crate) const ATOMA_DB_OBJECT_ID: &str = "0x47c59c6ad16e0c0724b4a835e06daeea6c6885c49d6458d3727359dae1f2d0ef";
 pub(crate) const ATOMA_PACKAGE_ID: &str = "ATOMA_PACKAGE_ID";
 pub(crate) const FAUCET_ID: &str = "FAUCET_ID";
 pub(crate) const GAS_BUDGET: &str = "GAS_BUDGET";
@@ -207,7 +208,7 @@ impl Context {
         //     self.conf.atoma_db_id = Some(atoma_db);
         //     Ok(atoma_db)
         // }
-        Ok(ObjectID::from_str("0x47c59c6ad16e0c0724b4a835e06daeea6c6885c49d6458d3727359dae1f2d0ef").unwrap())
+        Ok(ObjectID::from_str(ATOMA_DB_OBJECT_ID).unwrap())
     }
 
     pub(crate) async fn get_or_load_faucet_id(&mut self) -> Result<ObjectID> {
