@@ -41,46 +41,6 @@ pub(crate) async fn command(
     rmp_serde::encode::write(&mut prompt_encoding, &raw_prompt_json)
         .expect("Failed to rmp encode raw prompt");
 
-    let call_args = if let Some(nodes_to_sample) = nodes_to_sample {
-        vec![
-            SuiJsonValue::from_object_id(atoma_db),
-            SuiJsonValue::from_object_id(toma_wallet),
-            SuiJsonValue::new(model.into())?,
-            SuiJsonValue::new(output_destination_encoding.into())?,
-            SuiJsonValue::new(pre_prompt_tokens.into())?,
-            SuiJsonValue::new(prepend_output_with_input.into())?,
-            SuiJsonValue::new(max_fee_per_token.to_string().into())?,
-            SuiJsonValue::new(prompt_encoding.into())?,
-            SuiJsonValue::new(should_stream_output.into())?,
-            SuiJsonValue::new(max_tokens.to_string().into())?,
-            SuiJsonValue::new(repeat_last_n.to_string().into())?,
-            SuiJsonValue::new(repeat_penalty.to_string().into())?,
-            SuiJsonValue::new(temperature.to_string().into())?,
-            SuiJsonValue::new(top_k.to_string().into())?,
-            SuiJsonValue::new(top_p.to_string().into())?,
-            SuiJsonValue::new(nodes_to_sample.to_string().into())?,
-            SuiJsonValue::from_object_id(SUI_RANDOMNESS_STATE_OBJECT_ID),
-        ]
-    } else {
-        vec![
-            SuiJsonValue::from_object_id(atoma_db),
-            SuiJsonValue::from_object_id(toma_wallet),
-            SuiJsonValue::new(model.into())?,
-            SuiJsonValue::new(output_destination_encoding.into())?,
-            SuiJsonValue::new(pre_prompt_tokens.into())?,
-            SuiJsonValue::new(prepend_output_with_input.into())?,
-            SuiJsonValue::new(max_fee_per_token.to_string().into())?,
-            SuiJsonValue::new(prompt_encoding.into())?,
-            SuiJsonValue::new(should_stream_output.into())?,
-            SuiJsonValue::new(max_tokens.to_string().into())?,
-            SuiJsonValue::new(repeat_last_n.to_string().into())?,
-            SuiJsonValue::new(repeat_penalty.to_string().into())?,
-            SuiJsonValue::new(temperature.to_string().into())?,
-            SuiJsonValue::new(top_k.to_string().into())?,
-            SuiJsonValue::new(top_p.to_string().into())?,
-            SuiJsonValue::from_object_id(SUI_RANDOMNESS_STATE_OBJECT_ID),
-        ]
-    };
     let tx = context
         .get_client()
         .await?
@@ -91,7 +51,25 @@ pub(crate) async fn command(
             PROMPTS_MODULE_NAME,
             ENDPOINT_NAME,
             vec![],
-            call_args,
+            vec![
+                SuiJsonValue::from_object_id(atoma_db),
+                SuiJsonValue::from_object_id(toma_wallet),
+                SuiJsonValue::new(model.into())?,
+                SuiJsonValue::new(output_destination_encoding.into())?,
+                SuiJsonValue::new(pre_prompt_tokens.into())?,
+                SuiJsonValue::new(prepend_output_with_input.into())?,
+                SuiJsonValue::new(max_fee_per_token.to_string().into())?,
+                SuiJsonValue::new(prompt_encoding.into())?,
+                SuiJsonValue::new(should_stream_output.into())?,
+                SuiJsonValue::new(max_tokens.to_string().into())?,
+                SuiJsonValue::new(repeat_last_n.to_string().into())?,
+                SuiJsonValue::new(repeat_penalty.to_string().into())?,
+                SuiJsonValue::new(temperature.to_string().into())?,
+                SuiJsonValue::new(top_k.to_string().into())?,
+                SuiJsonValue::new(top_p.to_string().into())?,
+                SuiJsonValue::new(nodes_to_sample.into())?,
+                SuiJsonValue::from_object_id(SUI_RANDOMNESS_STATE_OBJECT_ID),
+            ],
             None,
             context.gas_budget(),
             None,
