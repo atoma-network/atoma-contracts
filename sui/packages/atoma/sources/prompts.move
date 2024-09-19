@@ -18,7 +18,6 @@ module atoma::prompts {
     use atoma::db::AtomaDb;
     use std::ascii;
     use std::string;
-    use sui::coin;
     use sui::coin::Coin;
     use sui::random::Random;
     use sui::sui::SUI;

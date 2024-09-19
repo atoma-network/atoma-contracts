@@ -28,9 +28,12 @@ pub(crate) async fn command(
     let top_p = 1065353216; // 1.0 in f32 representation
 
     let output_destination = serde_json::json!({"Gateway": gateway_user_id}); // transaction id is just if we need to retrieve the image for a frontend UI
-    let mut output_destiation_encoding = Vec::new();
-    rmp_serde::encode::write(&mut output_destination_encoding, &output_destination)
-        .expect("Failed to rmp encode output destination");
+    let mut output_destination_encoding = Vec::new();
+    rmp_serde::encode::write(
+        &mut output_destination_encoding,
+        &output_destination,
+    )
+    .expect("Failed to rmp encode output destination");
 
     let raw_prompt_json = serde_json::json!({"Raw": prompt});
     let mut prompt_encoding = Vec::new();

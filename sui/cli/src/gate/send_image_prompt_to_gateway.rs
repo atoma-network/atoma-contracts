@@ -2,15 +2,17 @@ use sui_sdk::types::SUI_RANDOMNESS_STATE_OBJECT_ID;
 
 use crate::{prelude::*, PROMPTS_MODULE_NAME};
 
-const ENDPOINT_NAME: &str = "send_prompt";
+const ENDPOINT_NAME: &str = "send_image_generation_prompt";
 
 pub(crate) async fn command(
     context: &mut Context,
     model: &str,
     prompt: &str,
-    max_tokens: u64,
-    temperature: u32,
-    max_fee_per_token: u64,
+    height: u64,
+    width: u64,
+    gateway_user_id: &str,
+    max_fee_per_input_token: u64,
+    max_fee_per_output_token: u64,
     nodes_to_sample: Option<u64>,
 ) -> Result<TransactionDigest> {
     let active_address = context.wallet.active_address()?;
@@ -18,13 +20,17 @@ pub(crate) async fn command(
     let atoma_db = context.get_or_load_atoma_db().await?;
     let toma_wallet = context.get_or_load_toma_wallet().await?;
 
-    let pre_prompt_tokens: Vec<u32> = vec![];
-    let prepend_output_with_input = true;
-    let should_stream_output = false;
-    let repeat_last_n = 0;
-    let repeat_penalty = 1065353216; // 1.0 in f32 representation
-    let top_k = 0;
-    let top_p = 1065353216; // 1.0 in f32 representation
+    let output_destination = serde_json::json!({"Gateway": gateway_user_id}); // transaction id is just if we need to retrieve the image for a frontend UI
+    let mut output_destination_encoding = Vec::new();
+    rmp_serde::encode::write(
+        &mut output_destination_encoding,
+        &output_destination,
+    )
+    .expect("Failed to rmp encode output destination");
+    let raw_prompt_json = serde_json::json!({"Raw": prompt});
+    let mut prompt_encoding = Vec::new();
+    rmp_serde::encode::write(&mut prompt_encoding, &raw_prompt_json)
+        .expect("Failed to rmp encode raw prompt");
 
     let output_destination = serde_json::json!({"Ipfs": ""}); // transaction id is just if we need to retrieve the image for a frontend UI
     let mut output_destination_encoding = Vec::new();
@@ -34,10 +40,11 @@ pub(crate) async fn command(
     )
     .expect("Failed to rmp encode output destination");
 
-    let raw_prompt_json = serde_json::json!({"Raw": prompt});
-    let mut prompt_encoding = Vec::new();
-    rmp_serde::encode::write(&mut prompt_encoding, &raw_prompt_json)
-        .expect("Failed to rmp encode raw prompt");
+    let guidance_scale = 1065353216; // 1.0
+    let img2img_strength = 0;
+    let img2img: Option<String> = None;
+    let num_samples = 1;
+    let n_steps = 32;
 
     let tx = context
         .get_client()
@@ -53,18 +60,18 @@ pub(crate) async fn command(
                 SuiJsonValue::from_object_id(atoma_db),
                 SuiJsonValue::from_object_id(toma_wallet),
                 SuiJsonValue::new(model.into())?,
+                SuiJsonValue::new(guidance_scale.to_string().into())?,
+                SuiJsonValue::new(prompt.into())?,
+                SuiJsonValue::new("".into())?,
+                SuiJsonValue::new(height.to_string().into())?,
+                SuiJsonValue::new(img2img.into())?,
+                SuiJsonValue::new(img2img_strength.to_string().into())?,
+                SuiJsonValue::new(num_samples.to_string().into())?,
+                SuiJsonValue::new(n_steps.to_string().into())?,
                 SuiJsonValue::new(output_destination_encoding.into())?,
-                SuiJsonValue::new(pre_prompt_tokens.into())?,
-                SuiJsonValue::new(prepend_output_with_input.into())?,
-                SuiJsonValue::new(max_fee_per_token.to_string().into())?,
-                SuiJsonValue::new(prompt_encoding.into())?,
-                SuiJsonValue::new(should_stream_output.into())?,
-                SuiJsonValue::new(max_tokens.to_string().into())?,
-                SuiJsonValue::new(repeat_last_n.to_string().into())?,
-                SuiJsonValue::new(repeat_penalty.to_string().into())?,
-                SuiJsonValue::new(temperature.to_string().into())?,
-                SuiJsonValue::new(top_k.to_string().into())?,
-                SuiJsonValue::new(top_p.to_string().into())?,
+                SuiJsonValue::new(width.to_string().into())?,
+                SuiJsonValue::new(max_fee_per_input_token.to_string().into())?,
+                SuiJsonValue::new(max_fee_per_output_token.to_string().into())?,
                 SuiJsonValue::new(nodes_to_sample.into())?,
                 SuiJsonValue::from_object_id(SUI_RANDOMNESS_STATE_OBJECT_ID),
             ],

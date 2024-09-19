@@ -601,7 +601,7 @@ module atoma::settlement {
             };
         };
 
-        let oracle_reward = sui::math::divide_and_round_up(
+        let oracle_reward = std::u64::divide_and_round_up(
             confiscated_total.value() * atoma.get_permille_for_oracle_on_dispute(),
         // ----------------------------------------------------------------------
                                 1000

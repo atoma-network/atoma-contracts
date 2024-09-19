@@ -217,6 +217,70 @@ enum GateCmds {
         #[arg(short, long)]
         nodes_to_sample: Option<u64>,
     },
+
+    /// Sends a image generation text prompt to the network with specified output destination
+    SendImagePrompt {
+        #[arg(short, long)]
+        package: Option<String>,
+        #[arg(short, long)]
+        model: String,
+        #[arg(short, long)]
+        prompt: String,
+        #[arg(short, long)]
+        height: u64,
+        #[arg(short, long)]
+        width: u64,
+        #[arg(short, long)]
+        max_fee_per_input_token: u64,
+        #[arg(short, long)]
+        max_fee_per_output_token: u64,
+        #[arg(short, long)]
+        output_destination: Vec<u8>,
+        #[arg(short, long)]
+        nodes_to_sample: Option<u64>,
+    },
+
+    /// Sends a image generation text prompt to the network to be stored on IPFS
+    SendImagePromptToIpfs {
+        #[arg(short, long)]
+        package: Option<String>,
+        #[arg(short, long)]
+        model: String,
+        #[arg(short, long)]
+        prompt: String,
+        #[arg(short, long)]
+        height: u64,
+        #[arg(short, long)]
+        width: u64,
+        #[arg(short, long)]
+        max_fee_per_input_token: u64,
+        #[arg(short, long)]
+        max_fee_per_output_token: u64,
+        #[arg(short, long)]
+        nodes_to_sample: Option<u64>,
+    },
+
+    /// Sends a image generation text prompt to the network and stores the output on Gateway
+    SendImagePromptToGateway {
+        #[arg(short, long)]
+        package: Option<String>,
+        #[arg(short, long)]
+        model: String,
+        #[arg(short, long)]
+        prompt: String,
+        #[arg(short, long)]
+        height: u64,
+        #[arg(short, long)]
+        width: u64,
+        #[arg(short, long)]
+        gateway_user_id: String,
+        #[arg(short, long)]
+        max_fee_per_input_token: u64,
+        #[arg(short, long)]
+        max_fee_per_output_token: u64,
+        #[arg(short, long)]
+        nodes_to_sample: Option<u64>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -475,6 +539,82 @@ async fn main() -> Result<()> {
                 temperature,
                 max_fee_per_token,
                 &gateway_user_id,
+                nodes_to_sample,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Gate(GateCmds::SendImagePrompt {
+            package,
+            model,
+            prompt,
+            height,
+            width,
+            max_fee_per_input_token,
+            max_fee_per_output_token,
+            output_destination,
+            nodes_to_sample,
+        })) => {
+            let digest = gate::send_image_prompt(
+                &mut context.with_optional_atoma_package_id(package),
+                &model,
+                &prompt,
+                height,
+                width,
+                max_fee_per_input_token,
+                max_fee_per_output_token,
+                output_destination,
+                nodes_to_sample,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Gate(GateCmds::SendImagePromptToIpfs {
+            package,
+            model,
+            prompt,
+            height,
+            width,
+            max_fee_per_input_token,
+            max_fee_per_output_token,
+            nodes_to_sample,
+        })) => {
+            let digest = gate::send_image_prompt_to_ipfs(
+                &mut context.with_optional_atoma_package_id(package),
+                &model,
+                &prompt,
+                height,
+                width,
+                max_fee_per_input_token,
+                max_fee_per_output_token,
+                nodes_to_sample,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Gate(GateCmds::SendImagePromptToGateway {
+            package,
+            model,
+            prompt,
+            height,
+            width,
+            max_fee_per_input_token,
+            max_fee_per_output_token,
+            gateway_user_id,
+            nodes_to_sample,
+        })) => {
+            let digest = gate::send_image_prompt_to_gateway(
+                &mut context.with_optional_atoma_package_id(package),
+                &model,
+                &prompt,
+                height,
+                width,
+                &gateway_user_id,
+                max_fee_per_input_token,
+                max_fee_per_output_token,
                 nodes_to_sample,
             )
             .await?;
