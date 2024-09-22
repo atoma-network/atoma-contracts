@@ -19,7 +19,7 @@ use crate::{
 };
 
 pub(crate) const ATOMA_DB_ID: &str = "ATOMA_DB_ID";
-pub(crate) const ATOMA_DB_OBJECT_ID: &str = "0x47c59c6ad16e0c0724b4a835e06daeea6c6885c49d6458d3727359dae1f2d0ef";
+pub(crate) const ATOMA_DB_OBJECT_ID: &str = "0xb61a9e740d9647f2a121cfe101e9de59bc9d3de6b1eb088124a0f4a2677258b3";
 pub(crate) const ATOMA_PACKAGE_ID: &str = "ATOMA_PACKAGE_ID";
 pub(crate) const FAUCET_ID: &str = "FAUCET_ID";
 pub(crate) const GAS_BUDGET: &str = "GAS_BUDGET";

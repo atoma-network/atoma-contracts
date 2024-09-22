@@ -75,6 +75,73 @@ module atoma::prompts {
         );
     }
 
+    /// Submits a chat request to the Atoma network to start a new chat session between the user and a node
+    entry fun start_chat_sesion(
+        atoma: &mut AtomaDb,
+        wallet: &mut Coin<TOMA>,
+        model: ascii::String,
+        max_fee_per_token: u64,
+        max_input_tokens: u64,
+        max_messages: u64,
+        max_output_tokens: u64,
+        output_destination: vector<u8>,
+        random: &Random,
+        ctx: &mut TxContext,
+    ) {
+        let mut rng = random.new_generator(ctx);
+        let random_seed = rng.generate_u64();
+        let params = atoma::gate::create_chat_session_params(
+            max_input_tokens,
+            max_messages,
+            max_output_tokens, 
+            model,
+            random_seed,
+        ):
+        atoma::gate::submit_text2text_chat_session(
+            atoma,
+            wallet,
+            params,
+            max_fee_per_token,
+            output_destination,
+            random,
+            ctx,
+        );
+    }
+
+    /// Submits an OpenAI api call to the Atoma network to start a new chat session between the user and a node
+    entry fun start_openai_api_call(
+        atoma: &mut AtomaDb,
+        wallet: &mut Coin<TOMA>,
+        model: ascii::String,
+        max_fee_per_input_token: u64,
+        max_fee_per_output_token: u64,
+        max_input_tokens: u64,
+        max_messages: u64,
+        max_output_tokens: u64,
+        output_destination: vector<u8>,
+        random: &Random,
+        ctx: &mut TxContext,
+    ) {
+        let mut rng = random.new_generator(ctx);
+        let random_seed = rng.generate_u64();
+        let params = atoma::gate::create_openai_api_call_params(
+            max_input_tokens,
+            max_messages,
+            max_output_tokens, 
+            model,
+        ):
+        atoma::gate::submit_openai_api_call(
+            atoma,
+            wallet,
+            params,
+            max_fee_per_input_token,
+            max_fee_per_output_token,
+            output_destination,
+            random,
+            ctx,
+        );
+    }
+
     /// Submits a text prompt to Atoma network to generate a new image
     entry fun send_image_generation_prompt(
         atoma: &mut AtomaDb,
