@@ -14,6 +14,7 @@ module atoma::gate {
     const ENoEligibleEchelons: u64 = EBase + 0;
     const ETooManyNodesToSample: u64 = EBase + 1;
     const EModalityMismatch: u64 = EBase + 2;
+    const ECrossValidationSelectedNode: u64 = EBase + 3;
 
     /// Models that take text as input and return text as output.
     /// Be careful about changing this as clients rely on this value.
@@ -75,8 +76,86 @@ module atoma::gate {
     }
 
     #[allow(unused_field)]
+    /// Serves as an input to the `submit_chat_session` function.
+    /// Is also included with the emitted `ChatSessionEvent`.
+    ///
+    /// Float numbers are converted to `u32` with
+    /// `u32::from_le_bytes(xxx_f32.to_le_bytes())`
+    public struct ChatSessionParams has store, copy, drop {
+        /// The maximum number of input prompt tokens,
+        /// within this chat session.
+        max_input_tokens: u64,
+        /// The maximum number of total generated output
+        /// tokens within the chat session.
+        max_output_tokens: u64,
+        /// Maximum number of messages to be submitted within the
+        /// corresponding Chat session
+        max_messages: u64,
+        /// The corresponding model name for the chat session
+        model: ascii::String,
+        /// The random seed for the entire chat session
+        random_seed: u64,
+    }
+
+    #[allow(unused_field)]
+    /// This event is emitted when a chat session is requested from a user
+    ///
+    /// Chat sessions are processed by a single node, and verified through
+    /// `CrossSamplingConsensus`, meaning that the contract will choose with
+    /// probability `p` if an entire committed chat session has to be further
+    /// attested. 
+    public struct ChatSessionEvent has copy, drop { 
+        /// The ID of the of the settlement object
+        ticket_id: ID,
+        /// The parameters of the chat session that the selected node must evaluate to
+        params: ChatSessionParams,
+        /// Selected node for the chat session, through Cross-Validation Sampling Consensus.
+        /// It should be of length 1
+        selected_node: vector<SmallId>, 
+        /// This is the output destination where the output will be stored. The output is serialized with a MessagePack.
+        output_destination: vector<u8>,
+    }
+
+    #[allow(unused_field)]
+    /// Serves as an input to the `submit_openai_api_call` function.
+    /// Is also included with the emitted `OpenAiApiCallEvent`.
+    public struct OpenAiApiCallParams has store, copy, drop { 
+        /// The maximum number of input prompt tokens,
+        /// within this chat session.
+        max_input_tokens: u64,
+        /// The maximum number of total generated output
+        /// tokens within the chat session.
+        max_output_tokens: u64,
+        /// Maximum number of messages to be submitted within the
+        /// corresponding Chat session
+        max_messages: u64,
+        /// The corresponding model name for the chat session
+        model: ascii::String,
+    }
+
+    #[allow(unused_field)]
+    /// This event is emitted when a open ai api call is requested from a user
+    ///
+    /// OpenAI sessions are processed by a single node, and verified through
+    /// `CrossSamplingConsensus`, meaning that the contract will choose with
+    /// probability `p` if an entire committed chat session has to be further
+    /// attested. 
+    public struct OpenAiApiCallEvent has copy, drop {
+        /// The ID of the of the settlement object
+        ticket_id: ID,
+        /// The parameters of the chat session that the selected node must evaluate to
+        params: ChatSessionParams,
+        /// Selected node for the chat session, through Cross-Validation Sampling Consensus.
+        /// It should be of length 1
+        selected_node: vector<SmallId>, 
+        /// This is the output destination where the output will be stored. The output is serialized with a MessagePack.
+        output_destination: vector<u8>,
+    }
+
+
+    #[allow(unused_field)]
     /// Serves as an input to the `submit_text2image_prompt` function.
-    /// Is also included with the emitted `Text2TePromptEvent`.
+    /// Is also included with the emitted `Text2ImagePromptEvent`.
     ///
     /// Float numbers are converted into u32 with
     /// `u32::from_le_bytes(xxx_f32.to_le_bytes())`
@@ -190,6 +269,117 @@ module atoma::gate {
     }
 
     #[allow(lint(public_random))]
+    /// The fee per input token is the prompt fee
+    ///
+    /// Returns ticket ID which is an identifier of the settlement object.
+    ///
+    /// # Randomness safety
+    /// - random is used to sample nodes
+    /// - user cannot get the list of selected node(s) within the same transaction
+    public fun submit_text2text_chat_session(
+        atoma: &mut AtomaDb,
+        wallet: &mut Balance<TOMA>,
+        params: ChatSessionParams,
+        max_fee_per_token: u64,
+        output_destination: vec<u8>,
+        random: &sui::random::Random,
+        ctx: &mut TxContext,
+    ): ID {
+        let mut rng = random.new_generator(ctx);
+
+        // Submit the chat session event
+        let (mut ticket, chunks_count, selected_node) = submit_prompt(
+            atoma,
+            wallet,
+            params.model,
+            Text2TextModality,
+            max_fee_per_token,
+            params.max_input_tokens,
+            max_fee_per_token,
+            params.max_output_tokens,
+            option::none(), // Cross-Validation Sampling Consensus
+            &mut rng,
+            ctx,
+        );
+
+        assert!(selected_node.len() == 1, ECrossValidationSelectedNode);
+
+        // adds a dynfield to the ticket so that off chain can read the params
+        // with a query (alternative is to query for the first event mentioning
+        // the ticket id)
+        dynamic_field::add(ticket.ticket_uid(), ascii::string(b"params"), params);
+
+        let ticket_id = object::id(&ticket);
+        atoma::settlement::return_settlement_ticket(atoma, ticket);
+
+        sui::event::emit(ChatSessionEvent {
+            ticket_id,
+            params,
+            selected_node,
+            output_destination,
+        });
+
+        ticket_id
+    }
+
+     #[allow(lint(public_random))]
+    /// The fee per input token is the fee for processing each prompt tokens
+    /// The fee per output token is the fee for processing the output tokens,
+    /// in the decoding phase.
+    ///
+    /// Returns ticket ID which is an identifier of the settlement object.
+    ///
+    /// # Randomness safety
+    /// - random is used to sample nodes
+    /// - user cannot get the list of selected node(s) within the same transaction
+    public fun submit_openai_api_call(
+        atoma: &mut AtomaDb,
+        wallet: &mut Balance<TOMA>,
+        params: OpenAiApiCallParams,
+        max_fee_per_input_token: u64,
+        max_fee_per_output_token: u64,
+        output_destination: vec<u8>,
+        random: &sui::random::Random,
+        ctx: &mut TxContext,
+    ): ID {
+        let mut rng = random.new_generator(ctx);
+
+        // Submit the chat session event
+        let (mut ticket, chunks_count, selected_node) = submit_prompt(
+            atoma,
+            wallet,
+            params.model,
+            Text2TextModality, // For now we only support text to text modality
+            max_fee_per_input_token,
+            params.max_input_tokens,
+            max_fee_per_output_token,
+            params.max_output_tokens,
+            option::none(), // Cross-Validation Sampling Consensus
+            &mut rng,
+            ctx,
+        );
+
+        assert!(selected_node.len() == 1, ECrossValidationSelectedNode);
+
+        // adds a dynfield to the ticket so that off chain can read the params
+        // with a query (alternative is to query for the first event mentioning
+        // the ticket id)
+        dynamic_field::add(ticket.ticket_uid(), ascii::string(b"params"), params);
+
+        let ticket_id = object::id(&ticket);
+        atoma::settlement::return_settlement_ticket(atoma, ticket);
+
+        sui::event::emit(OpenAiApiCallEvent {
+            ticket_id,
+            params,
+            selected_node,
+            output_destination,
+        });
+
+        ticket_id
+    }
+
+    #[allow(lint(public_random))]
     /// The fee per input token is the prompt fee.
     /// The fee per output token is how much does one image cost.
     ///
@@ -277,6 +467,38 @@ module atoma::gate {
             temperature,
             top_k,
             top_p,
+        }
+    }
+
+    /// Arguments to `ChatSessionParams` in alphabetical order.
+    public fun create_chat_session_params(
+        max_input_tokens: u64,
+        max_messages: u64,
+        max_output_tokens: u64, 
+        model: ascii::String,
+        random_seed: u64,
+    ): ChatSessionParams { 
+        ChatSessionParams { 
+            max_input_tokens,
+            max_output_tokens,
+            max_messages,
+            model,
+            random_seed,
+        }
+    }
+
+    /// Arguments to `OpenAiApiParams` in alphabetical order
+    public fun create_openai_api_call_params(
+        max_input_tokens: u64,
+        max_messages: u64,
+        max_output_tokens: u64, 
+        model: ascii::String,
+    ): OpenAiApiCallParams { 
+        OpenAiApiCallParams { 
+            max_input_tokens,
+            max_output_tokens,
+            max_messages,
+            model,
         }
     }
 
