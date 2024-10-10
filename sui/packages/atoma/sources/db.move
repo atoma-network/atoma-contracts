@@ -37,6 +37,75 @@ module atoma::db {
     /// How many extra nodes to sample when cross validating.
     const InitialCrossValidationExtraNodesCount: u64 = 1;
 
+    /// Predefined values for task roles.
+    const TASK_ROLE_INFERENCE: u16 = 0;
+    const TASK_ROLE_EMBEDDING: u16 = 1;
+    const TASK_ROLE_FINE_TUNING: u16 = 2;
+    const TASK_ROLE_TRAINING: u16 = 3;
+
+    /// Predefined values for ComputeUnit types.
+    /// Text token compute unit, it can either be input or output   
+    const COMPUTE_UNIT_TEXT_TOKEN: u16 = 0;
+    /// Image pixel compute unit, it can either be input or output
+    const COMPUTE_UNIT_IMAGE_PIXEL: u16 = 1;
+    /// Audio second compute unit
+    const COMPUTE_UNIT_AUDIO_SECOND: u16 = 2;
+    /// Video second compute unit
+    const COMPUTE_UNIT_VIDEO_SECOND: u16 = 3;
+    /// Video frame compute unit
+    const COMPUTE_UNIT_VIDEO_FRAME: u16 = 4;
+    /// Speech second compute unit
+    const COMPUTE_UNIT_SPEECH_SECOND: u16 = 5;
+    /// Embedding vector compute unit
+    const COMPUTE_UNIT_EMBEDDING_VECTOR: u16 = 6;
+    /// GPU hour compute unit
+    const COMPUTE_UNIT_GPU_HOUR: u16 = 7;
+    /// Data point compute unit
+    const COMPUTE_UNIT_DATA_POINT: u16 = 8;
+    /// Training sample compute unit
+
+    /// Predefined values for Modality types.
+    /// Text to text modality
+    const MODALITY_TEXT_TO_TEXT: u16 = 0;
+    /// Text to image modality
+    const MODALITY_TEXT_TO_IMAGE: u16 = 1;
+    /// Image to text modality
+    const MODALITY_IMAGE_TO_TEXT: u16 = 2;
+    /// Text to video modality
+    const MODALITY_TEXT_TO_VIDEO: u16 = 3;
+    /// Video to text modality
+    const MODALITY_VIDEO_TO_TEXT: u16 = 4;
+    /// Text to speech modality
+    const MODALITY_TEXT_TO_SPEECH: u16 = 6;
+    /// Vector embedding modality
+    const MODALITY_VECTOR_EMBEDDING: u16 = 7;
+    /// Fine tuning modality
+    const MODALITY_FINE_TUNING: u16 = 8;
+    /// Text to audio modality
+    const MODALITY_TEXT_TO_AUDIO: u16 = 9;
+
+    /// Predefined values for Optimization types.
+    /// No optimization
+    const OPTIMIZATION_NONE: u16 = 0;
+    /// Use Flash Attention
+    const OPTIMIZATION_FLASH_ATTENTION: u16 = 1;
+    /// Prompt caching
+    const OPTIMIZATION_PROMPT_CACHING: u16 = 2;
+    /// Quantization
+    const OPTIMIZATION_QUANTIZATION: u16 = 3;
+    /// Pruning
+    const OPTIMIZATION_PRUNING: u16 = 4;
+    /// Speculative decoding
+    const OPTIMIZATION_SPECULATIVE_DECODING: u16 = 5;
+
+    /// Predefined values for Security levels.
+    /// No security guarantees, equivalent to verifiability and privacy
+    const SECURITY_NONE: u16 = 0;
+    /// Sampling consensus verification
+    const SAMPLING_CONSENSUS: u16 = 0;
+    /// Trusted execution environment security for both data privacy and verifiability
+    const PRIVACY_TEE: u16 = 1;
+
     /// To be able to identify the errors faster in the logs, we start the
     /// counter from a number that's leet for "error_000".
     const EBase: u64 = 312012_000;
@@ -77,6 +146,13 @@ module atoma::db {
         node_small_id: SmallId,
     }
 
+    public struct NodeSubscriberToTaskEvent has copy, drop {
+        /// Unique ID of the task at hand
+        task_id: UID,
+        node_small_id: SmallId,
+        echelon_id: EchelonId,
+    }
+
     public struct NodeSubscribedToModelEvent has copy, drop {
         node_small_id: SmallId,
         model_name: ascii::String,
@@ -108,6 +184,75 @@ module atoma::db {
         inner: u64,
     }
 
+    /// Represents a computational task on the Atoma network.
+    /// Tasks can include model inference, text embeddings, fine-tuning, training,
+    /// or other arbitrary computations.
+    public struct Task has store, copy {
+        /// The (optional) address of the user who created the task
+        owner: Option<address>,
+        /// The specific role or purpose of the task (e.g., "inference", "embedding", "fine-tuning")
+        role: TaskRole,
+        /// An optional unique identifier for a `ModelEntry`, if the task is associated with a particular model
+        model_id: Option<UID>,
+        /// The modality of the task, defining the type of input and output (e.g., text-to-text, text-to-image)
+        modality: Modality,
+        /// Maximum price (in TOMA tokens) per unit of compute for the task's input
+        /// This sets an upper limit on what the task creator is willing to pay for input processing
+        max_input_price_per_unit: u64,
+        /// Maximum price (in TOMA tokens) per unit of compute for the task's output
+        /// This sets an upper limit on what the task creator is willing to pay for output generation
+        max_output_price_per_unit: u64,
+        /// The unit of compute for the task's input (e.g., text tokens, image pixels)
+        /// This defines how input computation is measured and priced
+        input_unit: ComputeUnit,
+        /// The unit of compute for the task's output (e.g., text tokens, image pixels)
+        /// This defines how output computation is measured and priced
+        output_unit: ComputeUnit,
+        /// Indicates whether the task is deprecated and should no longer be used
+        /// Deprecated tasks may be kept for historical reasons but should not be assigned to nodes
+        is_deprecated: bool,
+        /// The epoch until which this task is valid (inclusive)
+        /// If Some(epoch), the task expires after this epoch. If None, the task doesn't expire
+        valid_until_epoch: Option<u64>,
+        /// Unique set of optimizations that can be applied to the task
+        optimizations: Option<vector<Optimization>>,
+        /// Security level for the task
+        security_level: Option<SecurityLevel>,
+        /// White list of addresses that can request execution of the task
+        whitelisted_requesters: Option<VecSet<address>>,
+    }
+
+    /// Represents the role or purpose of a computational task in the Atoma network.
+    /// Each role is associated with a specific type of operation or computation,
+    /// according to the predefined values above.
+    public struct TaskRole has store, copy, drop { 
+        inner: u16,
+    }
+
+    /// The modality for a task
+    public struct Modality has store, copy, drop { 
+        inner: u16,
+    }
+
+    /// The unit of compute for a task
+    public struct ComputeUnit has store, copy, drop {
+        /// An integer representation of the compute unit type.
+        unit_type: u16,
+        /// An optional count for units that require it (e.g., number of tokens).
+        /// If the unit does not require a count, the value is defaulted to 1.
+        count: Option<u64>,
+    }
+
+    /// Optimization for a task
+    public struct Optimization has store, copy, drop {
+        inner: u16,
+    }
+
+    /// Security level for a task
+    public struct SecurityLevel has store, copy, drop {
+        inner: u16,
+    }
+
     /// Shared object.
     ///
     /// Database of the package.
@@ -118,6 +263,7 @@ module atoma::db {
     /// - random node selection per model
     /// - O(1) access to node metadata
     /// - O(1) access to model
+    /// - O(1) access to tasks
     public struct AtomaDb has key {
         id: UID,
         /// Settlement is done via tickets that are associated with the
@@ -128,10 +274,15 @@ module atoma::db {
         /// We keep track of total registered nodes so that we can generate
         /// SmallId for newly registered nodes as these IDs are sequential.
         next_node_small_id: SmallId,
+        /// We keep track of registered tasks so taht we can generate
+        /// SmallId for newly registered tasks as these IDs are sequential.
+        next_task_small_id: SmallId,
         /// Holds information about each node.
         nodes: Table<SmallId, NodeEntry>,
         /// Each model is represented here and stores which nodes support it.
         models: ObjectTable<ascii::String, ModelEntry>,
+        /// Holds information about the registered tasks
+        tasks: Table<SmallId, Task>,
         /// All fees and honest node rewards go here.
         /// We then do book-keeping on NodeEntry objects to calculate how much
         /// is available for withdrawal by each node.
@@ -194,7 +345,7 @@ module atoma::db {
         name: ascii::String,
         /// The modality of the model.
         /// Determines what kind of requests it can serve.
-        modality: u64,
+        modality: Modality,
         /// Whether the model is disabled and cannot be used to serve prompts.
         is_disabled: bool,
         /// Which echelons (groups of nodes) support this model.
