@@ -116,16 +116,16 @@ module atoma::db {
 
     /// Predefined values for Reputation scores.
     /// Minimum reputation score
-    const REPUTATION_SCORE_MINIMUM: u16 = 0;
+    const REPUTATION_SCORE_MINIMUM: u8 = 0;
     /// Maximum reputation score
     /// NOTE: We currently cap the reputation score at 1000.
     /// However this might change in the future, where we
     /// allow uncapped reputation scores, to incentivize nodes
     /// to be online and responsive in the network, for perpetuity.
-    const REPUTATION_SCORE_MAXIMUM: u16 = 1000; 
+    const REPUTATION_SCORE_MAXIMUM: u8 = 255; 
     /// Start value for reputation scores. It is the same
     /// for every node, in the initial state.
-    const REPUTATION_SCORE_START: u16 = 100;
+    const REPUTATION_SCORE_START: u8 = 100;
 
     /// To be able to identify the errors faster in the logs, we start the
     /// counter from a number that's leet for "error_000".
@@ -214,6 +214,14 @@ module atoma::db {
         small_id: SmallId,
     }
 
+    /// Owned object, transferred to the creator of a task.
+    ///
+    /// Proof of task creation.
+    public struct TaskBadge has key, store {
+        id: UID,
+        small_id: SmallId,
+    }
+
     /// Since referring to node is ubiquitous and potentially large collections
     /// are at stake, we assign a u64 ID to each node instead of using Sui
     /// address which is 32 bytes.
@@ -233,7 +241,7 @@ module atoma::db {
         /// The specific role or purpose of the task (e.g., "inference", "embedding", "fine-tuning")
         role: TaskRole,
         /// An optional unique identifier for a `ModelEntry`, if the task is associated with a particular model
-        model_id: Option<UID>,
+        model_name: Option<ascii::String>,
         /// The modality of the task, defining the type of input and output (e.g., text-to-text, text-to-image)
         modality: Modality,
         // /// Maximum price (in TOMA tokens) per unit of compute for the task's input
@@ -318,7 +326,7 @@ module atoma::db {
 
     /// Reputation score of a node
     public struct ReputationScore has store, copy, drop {
-        inner: u16,
+        inner: u8,
     }
 
     /// Shared object.
@@ -535,6 +543,74 @@ module atoma::db {
         transfer::transfer(badge, ctx.sender());
     }
 
+    public fun create_task(
+        self: &mut AtomaDb,
+        model_name: Option<ascii::String>,
+        role: u16,
+        model_name: Option<ascii::String>,
+        modality: u16,
+        valid_until_epoch: Option<u64>,
+        optimizations: Option<vector<u16>>,
+        security_level: Option<u16>,
+        whitelisted_nodes: Option<vector<address>>,
+        max_input_latency_ms: Option<u64>,
+        max_output_latency_ms: Option<u64>,
+        max_input_throughput: Option<u64>,
+        max_output_throughput: Option<u64>,
+        performance_unit: Option<u16>,
+        set_owner: bool,
+        ctx: &mut TxContext,
+    ): TaskBadge {
+        let owner = if set_owner {
+            Some(ctx.sender())
+        } else {
+            None
+        };
+        let small_id = self.next_task_small_id;
+        self.next_task_small_id.inner = self.next_task_small_id.inner + 1;
+
+        let optimizations = if optimizations.is_some() {
+            let opts = optimizations.extract();
+            let len = opts.length();
+            let mut i = 0;
+            let vec = vector::empty();
+            while (i < len) {
+                let opt = opts.borrow(i);
+                vector::push_back(&mut vec, Optimization { inner: opt });
+                i = i + 1;
+            }
+            option::some(vec)
+        } else {
+            option::none()
+        };
+        let task = Task {
+            owner,
+            role: TaskRole { inner: role },
+            model_name,
+            modality: Modality { inner: modality },
+            valid_until_epoch,
+            optimizations,
+            security_level: SecurityLevel { inner: security_level },
+            whitelisted_nodes,
+            max_input_latency_ms,
+            max_output_latency_ms,
+            max_input_throughput,
+            max_output_throughput,
+            performance_unit: PerformanceUnit { inner: performance_unit },
+            subscribed_nodes: table_vec::empty(ctx),
+        };
+        self.tasks.add(small_id, task);
+        
+        sui::event::emit(TaskPublishedEvent {
+            task_small_id: small_id,
+        });
+
+        TaskBadge {
+            id: object::new(ctx),
+            small_id,
+        }
+    }
+
     /// Splits the collateral from the sender's wallet and registers a new node.
     /// Returns a node badge.
     /// The node badge is intended to be owned by the node as a proof of
@@ -639,7 +715,7 @@ module atoma::db {
         assert!(perhaps_task_small_id.is_some(), ENodeNotSubscribedToTask);
 
         let task = self.tasks.borrow_mut(task_small_id);
-        let node_index = find_node_index(&task.subscribed_nodes, node_badge.small_id);
+        let mut node_index = find_node_index(&task.subscribed_nodes, node_badge.small_id);
         assert!(node_index.is_some(), ENodeNotSubscribedToTask);
 
         let node_index = option::extract(&mut node_index);
@@ -763,14 +839,18 @@ module atoma::db {
         node.was_disabled_in_epoch = option::some(ctx.epoch());
     }
 
-    /// You must wait 2 epochs after `permanently_disable_node` before you can
+    /// You must wait 4 epochs after `permanently_disable_node` before you can
     /// destroy the node and collect the collateral.
     /// This prevents nodes that disable themselves just before a new epoch
     /// starts and then destroy themselves immediately once it starts,
     /// potentially causing problems with open prompts without any repercussions.
+    /// It also guarantees that all tasks for which the node has subscribed to
+    /// have been settled for user requests.
     ///
-    /// Also, 2 epochs guarantee that all the fees have been settled and are
+    /// Also, 4 epochs guarantee that all the fees have been settled and are
     /// available for withdrawal, so the node is not cut short.
+    ///
+    /// This function assumes the node has already been disabled (see `permanently_disable_node`).
     public entry fun destroy_disabled_node(
         self: &mut AtomaDb,
         node_badge: NodeBadge,
@@ -791,7 +871,7 @@ module atoma::db {
         } = self.nodes.remove(node_badge.small_id);
 
         let was_disabled_in_epoch = was_disabled_in_epoch.extract();
-        assert!(was_disabled_in_epoch + 2 <= ctx.epoch(), ENodeMustWaitBeforeDestroy);
+        assert!(was_disabled_in_epoch + 4 <= ctx.epoch(), ENodeMustWaitBeforeDestroy);
 
         let wallet = coin::from_balance(collateral, ctx);
         transfer::public_transfer(wallet, ctx.sender());
@@ -839,7 +919,9 @@ module atoma::db {
 
     public fun get_permille_for_honest_nodes_on_dispute(self: &AtomaDb): u64 {
         self.permille_for_honest_nodes_on_dispute
-    }
+    }   
+
+    // Models
 
     public fun get_model_echelons_if_enabled(
         self: &AtomaDb, model_name: ascii::String,
@@ -888,6 +970,76 @@ module atoma::db {
 
     public fun get_cross_validation_extra_nodes_count(self: &AtomaDb): u64 {
         self.cross_validation_extra_nodes_count
+    }
+
+    // Tasks 
+
+    public fun get_task(self: &AtomaDb, task_small_id: SmallId): &Task {
+        self.tasks.borrow(task_small_id)
+    }
+
+    public fun get_task_owner(self: &AtomaDb, task_small_id: SmallId): Option<address> {
+        self.tasks.borrow(task_small_id).owner
+    }
+
+    public fun get_task_role(self: &AtomaDb, task_small_id: SmallId): TaskRole {
+        self.tasks.borrow(task_small_id).role
+    }
+
+    public fun get_task_model_name(self: &AtomaDb, task_small_id: SmallId): Option<UID> {
+        self.tasks.borrow(task_small_id).model_name
+    }
+
+    public fun get_task_modality(self: &AtomaDb, task_small_id: SmallId): Modality {
+        self.tasks.borrow(task_small_id).modality
+    }
+
+    public fun is_task_deprecated(self: &AtomaDb, task_small_id: SmallId): bool {
+        self.tasks.borrow(task_small_id).is_deprecated
+    }
+
+    public fun get_task_valid_until_epoch(self: &AtomaDb, task_small_id: SmallId): Option<u64> {
+        self.tasks.borrow(task_small_id).valid_until_epoch
+    }
+
+    public fun get_task_deprecated_at_epoch(self: &AtomaDb, task_small_id: SmallId): Option<u64> {
+        self.tasks.borrow(task_small_id).deprecated_at_epoch
+    }
+
+    public fun get_task_optimizations(self: &AtomaDb, task_small_id: SmallId): Option<vector<Optimization>> {
+        self.tasks.borrow(task_small_id).optimizations
+    }
+
+    public fun get_task_security_level(self: &AtomaDb, task_small_id: SmallId): Option<SecurityLevel> {
+        self.tasks.borrow(task_small_id).security_level
+    }
+
+    public fun get_task_whitelisted_requesters(self: &AtomaDb, task_small_id: SmallId): Option<VecSet<address>> {
+        self.tasks.borrow(task_small_id).whitelisted_requesters
+    }
+
+    public fun get_task_max_input_latency(self: &AtomaDb, task_small_id: SmallId): Option<u64> {
+        self.tasks.borrow(task_small_id).max_input_latency
+    }
+
+    public fun get_task_max_output_latency(self: &AtomaDb, task_small_id: SmallId): Option<u64> {
+        self.tasks.borrow(task_small_id).max_output_latency
+    }
+
+    public fun get_task_max_input_throughput(self: &AtomaDb, task_small_id: SmallId): Option<u64> {
+        self.tasks.borrow(task_small_id).max_input_throughput
+    }
+
+    public fun get_task_max_output_throughput(self: &AtomaDb, task_small_id: SmallId): Option<u64> {
+        self.tasks.borrow(task_small_id).max_output_throughput
+    }
+
+    public fun get_task_performance_unit(self: &AtomaDb, task_small_id: SmallId): Option<PerformanceUnit> {
+        self.tasks.borrow(task_small_id).performance_unit
+    }
+
+    public fun get_task_subscribed_nodes(self: &AtomaDb, task_small_id: SmallId): &TableVec<SmallId> {
+        &self.tasks.borrow(task_small_id).subscribed_nodes
     }
 
     // =========================================================================
