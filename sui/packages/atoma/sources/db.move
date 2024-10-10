@@ -106,6 +106,27 @@ module atoma::db {
     /// Trusted execution environment security for both data privacy and verifiability
     const PRIVACY_TEE: u16 = 1;
 
+    /// Predefined values for Performance units.
+    /// Performance of the system measured per second
+    const PERFORMANCE_UNIT_PER_SECOND: u16 = 0;
+    /// Performance of the system measured per minute
+    const PERFORMANCE_UNIT_PER_MINUTE: u16 = 1;
+    /// Performance of the system measured per hour
+    const PERFORMANCE_UNIT_PER_HOUR: u16 = 2;
+
+    /// Predefined values for Reputation scores.
+    /// Minimum reputation score
+    const REPUTATION_SCORE_MINIMUM: u16 = 0;
+    /// Maximum reputation score
+    /// NOTE: We currently cap the reputation score at 1000.
+    /// However this might change in the future, where we
+    /// allow uncapped reputation scores, to incentivize nodes
+    /// to be online and responsive in the network, for perpetuity.
+    const REPUTATION_SCORE_MAXIMUM: u16 = 1000; 
+    /// Start value for reputation scores. It is the same
+    /// for every node, in the initial state.
+    const REPUTATION_SCORE_START: u16 = 100;
+
     /// To be able to identify the errors faster in the logs, we start the
     /// counter from a number that's leet for "error_000".
     const EBase: u64 = 312012_000;
@@ -132,6 +153,10 @@ module atoma::db {
     /// N + 2.
     const ENodeMustWaitBeforeDestroy: u64 = EBase + 13;
     const ECannotSampleZeroNodes: u64 = EBase + 14;
+    const ETaskDeprecated: u64 = EBase + 15;
+    const ENodeAlreadySubscribedToTask: u64 = EBase + 16;
+    const ETaskNotFound: u64 = EBase + 17;
+    const ENodeNotSubscribedToTask: u64 = EBase + 18;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -148,7 +173,7 @@ module atoma::db {
 
     public struct NodeSubscriberToTaskEvent has copy, drop {
         /// Unique ID of the task at hand
-        task_id: UID,
+        task_small_id: SmallId,
         node_small_id: SmallId,
         echelon_id: EchelonId,
     }
@@ -157,6 +182,21 @@ module atoma::db {
         node_small_id: SmallId,
         model_name: ascii::String,
         echelon_id: EchelonId,
+    }
+
+    public struct NodeSubscribedToTaskEvent has copy, drop {
+        task_small_id: SmallId,
+        node_small_id: SmallId,
+    }
+
+    public struct TaskRegisteredEvent has copy, drop {
+        task_small_id: SmallId,
+    }
+
+    public struct TaskDeprecationEvent has copy, drop {
+        task_small_id: SmallId,
+        /// The epoch in which the task was deprecated.
+        epoch: u64,
     }
 
     /// Owned object.
@@ -187,7 +227,7 @@ module atoma::db {
     /// Represents a computational task on the Atoma network.
     /// Tasks can include model inference, text embeddings, fine-tuning, training,
     /// or other arbitrary computations.
-    public struct Task has store, copy {
+    public struct Task has store {
         /// The (optional) address of the user who created the task
         owner: Option<address>,
         /// The specific role or purpose of the task (e.g., "inference", "embedding", "fine-tuning")
@@ -196,30 +236,48 @@ module atoma::db {
         model_id: Option<UID>,
         /// The modality of the task, defining the type of input and output (e.g., text-to-text, text-to-image)
         modality: Modality,
-        /// Maximum price (in TOMA tokens) per unit of compute for the task's input
-        /// This sets an upper limit on what the task creator is willing to pay for input processing
-        max_input_price_per_unit: u64,
-        /// Maximum price (in TOMA tokens) per unit of compute for the task's output
-        /// This sets an upper limit on what the task creator is willing to pay for output generation
-        max_output_price_per_unit: u64,
-        /// The unit of compute for the task's input (e.g., text tokens, image pixels)
-        /// This defines how input computation is measured and priced
-        input_unit: ComputeUnit,
-        /// The unit of compute for the task's output (e.g., text tokens, image pixels)
-        /// This defines how output computation is measured and priced
-        output_unit: ComputeUnit,
+        // /// Maximum price (in TOMA tokens) per unit of compute for the task's input
+        // /// This sets an upper limit on what the task creator is willing to pay for input processing
+        // max_input_price_per_unit: u64,
+        // /// Maximum price (in TOMA tokens) per unit of compute for the task's output
+        // /// This sets an upper limit on what the task creator is willing to pay for output generation
+        // max_output_price_per_unit: u64,
+        // /// The unit of compute for the task's input (e.g., text tokens, image pixels)
+        // /// This defines how input computation is measured and priced
+        // input_unit: ComputeUnit,
+        // /// The unit of compute for the task's output (e.g., text tokens, image pixels)
+        // /// This defines how output computation is measured and priced
+        // output_unit: ComputeUnit,
         /// Indicates whether the task is deprecated and should no longer be used
         /// Deprecated tasks may be kept for historical reasons but should not be assigned to nodes
         is_deprecated: bool,
         /// The epoch until which this task is valid (inclusive)
         /// If Some(epoch), the task expires after this epoch. If None, the task doesn't expire
         valid_until_epoch: Option<u64>,
+        /// Deprecated at epoch
+        deprecated_at_epoch: Option<u64>,
         /// Unique set of optimizations that can be applied to the task
         optimizations: Option<vector<Optimization>>,
         /// Security level for the task
         security_level: Option<SecurityLevel>,
         /// White list of addresses that can request execution of the task
         whitelisted_requesters: Option<VecSet<address>>,
+        /// Latency per unit of compute for the task's input, in milliseconds
+        /// This value is optional and can be used to specify the latency for the task's input
+        max_input_latency: Option<u64>,
+        /// Latency per unit of compute for the task's output, in milliseconds
+        /// This value is optional and can be used to specify the latency for the task's output
+        max_output_latency: Option<u64>,
+        /// Throughput per hour for the task's input
+        /// This value is optional and can be used to specify the throughput for the task's input
+        max_input_throughput: Option<u64>,
+        /// Throughput per hour for the task's output
+        /// This value is optional and can be used to specify the throughput for the task's output
+        max_output_throughput: Option<u64>,
+        /// Unit of performance
+        performance_unit: Option<PerformanceUnit>,
+        /// Subscribed nodes
+        subscribed_nodes: TableVec<SmallId>,
     }
 
     /// Represents the role or purpose of a computational task in the Atoma network.
@@ -253,6 +311,16 @@ module atoma::db {
         inner: u16,
     }
 
+    /// Performance unit for a task
+    public struct PerformanceUnit has store, copy, drop {
+        inner: u16,
+    }
+
+    /// Reputation score of a node
+    public struct ReputationScore has store, copy, drop {
+        inner: u16,
+    }
+
     /// Shared object.
     ///
     /// Database of the package.
@@ -282,7 +350,7 @@ module atoma::db {
         /// Each model is represented here and stores which nodes support it.
         models: ObjectTable<ascii::String, ModelEntry>,
         /// Holds information about the registered tasks
-        tasks: Table<SmallId, Task>,
+        tasks: ObjectTable<SmallId, Task>,
         /// All fees and honest node rewards go here.
         /// We then do book-keeping on NodeEntry objects to calculate how much
         /// is available for withdrawal by each node.
@@ -336,6 +404,15 @@ module atoma::db {
         last_fee_epoch_amount: u64,
         /// These fees are unlocked for the node to collect.
         available_fee_amount: u64,
+        /// The relative performance of the node.
+        ///
+        /// We start from 100 and increase the reputation by 1,
+        /// every epoch in which nodes are responsive
+        /// and accurate.
+        /// Nodes that are offline or produce incorrect results 
+        /// will have their reputation score decreased, by 1 or more points.
+        /// To a minimum of 0, in which case the node is slashed from the network.
+        reputation_score: ReputationScore,
     }
 
     /// Object field of AtomaDb.
@@ -412,10 +489,12 @@ module atoma::db {
             tickets: object::new(ctx),
             nodes: table::new(ctx),
             models: object_table::new(ctx),
+            tasks: table::new(ctx),
             fee_treasury: balance::zero(),
             communal_treasury: balance::zero(),
             // IMPORTANT: we start from 1 because 0 is reserved
             next_node_small_id: SmallId { inner: 1 },
+            next_task_small_id: SmallId { inner: 1 },
             is_registration_disabled: false,
             registration_collateral_in_protocol_token:
                 InitialCollateralRequiredForRegistration,
@@ -461,7 +540,7 @@ module atoma::db {
     /// The node badge is intended to be owned by the node as a proof of
     /// registration.
     /// It can be used later to add or remove available models, delete account,
-    /// etc.
+    /// subscribe to new tasks, unsubscribe from previous tasks, etc.
     public fun register_node(
         self: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
@@ -481,6 +560,7 @@ module atoma::db {
             last_fee_epoch: ctx.epoch(),
             last_fee_epoch_amount: 0,
             available_fee_amount: 0,
+            reputation_score: ReputationScore { inner: REPUTATION_SCORE_START },
         };
         self.nodes.add(small_id, node_entry);
 
@@ -493,6 +573,114 @@ module atoma::db {
             id: badge_id,
             small_id,
         }
+    }
+
+    /// Subscribes a node to a specific task.
+    /// 
+    /// This function allows a node to subscribe to a task, enabling it to participate in
+    /// the execution of that task within the Atoma network.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `node_badge` - A mutable reference to the NodeBadge of the subscribing node.
+    /// * `task_small_id` - The SmallId of the task to subscribe to.
+    ///
+    /// # Errors
+    /// * `ETaskNotFound` - If the specified task does not exist in the AtomaDb.
+    /// * `ETaskDeprecated` - If the specified task has been deprecated.
+    /// * `ENodeAlreadySubscribedToTask` - If the node is already subscribed to the task.
+    ///
+    /// # Events
+    /// Emits a `NodeSubscribedToTaskEvent` upon successful subscription.
+    public entry fun subscribe_node_to_task(
+        self: &mut AtomaDb,
+        node_badge: &mut NodeBadge,
+        task_small_id: SmallId,
+    ) {
+        assert!(self.tasks.contains(task_small_id), ETaskNotFound);
+
+        let task = self.tasks.borrow_mut(task_small_id);
+        assert!(!task.is_deprecated, ETaskDeprecated);
+
+        // a node can subscribe to a task only once
+        assert!(
+            !dynamic_field::exists_(&node_badge.id, task_small_id),
+            ENodeAlreadySubscribedToTask,
+        );
+        table_vec::push_back(&mut task.subscribed_nodes, node_badge.small_id);
+        // Associate the task_small_id with the node badge
+        dynamic_field::add(&mut node_badge.id, task_small_id, true);
+
+        sui::event::emit(NodeSubscribedToTaskEvent {
+            node_small_id: node_badge.small_id,
+            task_small_id,
+        });
+    }
+
+    /// Unsubscribes a node from a specific task.
+    ///
+    /// This function removes a node's subscription to a task, updating both the node's
+    /// dynamic fields and the task's list of subscribed nodes.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `node_badge` - A mutable reference to the NodeBadge of the node being unsubscribed.
+    /// * `task_small_id` - The SmallId of the task from which the node is unsubscribing.
+    ///
+    /// # Errors
+    /// * `ENodeNotSubscribedToTask` - If the node is not subscribed to the specified task.
+    /// * `ENodeIndexMismatch` - If the node is not found in the task's subscribed_nodes list.
+    public entry fun unsubscribe_node_from_task(
+        self: &mut AtomaDb,
+        node_badge: &mut NodeBadge,
+        task_small_id: SmallId,
+    ) {
+        let perhaps_task_small_id = dynamic_field::remove_if_exists(&mut node_badge.id, task_small_id);
+        assert!(perhaps_task_small_id.is_some(), ENodeNotSubscribedToTask);
+
+        let task = self.tasks.borrow_mut(task_small_id);
+        let node_index = find_node_index(&task.subscribed_nodes, node_badge.small_id);
+        assert!(node_index.is_some(), ENodeNotSubscribedToTask);
+
+        let node_index = option::extract(&mut node_index);
+
+        let remove_id = task.subscribed_nodes.swap_remove(node_index);
+        assert!(remove_id == node_badge.small_id, ENodeIndexMismatch);
+    }
+
+    /// Unsubscribes a node from a specific task, provided the index of the node in the task's subscribed_nodes list.
+    /// This method is similar to `unsubscribe_node_from_task` but takes an additional `node_index` parameter, and 
+    /// has potential lower gas costs.
+    ///
+    /// This function removes a node's subscription to a task, updating both the node's
+    /// dynamic fields and the task's list of subscribed nodes.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `node_badge` - A mutable reference to the NodeBadge of the node being unsubscribed.
+    /// * `task_small_id` - The SmallId of the task from which the node is unsubscribing.
+    /// * `node_index` - The index of the node in the task's subscribed_nodes list.
+    ///
+    /// # Errors
+    /// * `ENodeNotSubscribedToTask` - If the node is not subscribed to the specified task.
+    /// * `ENodeIndexMismatch` - If the node at the given index doesn't match the node being unsubscribed.
+    /// * `EInvalidNodeIndex` - If the provided node_index is out of bounds.
+    public entry fun unsubscribe_node_from_task(
+        self: &mut AtomaDb,
+        node_badge: &mut NodeBadge,
+        task_small_id: SmallId,
+        node_index: u64,
+    ) {
+        let perhaps_task_small_id = dynamic_field::remove_if_exists(&mut node_badge.id, task_small_id);
+        assert!(perhaps_task_small_id.is_some(), ENodeNotSubscribedToTask);
+
+        let task = self.tasks.borrow_mut(task_small_id);
+        
+        // Check if the provided node_index is valid
+        assert!(node_index < task.subscribed_nodes.length(), EInvalidNodeIndex);
+
+        let remove_id = task.subscribed_nodes.swap_remove(node_index);
+        assert!(remove_id == node_badge.small_id, ENodeIndexMismatch);
     }
 
     /// The node owner announces that they can serve prompts for the given
@@ -599,6 +787,7 @@ module atoma::db {
             // that's one epoch longer than the fee withdrawal delay
             last_fee_epoch_amount: _,
             available_fee_amount: _,
+            reputation_score: _,
         } = self.nodes.remove(node_badge.small_id);
 
         let was_disabled_in_epoch = was_disabled_in_epoch.extract();
@@ -1163,6 +1352,23 @@ module atoma::db {
     // =========================================================================
     //                          Helpers
     // =========================================================================
+
+    /// Helper function to find the index of a node's small_id in a TableVec
+    fun find_node_index(
+        subscribed_nodes: &TableVec<SmallId>,
+        node_small_id: SmallId,
+    ): Option<u64> {
+        let len = subscribed_nodes.length();
+        let mut i = 0;
+        while (i < len) {
+            let node_id = subscribed_nodes.borrow(i);
+            if (node_id.inner == node_small_id.inner) {
+                return Some(i);
+            }
+            i = i + 1;
+        }
+        return None;
+    }
 
     fun get_echelon_mut(
         echelons: &mut vector<ModelEchelon>, id: EchelonId
