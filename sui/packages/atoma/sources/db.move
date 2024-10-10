@@ -543,6 +543,27 @@ module atoma::db {
         transfer::transfer(badge, ctx.sender());
     }
 
+    /// Creates a new task in the Atoma network and returns a TaskBadge.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `model_name` - An optional ASCII string representing the model name.
+    /// * `role` - A u16 representing the task role.
+    /// * `modality` - A u16 representing the task modality.
+    /// * `valid_until_epoch` - An optional u64 representing the epoch until which the task is valid.
+    /// * `optimizations` - An optional vector of u16 representing optimization types.
+    /// * `security_level` - An optional u16 representing the security level.
+    /// * `whitelisted_requesters` - An optional vector of addresses representing whitelisted requesters.
+    /// * `max_input_latency_ms` - An optional u64 representing the maximum input latency in milliseconds.
+    /// * `max_output_latency_ms` - An optional u64 representing the maximum output latency in milliseconds.
+    /// * `max_input_throughput` - An optional u64 representing the maximum input throughput.
+    /// * `max_output_throughput` - An optional u64 representing the maximum output throughput.
+    /// * `performance_unit` - An optional u16 representing the performance unit.
+    /// * `set_owner` - A boolean indicating whether to set the task owner.
+    /// * `ctx` - A mutable reference to the transaction context.
+    ///
+    /// # Returns
+    /// A TaskBadge object representing the created task.
     public fun create_task(
         self: &mut AtomaDb,
         model_name: Option<ascii::String>,
@@ -562,44 +583,55 @@ module atoma::db {
         ctx: &mut TxContext,
     ): TaskBadge {
         let owner = if set_owner {
-            Some(ctx.sender())
+            option::some(ctx.sender())
         } else {
-            None
+            option::none()
         };
         let small_id = self.next_task_small_id;
         self.next_task_small_id.inner = self.next_task_small_id.inner + 1;
 
-        let optimizations = if optimizations.is_some() {
-            let opts = optimizations.extract();
-            let len = opts.length();
+        let optimizations = if (option::is_some(&optimizations)) {
+            let opts = option::extract(&optimizations);
+            let len = vector::length(&opts);
             let mut i = 0;
-            let vec = vector::empty();
+            let mut vec = vector::empty();
             while (i < len) {
-                let opt = opts.borrow(i);
+                let opt = *vector::borrow(&opts, i);
                 vector::push_back(&mut vec, Optimization { inner: opt });
                 i = i + 1;
-            }
+            };
             option::some(vec)
         } else {
             option::none()
         };
+
         let task = Task {
             owner,
             role: TaskRole { inner: role },
             model_name,
             modality: Modality { inner: modality },
+            is_deprecated: false,
             valid_until_epoch,
+            deprecated_at_epoch: option::none(),
             optimizations,
-            security_level: SecurityLevel { inner: security_level },
-            whitelisted_nodes,
-            max_input_latency_ms,
-            max_output_latency_ms,
+            security_level: if (option::is_some(&security_level)) {
+                option::some(SecurityLevel { inner: option::extract(&security_level) })
+            } else {
+                option::none()
+            },
+            whitelisted_requesters,
+            max_input_latency: max_input_latency_ms,
+            max_output_latency: max_output_latency_ms,
             max_input_throughput,
             max_output_throughput,
-            performance_unit: PerformanceUnit { inner: performance_unit },
+            performance_unit: if (option::is_some(&performance_unit)) {
+                option::some(PerformanceUnit { inner: option::extract(&performance_unit) })
+            } else {
+                option::none()
+            },
             subscribed_nodes: table_vec::empty(ctx),
         };
-        self.tasks.add(small_id, task);
+        object_table::add(&mut self.tasks, small_id, task);
         
         sui::event::emit(TaskPublishedEvent {
             task_small_id: small_id,
