@@ -74,6 +74,7 @@ module atoma::db {
     const ENotEnoughEpochsPassed: u64 = EBase + 19;
     const ETaskNotDeprecated: u64 = EBase + 20;
     const EInvalidNodeIndex: u64 = EBase + 21;
+    const EInvalidEfficiencyMetric: u64 = EBase + 22;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -165,14 +166,9 @@ module atoma::db {
         optimizations: vector<u16>,
         /// Security level for the task
         security_level: Option<u16>,
-        /// White list of addresses that can request execution of the task
-        whitelisted_requesters: Option<VecSet<address>>,
-        /// Input efficiency metrics for the task (e.g. throughput, latency, cost, energy).
+        /// Efficiency metrics for the task (e.g. throughput, latency, cost, energy).
         /// Note: we might want to support multiple combined input efficiency metrics in the future.
-        input_efficiency: Option<EfficiencyMetrics>,
-        /// Output efficiency metrics for the task (e.g. throughput, latency, cost, energy)
-        /// Note: we might want to support multiple combined output efficiency metrics in the future.
-        output_efficiency: Option<EfficiencyMetrics>,
+        efficiency_metric: Option<EfficiencyMetrics>,
         /// Subscribed nodes
         subscribed_nodes: TableVec<SmallId>,
     }
@@ -413,6 +409,47 @@ module atoma::db {
         transfer::transfer(badge, ctx.sender());
     }
 
+    public entry fun create_task_entry(
+        self: &mut AtomaDb,
+        role: u16,
+        model_name: Option<ascii::String>,
+        valid_until_epoch: Option<u64>,
+        optimizations: vector<u16>,
+        security_level: Option<u16>,
+        mut efficiency_unit: Option<u16>,
+        mut efficiency_value: Option<u64>,
+        set_owner: bool,
+        ctx: &mut TxContext,
+    ) {
+        if (efficiency_value.is_some() && efficiency_unit.is_none()) {
+            abort EInvalidEfficiencyMetric
+        } else if (efficiency_value.is_none() && efficiency_unit.is_some()) {
+            abort EInvalidEfficiencyMetric
+        };
+        
+        let efficiency_metric = if (efficiency_value.is_some() && efficiency_unit.is_some()) {
+            option::some(EfficiencyMetrics {
+                compute_unit: option::extract(&mut efficiency_unit),
+                value: option::extract(&mut efficiency_value),
+            })
+        } else { 
+            option::none()
+        };
+
+        let badge = create_task(
+            self,
+            role,
+            model_name,
+            valid_until_epoch,
+            optimizations,
+            security_level,
+            efficiency_metric,
+            set_owner,
+            ctx,
+        );
+        transfer::transfer(badge, ctx.sender());
+    }
+
     /// Creates a new task in the Atoma network and returns a TaskBadge.
     ///
     /// # Arguments
@@ -423,9 +460,7 @@ module atoma::db {
     /// * `valid_until_epoch` - An optional u64 representing the epoch until which the task is valid.
     /// * `optimizations` - An optional vector of u16 representing optimization types.
     /// * `security_level` - An optional u16 representing the security level.
-    /// * `whitelisted_requesters` - An optional vector of addresses representing whitelisted requesters.
-    /// * `input_efficiency_metric` - An optional vector of EfficiencyMetric representing input efficiency metrics.
-    /// * `output_efficiency_metric` - An optional vector of EfficiencyMetric representing output efficiency metrics.
+    /// * `efficiency_metric` - An optional vector of EfficiencyMetric representing efficiency metrics.
     /// * `performance_unit` - An optional u16 representing the performance unit.
     /// * `set_owner` - A boolean indicating whether to set the task owner.
     /// * `ctx` - A mutable reference to the transaction context.
@@ -436,13 +471,10 @@ module atoma::db {
         self: &mut AtomaDb,
         role: u16,
         model_name: Option<ascii::String>,
-        modality: u64,
         valid_until_epoch: Option<u64>,
         optimizations: vector<u16>,
         security_level: Option<u16>,
-        input_efficiency_metric: Option<EfficiencyMetrics>,
-        output_efficiency_metric: Option<EfficiencyMetrics>,
-        whitelisted_requesters: Option<VecSet<address>>,
+        efficiency_metric: Option<EfficiencyMetrics>,
         set_owner: bool,
         ctx: &mut TxContext,
     ): TaskBadge {
@@ -459,15 +491,12 @@ module atoma::db {
             owner: owner,
             role: TaskRole { inner: role },
             model_name,
-            modality,
             is_deprecated: false,
             valid_until_epoch,
             deprecated_at_epoch: option::none(),
             optimizations,
             security_level,
-            whitelisted_requesters: whitelisted_requesters,
-            input_efficiency: input_efficiency_metric,
-            output_efficiency: output_efficiency_metric,
+            efficiency_metric,
             subscribed_nodes: table_vec::empty(ctx),
         };
         object_table::add(&mut self.tasks, small_id, task);
@@ -480,6 +509,24 @@ module atoma::db {
             id: object::new(ctx),
             small_id,
         }
+    }
+
+    public fun create_simple_task(
+        self: &mut AtomaDb,
+        role: u16,
+        ctx: &mut TxContext,
+    ): TaskBadge {
+        create_task(
+            self,
+            role,
+            option::none(),
+            option::none(),
+            vector::empty(),
+            option::none(),
+            option::none(),
+            true,
+            ctx,
+        )
     }
 
     /// Deprecates a task in the Atoma network.
@@ -910,10 +957,6 @@ module atoma::db {
         self.tasks.borrow(task_small_id).model_name
     }
 
-    public fun get_task_modality(self: &AtomaDb, task_small_id: SmallId): u64 {
-        self.tasks.borrow(task_small_id).modality
-    }
-
     public fun is_task_deprecated(self: &AtomaDb, task_small_id: SmallId): bool {
         self.tasks.borrow(task_small_id).is_deprecated
     }
@@ -934,17 +977,9 @@ module atoma::db {
         self.tasks.borrow(task_small_id).security_level
     }
 
-    public fun get_task_whitelisted_requesters(self: &AtomaDb, task_small_id: SmallId): Option<VecSet<address>> {
-        self.tasks.borrow(task_small_id).whitelisted_requesters
-    }
-
-    public fun get_task_input_efficiency(self: &AtomaDb, task_small_id: SmallId): Option<EfficiencyMetrics> {
-        self.tasks.borrow(task_small_id).input_efficiency
+    public fun get_task_efficiency_metric(self: &AtomaDb, task_small_id: SmallId): Option<EfficiencyMetrics> {
+        self.tasks.borrow(task_small_id).efficiency_metric
     }  
-
-    public fun get_task_output_efficiency(self: &AtomaDb, task_small_id: SmallId): Option<EfficiencyMetrics> {
-        self.tasks.borrow(task_small_id).output_efficiency
-    }
 
     public fun get_task_subscribed_nodes(self: &AtomaDb, task_small_id: SmallId): &TableVec<SmallId> {
         &self.tasks.borrow(task_small_id).subscribed_nodes
@@ -1157,15 +1192,12 @@ module atoma::db {
             owner: _,
             role: _,
             model_name: _,
-            modality: _,
             is_deprecated: _,
             valid_until_epoch: _,
             deprecated_at_epoch: _,
             optimizations: _,
             security_level: _,
-            whitelisted_requesters: _,
-            input_efficiency: _,
-            output_efficiency: _,
+            efficiency_metric: _,
             subscribed_nodes,
         } = task;
 
