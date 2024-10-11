@@ -511,24 +511,6 @@ module atoma::db {
         }
     }
 
-    public fun create_simple_task(
-        self: &mut AtomaDb,
-        role: u16,
-        ctx: &mut TxContext,
-    ): TaskBadge {
-        create_task(
-            self,
-            role,
-            option::none(),
-            option::none(),
-            vector::empty(),
-            option::none(),
-            option::none(),
-            true,
-            ctx,
-        )
-    }
-
     /// Deprecates a task in the Atoma network.
     ///
     /// This function marks a task as deprecated, preventing it from being used for new computations.
@@ -556,7 +538,7 @@ module atoma::db {
     /// # Note
     /// This function does not delete the task from the database. It only marks it as deprecated,
     /// allowing for historical record-keeping while preventing future use of the task.
-    public fun deprecate_task(
+    public entry fun deprecate_task(
         self: &mut AtomaDb,
         task_badge: &mut TaskBadge,
         task_small_id: u64,
