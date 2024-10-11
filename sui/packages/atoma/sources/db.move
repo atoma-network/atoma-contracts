@@ -45,24 +45,27 @@ module atoma::db {
 
     /// Predefined values for ComputeUnit types.
     /// Text token compute unit, it can either be input or output   
-    const COMPUTE_UNIT_TEXT_TOKEN: u16 = 0;
+    const COMPUTE_UNIT_TEXT_TOKEN_PER_SECOND: u16 = 0;
+    /// Time to first token compute unit
+    const COMPUTE_UNIT_TIME_TO_FIRST_TOKEN: u16 = 1;
     /// Image pixel compute unit, it can either be input or output
-    const COMPUTE_UNIT_IMAGE_PIXEL: u16 = 1;
+    const COMPUTE_UNIT_IMAGE_PIXEL_PER_SECOND: u16 = 2;
     /// Audio second compute unit
-    const COMPUTE_UNIT_AUDIO_SECOND: u16 = 2;
+    const COMPUTE_UNIT_AUDIO_SECOND_PER_SECOND: u16 = 3;
     /// Video second compute unit
-    const COMPUTE_UNIT_VIDEO_SECOND: u16 = 3;
+    const COMPUTE_UNIT_VIDEO_SECOND_PER_SECOND: u16 = 4;
     /// Video frame compute unit
-    const COMPUTE_UNIT_VIDEO_FRAME: u16 = 4;
+    const COMPUTE_UNIT_VIDEO_FRAME_PER_SECOND: u16 = 5;
     /// Speech second compute unit
-    const COMPUTE_UNIT_SPEECH_SECOND: u16 = 5;
+    const COMPUTE_UNIT_SPEECH_SECOND_PER_SECOND: u16 = 6;
     /// Embedding vector compute unit
-    const COMPUTE_UNIT_EMBEDDING_VECTOR: u16 = 6;
+    const COMPUTE_UNIT_EMBEDDING_VECTOR_PER_SECOND: u16 = 7;
     /// GPU hour compute unit
-    const COMPUTE_UNIT_GPU_HOUR: u16 = 7;
+    const COMPUTE_UNIT_GPU_PER_HOUR: u16 = 8;
     /// Data point compute unit
-    const COMPUTE_UNIT_DATA_POINT: u16 = 8;
+    const COMPUTE_UNIT_DATA_POINT: u16 = 9;
     /// Training sample compute unit
+    const COMPUTE_UNIT_TRAINING_SAMPLE: u16 = 10;
 
     /// Predefined values for Modality types.
     /// Text to text modality
@@ -105,14 +108,6 @@ module atoma::db {
     const SAMPLING_CONSENSUS: u16 = 0;
     /// Trusted execution environment security for both data privacy and verifiability
     const PRIVACY_TEE: u16 = 1;
-
-    /// Predefined values for Performance units.
-    /// Performance of the system measured per second
-    const PERFORMANCE_UNIT_PER_SECOND: u16 = 0;
-    /// Performance of the system measured per minute
-    const PERFORMANCE_UNIT_PER_MINUTE: u16 = 1;
-    /// Performance of the system measured per hour
-    const PERFORMANCE_UNIT_PER_HOUR: u16 = 2;
 
     /// Predefined values for Reputation scores.
     /// Minimum reputation score
@@ -270,22 +265,26 @@ module atoma::db {
         security_level: Option<SecurityLevel>,
         /// White list of addresses that can request execution of the task
         whitelisted_requesters: Option<VecSet<address>>,
-        /// Latency per unit of compute for the task's input, in milliseconds
-        /// This value is optional and can be used to specify the latency for the task's input
-        max_input_latency: Option<u64>,
-        /// Latency per unit of compute for the task's output, in milliseconds
-        /// This value is optional and can be used to specify the latency for the task's output
-        max_output_latency: Option<u64>,
-        /// Throughput per hour for the task's input
-        /// This value is optional and can be used to specify the throughput for the task's input
-        max_input_throughput: Option<u64>,
-        /// Throughput per hour for the task's output
-        /// This value is optional and can be used to specify the throughput for the task's output
-        max_output_throughput: Option<u64>,
+        /// Input efficiency metrics for the task (e.g. throughput, latency, cost, energy).
+        /// Note: we might want to support multiple combined input efficiency metrics in the future.
+        input_efficiency: Option<EfficiencyMetrics>,
+        /// Output efficiency metrics for the task (e.g. throughput, latency, cost, energy)
+        /// Note: we might want to support multiple combined output efficiency metrics in the future.
+        output_efficiency: Option<EfficiencyMetrics>,
         /// Unit of performance
         performance_unit: Option<PerformanceUnit>,
         /// Subscribed nodes
         subscribed_nodes: TableVec<SmallId>,
+    }
+
+    /// Systems's efficiency metrics
+    public struct EfficiencyMetrics has store {
+        /// The unit of compute for the efficiency metric
+        compute_unit: ComputeUnit,
+        /// The value of the efficiency metric
+        /// E.g. a `Task` might specify a minimum throughput of processing 100 tokens per second.
+        /// In this case the value is 100.
+        value: u64,
     }
 
     /// Represents the role or purpose of a computational task in the Atoma network.
@@ -319,8 +318,8 @@ module atoma::db {
         inner: u16,
     }
 
-    /// Performance unit for a task
-    public struct PerformanceUnit has store, copy, drop {
+    /// Efficiency unit for a task
+    public struct EfficiencyUnit has store, copy, drop {
         inner: u16,
     }
 
@@ -554,10 +553,8 @@ module atoma::db {
     /// * `optimizations` - An optional vector of u16 representing optimization types.
     /// * `security_level` - An optional u16 representing the security level.
     /// * `whitelisted_requesters` - An optional vector of addresses representing whitelisted requesters.
-    /// * `max_input_latency_ms` - An optional u64 representing the maximum input latency in milliseconds.
-    /// * `max_output_latency_ms` - An optional u64 representing the maximum output latency in milliseconds.
-    /// * `max_input_throughput` - An optional u64 representing the maximum input throughput.
-    /// * `max_output_throughput` - An optional u64 representing the maximum output throughput.
+    /// * `input_efficiency_metric` - An optional vector of EfficiencyMetric representing input efficiency metrics.
+    /// * `output_efficiency_metric` - An optional vector of EfficiencyMetric representing output efficiency metrics.
     /// * `performance_unit` - An optional u16 representing the performance unit.
     /// * `set_owner` - A boolean indicating whether to set the task owner.
     /// * `ctx` - A mutable reference to the transaction context.
@@ -574,10 +571,8 @@ module atoma::db {
         optimizations: Option<vector<u16>>,
         security_level: Option<u16>,
         whitelisted_nodes: Option<vector<address>>,
-        max_input_latency_ms: Option<u64>,
-        max_output_latency_ms: Option<u64>,
-        max_input_throughput: Option<u64>,
-        max_output_throughput: Option<u64>,
+        input_efficiency_metric: Option<vector<EffiencyMetric>>,
+        output_efficiency_metric: Option<vector<EffiencyMetric>>,
         performance_unit: Option<u16>,
         set_owner: bool,
         ctx: &mut TxContext,
@@ -641,6 +636,51 @@ module atoma::db {
             id: object::new(ctx),
             small_id,
         }
+    }
+
+    /// Deprecates a task in the Atoma network.
+    ///
+    /// This function marks a task as deprecated, preventing it from being used for new computations.
+    /// It also records the epoch at which the task was deprecated.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `task_badge` - A mutable reference to the TaskBadge of the task to be deprecated.
+    /// * `task_small_id` - The SmallId of the task to be deprecated.
+    /// * `ctx` - A mutable reference to the transaction context.
+    ///
+    /// # Errors
+    /// * `ETaskNotFound` - If the task specified by the TaskBadge is not found in the AtomaDb.
+    ///
+    /// # Effects
+    /// * Sets the `is_deprecated` field of the task to `true`.
+    /// * Sets the `deprecated_at_epoch` field of the task to the current epoch.
+    /// * Emits a `TaskDeprecationEvent` with the task's SmallId and the current epoch.
+    ///
+    /// # Events
+    /// Emits a `TaskDeprecationEvent` containing:
+    /// * `task_small_id` - The SmallId of the deprecated task.
+    /// * `epoch` - The epoch at which the task was deprecated.
+    ///
+    /// # Note
+    /// This function does not delete the task from the database. It only marks it as deprecated,
+    /// allowing for historical record-keeping while preventing future use of the task.
+    public fun deprecate_task(
+        self: &mut AtomaDb,
+        task_badge: &mut TaskBadge,
+        task_small_id: SmallId,
+        ctx: &mut TxContext,
+    ) {
+        assert!(self.tasks.contains(task_badge.small_id), ETaskNotFound);
+
+        let task = self.tasks.borrow_mut(task_badge.small_id);
+        task.is_deprecated = true;
+        task.deprecated_at_epoch = option::some(tx_context::epoch(ctx));
+
+        sui::event::emit(TaskDeprecationEvent {
+            task_small_id: task_badge.small_id,
+            epoch: tx_context::epoch(ctx),
+        });
     }
 
     /// Splits the collateral from the sender's wallet and registers a new node.
@@ -871,7 +911,7 @@ module atoma::db {
         node.was_disabled_in_epoch = option::some(ctx.epoch());
     }
 
-    /// You must wait 4 epochs after `permanently_disable_node` before you can
+    /// Node operators must wait 4 epochs after `permanently_disable_node` before they can
     /// destroy the node and collect the collateral.
     /// This prevents nodes that disable themselves just before a new epoch
     /// starts and then destroy themselves immediately once it starts,
@@ -1248,6 +1288,32 @@ module atoma::db {
     ): AtomaManagerBadge {
         assert!(package::from_module<ATOMA>(pub), ENotAuthorized);
         AtomaManagerBadge { id: object::new(ctx) }
+    }
+
+    /// Removes a deprecated task from the task table.
+    /// It only allows to remove deprecated tasks that 
+    /// were deprecated at least 2 epochs from the current task.
+    public entry fun remove_deprecated_task(
+        self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
+        task_small_id: SmallId,
+        ctx: &mut TxContext,
+    ) {
+        // Check if the task exists
+        assert!(object_table::contains(&self.tasks, task_small_id), ETaskNotFound);
+
+        let task = object_table::borrow(&self.tasks, task_small_id);
+        
+        // Check if the task is deprecated
+        assert!(task.is_deprecated, ETaskNotDeprecated);
+        
+        // Check if the deprecated_at_epoch exists and if 4 epochs have passed
+        assert!(option::is_some(&task.deprecated_at_epoch), ETaskNotDeprecated);
+        let deprecated_epoch = *option::borrow(&task.deprecated_at_epoch);
+        assert!(ctx.epoch() >= deprecated_epoch + 2, ENotEnoughEpochsPassed);
+
+        // If all checks pass, remove the task
+        object_table::remove(&mut self.tasks, task_small_id);
     }
 
     /// As per the gate module:
