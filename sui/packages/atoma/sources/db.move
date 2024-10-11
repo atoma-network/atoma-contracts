@@ -74,7 +74,6 @@ module atoma::db {
     const ENotEnoughEpochsPassed: u64 = EBase + 19;
     const ETaskNotDeprecated: u64 = EBase + 20;
     const EInvalidNodeIndex: u64 = EBase + 21;
-    const EInvalidEfficiencyMetric: u64 = EBase + 22;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -166,19 +165,21 @@ module atoma::db {
         security_level: Option<u16>,
         /// Efficiency metrics for the task (e.g. throughput, latency, cost, energy).
         /// Note: we might want to support multiple combined input efficiency metrics in the future.
-        efficiency_metric: Option<EfficiencyMetrics>,
+        task_metrics: TaskMetrics,
         /// Subscribed nodes
         subscribed_nodes: TableVec<SmallId>,
     }
 
     /// Systems's efficiency metrics
-    public struct EfficiencyMetrics has store, copy, drop {
+    public struct TaskMetrics has store, copy, drop {
         /// The unit of compute for the efficiency metric
         compute_unit: u16,
+        /// The time unit for which to evaluate the efficiency of the system required to complete the task.
+        time_unit: Option<u16>,
         /// The value of the efficiency metric
-        /// E.g. a `Task` might specify a minimum throughput of processing 100 tokens per second.
-        /// In this case the value is 100.
-        value: u64,
+        /// For example, if compute_unit corresponds to number of tokens, and time_unit corresponds to seconds,
+        /// then the value represents the number of tokens processed per second.
+        value: Option<u64>,
     }
 
     /// Represents the role or purpose of a computational task in the Atoma network.
@@ -414,25 +415,11 @@ module atoma::db {
         valid_until_epoch: Option<u64>,
         optimizations: vector<u16>,
         security_level: Option<u16>,
-        mut efficiency_unit: Option<u16>,
-        mut efficiency_value: Option<u64>,
+        efficiency_compute_units: u16,
+        efficiency_time_units: Option<u16>,
+        efficiency_value: Option<u64>,
         ctx: &mut TxContext,
     ) {
-        if (efficiency_value.is_some() && efficiency_unit.is_none()) {
-            abort EInvalidEfficiencyMetric
-        } else if (efficiency_value.is_none() && efficiency_unit.is_some()) {
-            abort EInvalidEfficiencyMetric
-        };
-        
-        let efficiency_metric = if (efficiency_value.is_some() && efficiency_unit.is_some()) {
-            option::some(EfficiencyMetrics {
-                compute_unit: option::extract(&mut efficiency_unit),
-                value: option::extract(&mut efficiency_value),
-            })
-        } else { 
-            option::none()
-        };
-
         let badge = create_task(
             self,
             role,
@@ -440,7 +427,11 @@ module atoma::db {
             valid_until_epoch,
             optimizations,
             security_level,
-            efficiency_metric,
+            TaskMetrics {
+                compute_unit: efficiency_compute_units,
+                time_unit: efficiency_time_units,
+                value: efficiency_value,
+            },
             ctx,
         );
         transfer::transfer(badge, ctx.sender());
@@ -456,7 +447,7 @@ module atoma::db {
     /// * `valid_until_epoch` - An optional u64 representing the epoch until which the task is valid.
     /// * `optimizations` - An optional vector of u16 representing optimization types.
     /// * `security_level` - An optional u16 representing the security level.
-    /// * `efficiency_metric` - An optional vector of EfficiencyMetric representing efficiency metrics.
+    /// * `task_metrics` - An optional vector of EfficiencyMetric representing efficiency metrics.
     /// * `performance_unit` - An optional u16 representing the performance unit.
     /// * `ctx` - A mutable reference to the transaction context.
     ///
@@ -469,7 +460,7 @@ module atoma::db {
         valid_until_epoch: Option<u64>,
         optimizations: vector<u16>,
         security_level: Option<u16>,
-        efficiency_metric: Option<EfficiencyMetrics>,
+        task_metrics: TaskMetrics,
         ctx: &mut TxContext,
     ): TaskBadge {
         let small_id = self.next_task_small_id;
@@ -484,7 +475,7 @@ module atoma::db {
             deprecated_at_epoch: option::none(),
             optimizations,
             security_level,
-            efficiency_metric,
+            task_metrics,
             subscribed_nodes: table_vec::empty(ctx),
         };
         object_table::add(&mut self.tasks, small_id, task);
@@ -943,8 +934,8 @@ module atoma::db {
         self.tasks.borrow(task_small_id).security_level
     }
 
-    public fun get_task_efficiency_metric(self: &AtomaDb, task_small_id: SmallId): Option<EfficiencyMetrics> {
-        self.tasks.borrow(task_small_id).efficiency_metric
+    public fun get_task_task_metrics(self: &AtomaDb, task_small_id: SmallId): TaskMetrics {
+        self.tasks.borrow(task_small_id).task_metrics
     }  
 
     public fun get_task_subscribed_nodes(self: &AtomaDb, task_small_id: SmallId): &TableVec<SmallId> {
@@ -1162,7 +1153,7 @@ module atoma::db {
             deprecated_at_epoch: _,
             optimizations: _,
             security_level: _,
-            efficiency_metric: _,
+            task_metrics: _,
             subscribed_nodes,
         } = task;
 
