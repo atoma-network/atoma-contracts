@@ -37,87 +37,6 @@ module atoma::db {
     /// How many extra nodes to sample when cross validating.
     const InitialCrossValidationExtraNodesCount: u64 = 1;
 
-    /// Predefined values for task roles.
-    const TASK_ROLE_INFERENCE: u16 = 0;
-    const TASK_ROLE_EMBEDDING: u16 = 1;
-    const TASK_ROLE_FINE_TUNING: u16 = 2;
-    const TASK_ROLE_TRAINING: u16 = 3;
-
-    /// Predefined values for ComputeUnit types.
-    /// Text token compute unit, it can either be input or output   
-    const COMPUTE_UNIT_TEXT_TOKEN_PER_SECOND: u16 = 0;
-    /// Time to first token compute unit
-    const COMPUTE_UNIT_TIME_TO_FIRST_TOKEN: u16 = 1;
-    /// Image pixel compute unit, it can either be input or output
-    const COMPUTE_UNIT_IMAGE_PIXEL_PER_SECOND: u16 = 2;
-    /// Audio second compute unit
-    const COMPUTE_UNIT_AUDIO_SECOND_PER_SECOND: u16 = 3;
-    /// Video second compute unit
-    const COMPUTE_UNIT_VIDEO_SECOND_PER_SECOND: u16 = 4;
-    /// Video frame compute unit
-    const COMPUTE_UNIT_VIDEO_FRAME_PER_SECOND: u16 = 5;
-    /// Speech second compute unit
-    const COMPUTE_UNIT_SPEECH_SECOND_PER_SECOND: u16 = 6;
-    /// Embedding vector compute unit
-    const COMPUTE_UNIT_EMBEDDING_VECTOR_PER_SECOND: u16 = 7;
-    /// GPU hour compute unit
-    const COMPUTE_UNIT_GPU_PER_HOUR: u16 = 8;
-    /// Data point compute unit
-    const COMPUTE_UNIT_DATA_POINT: u16 = 9;
-    /// Training sample compute unit
-    const COMPUTE_UNIT_TRAINING_SAMPLE: u16 = 10;
-
-    /// Predefined values for Modality types.
-    /// Text to text modality
-    const MODALITY_TEXT_TO_TEXT: u16 = 0;
-    /// Text to image modality
-    const MODALITY_TEXT_TO_IMAGE: u16 = 1;
-    /// Image to text modality
-    const MODALITY_IMAGE_TO_TEXT: u16 = 2;
-    /// Text to video modality
-    const MODALITY_TEXT_TO_VIDEO: u16 = 3;
-    /// Video to text modality
-    const MODALITY_VIDEO_TO_TEXT: u16 = 4;
-    /// Text to speech modality
-    const MODALITY_TEXT_TO_SPEECH: u16 = 6;
-    /// Vector embedding modality
-    const MODALITY_VECTOR_EMBEDDING: u16 = 7;
-    /// Fine tuning modality
-    const MODALITY_FINE_TUNING: u16 = 8;
-    /// Text to audio modality
-    const MODALITY_TEXT_TO_AUDIO: u16 = 9;
-
-    /// Predefined values for Optimization types.
-    /// No optimization
-    const OPTIMIZATION_NONE: u16 = 0;
-    /// Use Flash Attention
-    const OPTIMIZATION_FLASH_ATTENTION: u16 = 1;
-    /// Prompt caching
-    const OPTIMIZATION_PROMPT_CACHING: u16 = 2;
-    /// Quantization
-    const OPTIMIZATION_QUANTIZATION: u16 = 3;
-    /// Pruning
-    const OPTIMIZATION_PRUNING: u16 = 4;
-    /// Speculative decoding
-    const OPTIMIZATION_SPECULATIVE_DECODING: u16 = 5;
-
-    /// Predefined values for Security levels.
-    /// No security guarantees, equivalent to verifiability and privacy
-    const SECURITY_NONE: u16 = 0;
-    /// Sampling consensus verification
-    const SAMPLING_CONSENSUS: u16 = 0;
-    /// Trusted execution environment security for both data privacy and verifiability
-    const PRIVACY_TEE: u16 = 1;
-
-    /// Predefined values for Reputation scores.
-    /// Minimum reputation score
-    const REPUTATION_SCORE_MINIMUM: u8 = 0;
-    /// Maximum reputation score
-    /// NOTE: We currently cap the reputation score at 1000.
-    /// However this might change in the future, where we
-    /// allow uncapped reputation scores, to incentivize nodes
-    /// to be online and responsive in the network, for perpetuity.
-    const REPUTATION_SCORE_MAXIMUM: u8 = 255; 
     /// Start value for reputation scores. It is the same
     /// for every node, in the initial state.
     const REPUTATION_SCORE_START: u8 = 100;
@@ -152,6 +71,9 @@ module atoma::db {
     const ENodeAlreadySubscribedToTask: u64 = EBase + 16;
     const ETaskNotFound: u64 = EBase + 17;
     const ENodeNotSubscribedToTask: u64 = EBase + 18;
+    const ENotEnoughEpochsPassed: u64 = EBase + 19;
+    const ETaskNotDeprecated: u64 = EBase + 20;
+    const EInvalidNodeIndex: u64 = EBase + 21;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -164,13 +86,6 @@ module atoma::db {
         /// ID of the NodeBadge object
         badge_id: ID,
         node_small_id: SmallId,
-    }
-
-    public struct NodeSubscriberToTaskEvent has copy, drop {
-        /// Unique ID of the task at hand
-        task_small_id: SmallId,
-        node_small_id: SmallId,
-        echelon_id: EchelonId,
     }
 
     public struct NodeSubscribedToModelEvent has copy, drop {
@@ -230,27 +145,14 @@ module atoma::db {
     /// Represents a computational task on the Atoma network.
     /// Tasks can include model inference, text embeddings, fine-tuning, training,
     /// or other arbitrary computations.
-    public struct Task has store {
+    public struct Task has key, store {
+        id: UID,
         /// The (optional) address of the user who created the task
         owner: Option<address>,
         /// The specific role or purpose of the task (e.g., "inference", "embedding", "fine-tuning")
         role: TaskRole,
         /// An optional unique identifier for a `ModelEntry`, if the task is associated with a particular model
         model_name: Option<ascii::String>,
-        /// The modality of the task, defining the type of input and output (e.g., text-to-text, text-to-image)
-        modality: Modality,
-        // /// Maximum price (in TOMA tokens) per unit of compute for the task's input
-        // /// This sets an upper limit on what the task creator is willing to pay for input processing
-        // max_input_price_per_unit: u64,
-        // /// Maximum price (in TOMA tokens) per unit of compute for the task's output
-        // /// This sets an upper limit on what the task creator is willing to pay for output generation
-        // max_output_price_per_unit: u64,
-        // /// The unit of compute for the task's input (e.g., text tokens, image pixels)
-        // /// This defines how input computation is measured and priced
-        // input_unit: ComputeUnit,
-        // /// The unit of compute for the task's output (e.g., text tokens, image pixels)
-        // /// This defines how output computation is measured and priced
-        // output_unit: ComputeUnit,
         /// Indicates whether the task is deprecated and should no longer be used
         /// Deprecated tasks may be kept for historical reasons but should not be assigned to nodes
         is_deprecated: bool,
@@ -260,9 +162,9 @@ module atoma::db {
         /// Deprecated at epoch
         deprecated_at_epoch: Option<u64>,
         /// Unique set of optimizations that can be applied to the task
-        optimizations: Option<vector<Optimization>>,
+        optimizations: vector<u16>,
         /// Security level for the task
-        security_level: Option<SecurityLevel>,
+        security_level: Option<u16>,
         /// White list of addresses that can request execution of the task
         whitelisted_requesters: Option<VecSet<address>>,
         /// Input efficiency metrics for the task (e.g. throughput, latency, cost, energy).
@@ -271,16 +173,14 @@ module atoma::db {
         /// Output efficiency metrics for the task (e.g. throughput, latency, cost, energy)
         /// Note: we might want to support multiple combined output efficiency metrics in the future.
         output_efficiency: Option<EfficiencyMetrics>,
-        /// Unit of performance
-        performance_unit: Option<PerformanceUnit>,
         /// Subscribed nodes
         subscribed_nodes: TableVec<SmallId>,
     }
 
     /// Systems's efficiency metrics
-    public struct EfficiencyMetrics has store {
+    public struct EfficiencyMetrics has store, copy, drop {
         /// The unit of compute for the efficiency metric
-        compute_unit: ComputeUnit,
+        compute_unit: u16,
         /// The value of the efficiency metric
         /// E.g. a `Task` might specify a minimum throughput of processing 100 tokens per second.
         /// In this case the value is 100.
@@ -291,35 +191,6 @@ module atoma::db {
     /// Each role is associated with a specific type of operation or computation,
     /// according to the predefined values above.
     public struct TaskRole has store, copy, drop { 
-        inner: u16,
-    }
-
-    /// The modality for a task
-    public struct Modality has store, copy, drop { 
-        inner: u16,
-    }
-
-    /// The unit of compute for a task
-    public struct ComputeUnit has store, copy, drop {
-        /// An integer representation of the compute unit type.
-        unit_type: u16,
-        /// An optional count for units that require it (e.g., number of tokens).
-        /// If the unit does not require a count, the value is defaulted to 1.
-        count: Option<u64>,
-    }
-
-    /// Optimization for a task
-    public struct Optimization has store, copy, drop {
-        inner: u16,
-    }
-
-    /// Security level for a task
-    public struct SecurityLevel has store, copy, drop {
-        inner: u16,
-    }
-
-    /// Efficiency unit for a task
-    public struct EfficiencyUnit has store, copy, drop {
         inner: u16,
     }
 
@@ -429,7 +300,7 @@ module atoma::db {
         name: ascii::String,
         /// The modality of the model.
         /// Determines what kind of requests it can serve.
-        modality: Modality,
+        modality: u64,
         /// Whether the model is disabled and cannot be used to serve prompts.
         is_disabled: bool,
         /// Which echelons (groups of nodes) support this model.
@@ -496,7 +367,7 @@ module atoma::db {
             tickets: object::new(ctx),
             nodes: table::new(ctx),
             models: object_table::new(ctx),
-            tasks: table::new(ctx),
+            tasks: object_table::new(ctx),
             fee_treasury: balance::zero(),
             communal_treasury: balance::zero(),
             // IMPORTANT: we start from 1 because 0 is reserved
@@ -563,21 +434,19 @@ module atoma::db {
     /// A TaskBadge object representing the created task.
     public fun create_task(
         self: &mut AtomaDb,
-        model_name: Option<ascii::String>,
         role: u16,
         model_name: Option<ascii::String>,
-        modality: u16,
+        modality: u64,
         valid_until_epoch: Option<u64>,
-        optimizations: Option<vector<u16>>,
+        optimizations: vector<u16>,
         security_level: Option<u16>,
-        whitelisted_nodes: Option<vector<address>>,
-        input_efficiency_metric: Option<vector<EffiencyMetric>>,
-        output_efficiency_metric: Option<vector<EffiencyMetric>>,
-        performance_unit: Option<u16>,
+        input_efficiency_metric: Option<EfficiencyMetrics>,
+        output_efficiency_metric: Option<EfficiencyMetrics>,
+        whitelisted_requesters: Option<VecSet<address>>,
         set_owner: bool,
         ctx: &mut TxContext,
     ): TaskBadge {
-        let owner = if set_owner {
+        let owner = if (set_owner) {
             option::some(ctx.sender())
         } else {
             option::none()
@@ -585,50 +454,25 @@ module atoma::db {
         let small_id = self.next_task_small_id;
         self.next_task_small_id.inner = self.next_task_small_id.inner + 1;
 
-        let optimizations = if (option::is_some(&optimizations)) {
-            let opts = option::extract(&optimizations);
-            let len = vector::length(&opts);
-            let mut i = 0;
-            let mut vec = vector::empty();
-            while (i < len) {
-                let opt = *vector::borrow(&opts, i);
-                vector::push_back(&mut vec, Optimization { inner: opt });
-                i = i + 1;
-            };
-            option::some(vec)
-        } else {
-            option::none()
-        };
-
         let task = Task {
-            owner,
+            id: object::new(ctx),
+            owner: owner,
             role: TaskRole { inner: role },
             model_name,
-            modality: Modality { inner: modality },
+            modality,
             is_deprecated: false,
             valid_until_epoch,
             deprecated_at_epoch: option::none(),
             optimizations,
-            security_level: if (option::is_some(&security_level)) {
-                option::some(SecurityLevel { inner: option::extract(&security_level) })
-            } else {
-                option::none()
-            },
-            whitelisted_requesters,
-            max_input_latency: max_input_latency_ms,
-            max_output_latency: max_output_latency_ms,
-            max_input_throughput,
-            max_output_throughput,
-            performance_unit: if (option::is_some(&performance_unit)) {
-                option::some(PerformanceUnit { inner: option::extract(&performance_unit) })
-            } else {
-                option::none()
-            },
+            security_level,
+            whitelisted_requesters: whitelisted_requesters,
+            input_efficiency: input_efficiency_metric,
+            output_efficiency: output_efficiency_metric,
             subscribed_nodes: table_vec::empty(ctx),
         };
         object_table::add(&mut self.tasks, small_id, task);
         
-        sui::event::emit(TaskPublishedEvent {
+        sui::event::emit(TaskRegisteredEvent {
             task_small_id: small_id,
         });
 
@@ -668,10 +512,11 @@ module atoma::db {
     public fun deprecate_task(
         self: &mut AtomaDb,
         task_badge: &mut TaskBadge,
-        task_small_id: SmallId,
+        task_small_id: u64,
         ctx: &mut TxContext,
     ) {
-        assert!(self.tasks.contains(task_badge.small_id), ETaskNotFound);
+        let task_small_id = SmallId { inner: task_small_id };
+        assert!(self.tasks.contains(task_small_id), ETaskNotFound);
 
         let task = self.tasks.borrow_mut(task_badge.small_id);
         task.is_deprecated = true;
@@ -743,8 +588,9 @@ module atoma::db {
     public entry fun subscribe_node_to_task(
         self: &mut AtomaDb,
         node_badge: &mut NodeBadge,
-        task_small_id: SmallId,
+        task_small_id: u64,
     ) {
+        let task_small_id = SmallId { inner: task_small_id };
         assert!(self.tasks.contains(task_small_id), ETaskNotFound);
 
         let task = self.tasks.borrow_mut(task_small_id);
@@ -781,9 +627,10 @@ module atoma::db {
     public entry fun unsubscribe_node_from_task(
         self: &mut AtomaDb,
         node_badge: &mut NodeBadge,
-        task_small_id: SmallId,
+        task_small_id: u64,
     ) {
-        let perhaps_task_small_id = dynamic_field::remove_if_exists(&mut node_badge.id, task_small_id);
+        let task_small_id = SmallId { inner: task_small_id };
+        let perhaps_task_small_id: Option<bool> = dynamic_field::remove_if_exists(&mut node_badge.id, task_small_id);
         assert!(perhaps_task_small_id.is_some(), ENodeNotSubscribedToTask);
 
         let task = self.tasks.borrow_mut(task_small_id);
@@ -813,13 +660,14 @@ module atoma::db {
     /// * `ENodeNotSubscribedToTask` - If the node is not subscribed to the specified task.
     /// * `ENodeIndexMismatch` - If the node at the given index doesn't match the node being unsubscribed.
     /// * `EInvalidNodeIndex` - If the provided node_index is out of bounds.
-    public entry fun unsubscribe_node_from_task(
+    public entry fun unsubscribe_node_from_task_by_index(
         self: &mut AtomaDb,
         node_badge: &mut NodeBadge,
-        task_small_id: SmallId,
+        task_small_id: u64,
         node_index: u64,
     ) {
-        let perhaps_task_small_id = dynamic_field::remove_if_exists(&mut node_badge.id, task_small_id);
+        let task_small_id = SmallId { inner: task_small_id };
+        let perhaps_task_small_id: Option<bool> = dynamic_field::remove_if_exists(&mut node_badge.id, task_small_id);
         assert!(perhaps_task_small_id.is_some(), ENodeNotSubscribedToTask);
 
         let task = self.tasks.borrow_mut(task_small_id);
@@ -1058,11 +906,11 @@ module atoma::db {
         self.tasks.borrow(task_small_id).role
     }
 
-    public fun get_task_model_name(self: &AtomaDb, task_small_id: SmallId): Option<UID> {
+    public fun get_task_model_name(self: &AtomaDb, task_small_id: SmallId): Option<ascii::String> {
         self.tasks.borrow(task_small_id).model_name
     }
 
-    public fun get_task_modality(self: &AtomaDb, task_small_id: SmallId): Modality {
+    public fun get_task_modality(self: &AtomaDb, task_small_id: SmallId): u64 {
         self.tasks.borrow(task_small_id).modality
     }
 
@@ -1078,11 +926,11 @@ module atoma::db {
         self.tasks.borrow(task_small_id).deprecated_at_epoch
     }
 
-    public fun get_task_optimizations(self: &AtomaDb, task_small_id: SmallId): Option<vector<Optimization>> {
+    public fun get_task_optimizations(self: &AtomaDb, task_small_id: SmallId): vector<u16> {
         self.tasks.borrow(task_small_id).optimizations
     }
 
-    public fun get_task_security_level(self: &AtomaDb, task_small_id: SmallId): Option<SecurityLevel> {
+    public fun get_task_security_level(self: &AtomaDb, task_small_id: SmallId): Option<u16> {
         self.tasks.borrow(task_small_id).security_level
     }
 
@@ -1090,24 +938,12 @@ module atoma::db {
         self.tasks.borrow(task_small_id).whitelisted_requesters
     }
 
-    public fun get_task_max_input_latency(self: &AtomaDb, task_small_id: SmallId): Option<u64> {
-        self.tasks.borrow(task_small_id).max_input_latency
-    }
+    public fun get_task_input_efficiency(self: &AtomaDb, task_small_id: SmallId): Option<EfficiencyMetrics> {
+        self.tasks.borrow(task_small_id).input_efficiency
+    }  
 
-    public fun get_task_max_output_latency(self: &AtomaDb, task_small_id: SmallId): Option<u64> {
-        self.tasks.borrow(task_small_id).max_output_latency
-    }
-
-    public fun get_task_max_input_throughput(self: &AtomaDb, task_small_id: SmallId): Option<u64> {
-        self.tasks.borrow(task_small_id).max_input_throughput
-    }
-
-    public fun get_task_max_output_throughput(self: &AtomaDb, task_small_id: SmallId): Option<u64> {
-        self.tasks.borrow(task_small_id).max_output_throughput
-    }
-
-    public fun get_task_performance_unit(self: &AtomaDb, task_small_id: SmallId): Option<PerformanceUnit> {
-        self.tasks.borrow(task_small_id).performance_unit
+    public fun get_task_output_efficiency(self: &AtomaDb, task_small_id: SmallId): Option<EfficiencyMetrics> {
+        self.tasks.borrow(task_small_id).output_efficiency
     }
 
     public fun get_task_subscribed_nodes(self: &AtomaDb, task_small_id: SmallId): &TableVec<SmallId> {
@@ -1296,9 +1132,10 @@ module atoma::db {
     public entry fun remove_deprecated_task(
         self: &mut AtomaDb,
         _: &AtomaManagerBadge,
-        task_small_id: SmallId,
+        task_small_id: u64,
         ctx: &mut TxContext,
     ) {
+        let task_small_id = SmallId { inner: task_small_id };
         // Check if the task exists
         assert!(object_table::contains(&self.tasks, task_small_id), ETaskNotFound);
 
@@ -1312,8 +1149,28 @@ module atoma::db {
         let deprecated_epoch = *option::borrow(&task.deprecated_at_epoch);
         assert!(ctx.epoch() >= deprecated_epoch + 2, ENotEnoughEpochsPassed);
 
-        // If all checks pass, remove the task
-        object_table::remove(&mut self.tasks, task_small_id);
+        // If all checks pass, remove the task from the object table
+        // and drop the task object altogether
+        let task = object_table::remove(&mut self.tasks, task_small_id);
+        let Task {
+            id: task_id,
+            owner: _,
+            role: _,
+            model_name: _,
+            modality: _,
+            is_deprecated: _,
+            valid_until_epoch: _,
+            deprecated_at_epoch: _,
+            optimizations: _,
+            security_level: _,
+            whitelisted_requesters: _,
+            input_efficiency: _,
+            output_efficiency: _,
+            subscribed_nodes,
+        } = task;
+
+        task_id.delete();
+        subscribed_nodes.drop();
     }
 
     /// As per the gate module:
@@ -1608,16 +1465,16 @@ module atoma::db {
         subscribed_nodes: &TableVec<SmallId>,
         node_small_id: SmallId,
     ): Option<u64> {
-        let len = subscribed_nodes.length();
+        let len = table_vec::length(subscribed_nodes);
         let mut i = 0;
         while (i < len) {
-            let node_id = subscribed_nodes.borrow(i);
+            let node_id = table_vec::borrow(subscribed_nodes, i);
             if (node_id.inner == node_small_id.inner) {
-                return Some(i);
-            }
+                return option::some(i)
+            };
             i = i + 1;
-        }
-        return None;
+        };
+        option::none()
     }
 
     fun get_echelon_mut(
