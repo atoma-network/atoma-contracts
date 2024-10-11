@@ -74,6 +74,7 @@ module atoma::db {
     const ENotEnoughEpochsPassed: u64 = EBase + 19;
     const ETaskNotDeprecated: u64 = EBase + 20;
     const EInvalidNodeIndex: u64 = EBase + 21;
+    const EModelNotFound: u64 = EBase + 22;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -456,7 +457,7 @@ module atoma::db {
     public fun create_task(
         self: &mut AtomaDb,
         role: u16,
-        model_name: Option<ascii::String>,
+        mut model_name: Option<ascii::String>,
         valid_until_epoch: Option<u64>,
         optimizations: vector<u16>,
         security_level: Option<u16>,
@@ -465,6 +466,11 @@ module atoma::db {
     ): TaskBadge {
         let small_id = self.next_task_small_id;
         self.next_task_small_id.inner = self.next_task_small_id.inner + 1;
+
+        if (model_name.is_some()) {
+            let model_name = model_name.extract();
+            assert!(self.models.contains(model_name), EModelNotFound);
+        };
 
         let task = Task {
             id: object::new(ctx),
