@@ -148,8 +148,6 @@ module atoma::db {
     /// or other arbitrary computations.
     public struct Task has key, store {
         id: UID,
-        /// The (optional) address of the user who created the task
-        owner: Option<address>,
         /// The specific role or purpose of the task (e.g., "inference", "embedding", "fine-tuning")
         role: TaskRole,
         /// An optional unique identifier for a `ModelEntry`, if the task is associated with a particular model
@@ -418,7 +416,6 @@ module atoma::db {
         security_level: Option<u16>,
         mut efficiency_unit: Option<u16>,
         mut efficiency_value: Option<u64>,
-        set_owner: bool,
         ctx: &mut TxContext,
     ) {
         if (efficiency_value.is_some() && efficiency_unit.is_none()) {
@@ -444,7 +441,6 @@ module atoma::db {
             optimizations,
             security_level,
             efficiency_metric,
-            set_owner,
             ctx,
         );
         transfer::transfer(badge, ctx.sender());
@@ -462,7 +458,6 @@ module atoma::db {
     /// * `security_level` - An optional u16 representing the security level.
     /// * `efficiency_metric` - An optional vector of EfficiencyMetric representing efficiency metrics.
     /// * `performance_unit` - An optional u16 representing the performance unit.
-    /// * `set_owner` - A boolean indicating whether to set the task owner.
     /// * `ctx` - A mutable reference to the transaction context.
     ///
     /// # Returns
@@ -475,20 +470,13 @@ module atoma::db {
         optimizations: vector<u16>,
         security_level: Option<u16>,
         efficiency_metric: Option<EfficiencyMetrics>,
-        set_owner: bool,
         ctx: &mut TxContext,
     ): TaskBadge {
-        let owner = if (set_owner) {
-            option::some(ctx.sender())
-        } else {
-            option::none()
-        };
         let small_id = self.next_task_small_id;
         self.next_task_small_id.inner = self.next_task_small_id.inner + 1;
 
         let task = Task {
             id: object::new(ctx),
-            owner: owner,
             role: TaskRole { inner: role },
             model_name,
             is_deprecated: false,
@@ -927,10 +915,6 @@ module atoma::db {
         self.tasks.borrow(task_small_id)
     }
 
-    public fun get_task_owner(self: &AtomaDb, task_small_id: SmallId): Option<address> {
-        self.tasks.borrow(task_small_id).owner
-    }
-
     public fun get_task_role(self: &AtomaDb, task_small_id: SmallId): TaskRole {
         self.tasks.borrow(task_small_id).role
     }
@@ -1171,7 +1155,6 @@ module atoma::db {
         let task = object_table::remove(&mut self.tasks, task_small_id);
         let Task {
             id: task_id,
-            owner: _,
             role: _,
             model_name: _,
             is_deprecated: _,
