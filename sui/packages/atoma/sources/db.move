@@ -36,6 +36,8 @@ module atoma::db {
     const InitialCrossValidationProbabilityPermille: u64 = 10;
     /// How many extra nodes to sample when cross validating.
     const InitialCrossValidationExtraNodesCount: u64 = 1;
+    /// How many epochs after the vault expires during which any disputes must be resolved.
+    const VaultSettlementEpochsUntilDisputeResolution: u64 = 2;
 
     /// Start value for reputation scores. It is the same
     /// for every node, in the initial state.
@@ -75,7 +77,10 @@ module atoma::db {
     const ETaskNotDeprecated: u64 = EBase + 20;
     const EInvalidNodeIndex: u64 = EBase + 21;
     const EModelNotFound: u64 = EBase + 22;
-
+    const ENoNodesSubscribedToTask: u64 = EBase + 23;
+    const EInvalidExpirationEpoch: u64 = EBase + 24;
+    const ENoNodesEligibleForTask: u64 = EBase + 25;
+    
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
         /// ID of the AtomaDb object
@@ -98,16 +103,43 @@ module atoma::db {
     public struct NodeSubscribedToTaskEvent has copy, drop {
         task_small_id: SmallId,
         node_small_id: SmallId,
+        price_per_compute_unit: u64,
     }
 
     public struct TaskRegisteredEvent has copy, drop {
+        /// ID of the Task object
+        task_id: ID,
         task_small_id: SmallId,
     }
 
     public struct TaskDeprecationEvent has copy, drop {
+        /// ID of the Task object
+        task_id: ID,
         task_small_id: SmallId,
         /// The epoch in which the task was deprecated.
         epoch: u64,
+    }
+
+    public struct VaultCreatedEvent has copy, drop {
+        /// ID of the Vault object
+        vault_id: ID,
+        small_id: SmallId,
+        selected_node: SmallId,
+        num_compute_units: u64,
+        expiration_epoch: Option<u64>,
+        price: u64,
+    }
+
+    public struct VaultUpdatedEvent has copy, drop {
+        /// ID of the Vault object
+        vault_id: ID,
+        small_id: SmallId,
+    }
+
+    public struct VaultDepletedEvent has copy, drop {
+        /// ID of the Vault object
+        vault_id: ID,
+        small_id: SmallId,
     }
 
     /// Owned object.
@@ -129,6 +161,14 @@ module atoma::db {
     ///
     /// Proof of task creation.
     public struct TaskBadge has key, store {
+        id: UID,
+        small_id: SmallId,
+    }
+
+    /// Owned object, transferred to the creator of a vault.
+    ///
+    /// Proof of vault creation.
+    public struct VaultBadge has key, store {
         id: UID,
         small_id: SmallId,
     }
@@ -167,8 +207,9 @@ module atoma::db {
         /// Efficiency metrics for the task (e.g. throughput, latency, cost, energy).
         /// Note: we might want to support multiple combined input efficiency metrics in the future.
         task_metrics: TaskMetrics,
-        /// Subscribed nodes
-        subscribed_nodes: TableVec<SmallId>,
+        /// Subscribed nodes table, where key is node SmallId and value is price per compute unit
+        /// for this current task.
+        subscribed_nodes: TableVec<NodePriceData>,
     }
 
     /// Systems's efficiency metrics
@@ -195,6 +236,33 @@ module atoma::db {
         inner: u8,
     }
 
+    /// Data about a node's price per compute unit for a task
+    public struct NodePriceData has store, copy, drop {
+        node_id: SmallId,
+        price_per_compute_unit: u64,
+    }
+
+    /// Vaults are owned by users and used to buy compute units for specific tasks.
+    public struct Vault has store {
+        /// Address of the owner of the vault
+        owner: address,
+        /// Price per compute unit in TOMA
+        price: u64,
+        /// Number of compute units remaining in the vault
+        num_compute_units: u64,
+        /// Epoch until which the vault is valid, after this epoch the user can claim
+        /// any left TOMA tokens left in the vault, but it cannot submit new requests
+        /// for this same vault. Moreover, there is a period (of two epochs) during which
+        /// any disputes must be resolved, before the user can reclaim any left funds locked in the vault.
+        expiration_epoch: Option<u64>,
+        /// Node selected to process the requests in the vault
+        selected_node: SmallId,
+        /// Vault is still active but it is locked in dispute resolution period
+        in_dispute: bool,
+        /// The associated task SmallId
+        task_small_id: SmallId,
+    }
+
     /// Shared object.
     ///
     /// Database of the package.
@@ -219,12 +287,17 @@ module atoma::db {
         /// We keep track of registered tasks so taht we can generate
         /// SmallId for newly registered tasks as these IDs are sequential.
         next_task_small_id: SmallId,
+        /// We keep track of registered vaults so that we can generate
+        /// SmallId for newly registered vaults as these IDs are sequential.
+        next_vault_small_id: SmallId,
         /// Holds information about each node.
         nodes: Table<SmallId, NodeEntry>,
         /// Each model is represented here and stores which nodes support it.
         models: ObjectTable<ascii::String, ModelEntry>,
-        /// Holds information about the registered tasks
+        /// Each task is represented here and stores which nodes support it.
         tasks: ObjectTable<SmallId, Task>,
+        /// Holds information about each vault
+        vaults: Table<SmallId, Vault>,
         /// All fees and honest node rewards go here.
         /// We then do book-keeping on NodeEntry objects to calculate how much
         /// is available for withdrawal by each node.
@@ -364,11 +437,13 @@ module atoma::db {
             nodes: table::new(ctx),
             models: object_table::new(ctx),
             tasks: object_table::new(ctx),
+            vaults: table::new(ctx),
             fee_treasury: balance::zero(),
             communal_treasury: balance::zero(),
             // IMPORTANT: we start from 1 because 0 is reserved
             next_node_small_id: SmallId { inner: 1 },
             next_task_small_id: SmallId { inner: 1 },
+            next_vault_small_id: SmallId { inner: 1 },
             is_registration_disabled: false,
             registration_collateral_in_protocol_token:
                 InitialCollateralRequiredForRegistration,
@@ -484,14 +559,16 @@ module atoma::db {
             task_metrics,
             subscribed_nodes: table_vec::empty(ctx),
         };
+        let task_id = object::new(ctx);
         object_table::add(&mut self.tasks, small_id, task);
         
         sui::event::emit(TaskRegisteredEvent {
+            task_id: object::uid_to_inner(&task_id),
             task_small_id: small_id,
         });
 
         TaskBadge {
-            id: object::new(ctx),
+            id: task_id,
             small_id,
         }
     }
@@ -526,10 +603,9 @@ module atoma::db {
     public entry fun deprecate_task(
         self: &mut AtomaDb,
         task_badge: &mut TaskBadge,
-        task_small_id: u64,
         ctx: &mut TxContext,
     ) {
-        let task_small_id = SmallId { inner: task_small_id };
+        let task_small_id = task_badge.small_id;
         assert!(self.tasks.contains(task_small_id), ETaskNotFound);
 
         let task = self.tasks.borrow_mut(task_badge.small_id);
@@ -537,9 +613,56 @@ module atoma::db {
         task.deprecated_at_epoch = option::some(tx_context::epoch(ctx));
 
         sui::event::emit(TaskDeprecationEvent {
+            task_id: object::uid_to_inner(&task.id),
             task_small_id: task_badge.small_id,
             epoch: tx_context::epoch(ctx),
         });
+    }
+
+    /// Removes a deprecated task from the task table.
+    /// It only allows to remove deprecated tasks that 
+    /// were deprecated at least 2 epochs from the current task.
+    public entry fun remove_deprecated_task(
+        self: &mut AtomaDb,
+        task_badge: TaskBadge,
+        ctx: &mut TxContext,
+    ) {
+        let TaskBadge {
+            id: task_badge_id,
+            small_id: task_small_id,
+        } = task_badge;
+        // Check if the task exists
+        assert!(object_table::contains(&self.tasks, task_small_id), ETaskNotFound);
+
+        let task = object_table::borrow(&self.tasks, task_small_id);
+        
+        // Check if the task is deprecated
+        assert!(task.is_deprecated, ETaskNotDeprecated);
+        
+        // Check if the deprecated_at_epoch exists and if 4 epochs have passed
+        assert!(option::is_some(&task.deprecated_at_epoch), ETaskNotDeprecated);
+        let deprecated_epoch = *option::borrow(&task.deprecated_at_epoch);
+        assert!(ctx.epoch() >= deprecated_epoch + 2, ENotEnoughEpochsPassed);
+
+        // If all checks pass, remove the task from the object table
+        // and drop the task object altogether
+        let task = object_table::remove(&mut self.tasks, task_small_id);
+        let Task {
+            id: task_id,
+            role: _,
+            model_name: _,
+            is_deprecated: _,
+            valid_until_epoch: _,
+            deprecated_at_epoch: _,
+            optimizations: _,
+            security_level: _,
+            task_metrics: _,
+            subscribed_nodes,
+        } = task;
+
+        task_badge_id.delete();
+        task_id.delete();
+        subscribed_nodes.drop();
     }
 
     /// Splits the collateral from the sender's wallet and registers a new node.
@@ -603,6 +726,7 @@ module atoma::db {
         self: &mut AtomaDb,
         node_badge: &mut NodeBadge,
         task_small_id: u64,
+        price_per_compute_unit: u64,
     ) {
         let task_small_id = SmallId { inner: task_small_id };
         assert!(self.tasks.contains(task_small_id), ETaskNotFound);
@@ -615,13 +739,17 @@ module atoma::db {
             !dynamic_field::exists_(&node_badge.id, task_small_id),
             ENodeAlreadySubscribedToTask,
         );
-        table_vec::push_back(&mut task.subscribed_nodes, node_badge.small_id);
+        table_vec::push_back(&mut task.subscribed_nodes, NodePriceData {
+            node_id: node_badge.small_id,
+            price_per_compute_unit,
+        });
         // Associate the task_small_id with the node badge
         dynamic_field::add(&mut node_badge.id, task_small_id, true);
 
         sui::event::emit(NodeSubscribedToTaskEvent {
             node_small_id: node_badge.small_id,
             task_small_id,
+            price_per_compute_unit,
         });
     }
 
@@ -653,8 +781,11 @@ module atoma::db {
 
         let node_index = option::extract(&mut node_index);
 
-        let remove_id = task.subscribed_nodes.swap_remove(node_index);
-        assert!(remove_id == node_badge.small_id, ENodeIndexMismatch);
+        let removed_node_price_data = table_vec::swap_remove(&mut task.subscribed_nodes, node_index);
+        assert!(
+            removed_node_price_data.node_id.inner == node_badge.small_id.inner,
+            ENodeIndexMismatch,
+        );
     }
 
     /// Unsubscribes a node from a specific task, provided the index of the node in the task's subscribed_nodes list.
@@ -689,8 +820,132 @@ module atoma::db {
         // Check if the provided node_index is valid
         assert!(node_index < task.subscribed_nodes.length(), EInvalidNodeIndex);
 
-        let remove_id = task.subscribed_nodes.swap_remove(node_index);
-        assert!(remove_id == node_badge.small_id, ENodeIndexMismatch);
+        let removed_node_price_data = task.subscribed_nodes.swap_remove(node_index);
+        assert!(
+            removed_node_price_data.node_id.inner == node_badge.small_id.inner,
+            ENodeIndexMismatch,
+        );
+    }
+
+    /// Creates a new vault for a specific task and transfers the resulting VaultBadge to the sender.
+    ///
+    /// This entry function is a wrapper around the `acquire_new_vault` function, handling the creation
+    /// of a random number generator and the transfer of the VaultBadge to the transaction sender.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `task_small_id` - The SmallId of the task associated with this vault.
+    /// * `num_compute_units` - The number of compute units allocated to this vault.
+    /// * `expiration_epoch` - An optional expiration epoch for the vault.
+    /// * `price` - The price per compute unit in TOMA tokens.
+    /// * `random` - A reference to a Random object for generating random numbers.
+    /// * `ctx` - A mutable reference to the transaction context.
+    ///
+    /// # Effects
+    /// - Creates a new vault in the AtomaDb.
+    /// - Generates a VaultBadge for the newly created vault.
+    /// - Transfers the VaultBadge to the transaction sender.
+    ///
+    /// # Aborts
+    /// This function may abort if:
+    /// - The task specified by `task_small_id` does not exist.
+    /// - There are no eligible nodes to process the vault's requests.
+    /// - The expiration epoch is not greater than the current epoch (when provided).
+    ///
+    /// # Events
+    /// Emits a VaultCreatedEvent containing details about the newly created vault.
+    entry fun acquire_new_vault_entry(
+        self: &mut AtomaDb,
+        task_small_id: u64,
+        num_compute_units: u64,
+        expiration_epoch: Option<u64>,
+        price: u64,
+        random: &sui::random::Random,
+        ctx: &mut TxContext,
+    ) {
+        let mut rng = random.new_generator(ctx);
+        let vault_badge = acquire_new_vault(
+            self, 
+            task_small_id, 
+            num_compute_units, 
+            expiration_epoch, 
+            price, 
+            &mut rng, 
+            ctx,
+        );
+        transfer::transfer(vault_badge, ctx.sender());
+    }
+
+    /// Creates a new vault for a specific task and returns a VaultBadge.
+    ///
+    /// This function creates a new vault associated with a given task, selects a node to process
+    /// the requests, and initializes the vault with the specified parameters.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `task_small_id` - The SmallId of the task associated with this vault.
+    /// * `num_compute_units` - The number of compute units allocated to this vault.
+    /// * `expiration_epoch` - An optional expiration epoch for the vault.
+    /// * `price` - The price per compute unit in TOMA tokens.
+    /// * `rng` - A mutable reference to a RandomGenerator for node selection.
+    /// * `ctx` - A mutable reference to the transaction context.
+    ///
+    /// # Returns
+    /// A VaultBadge object representing the newly created vault.
+    ///
+    /// # Aborts
+    /// * If the expiration epoch is not greater than the current epoch (when provided).
+    ///
+    /// # Events
+    /// Emits a VaultCreatedEvent containing details about the newly created vault.
+    ///
+    /// # Notes
+    /// - The function selects a node for the vault using the `sample_node_for_vault` method.
+    /// - The vault is initialized as not being in dispute.
+    /// - A new SmallId is assigned to the vault, incrementing the `next_vault_small_id` counter.
+    fun acquire_new_vault(
+        self: &mut AtomaDb,
+        task_small_id: u64,
+        num_compute_units: u64,
+        mut expiration_epoch: Option<u64>,
+        price: u64,
+        rng: &mut sui::random::RandomGenerator,
+        ctx: &mut TxContext,
+    ): VaultBadge {
+        let owner = ctx.sender();
+        let vault_id = object::new(ctx);
+        let task_small_id = SmallId { inner: task_small_id };
+        let selected_node = self.sample_node_for_vault(task_small_id, price, rng);
+        if (expiration_epoch.is_some()) {
+            let expiration_epoch = expiration_epoch.extract();
+            assert!(expiration_epoch > ctx.epoch(), EInvalidExpirationEpoch);
+        };
+        let vault = Vault { 
+            owner,
+            task_small_id,
+            num_compute_units,
+            selected_node,
+            price,
+            in_dispute: false,
+            expiration_epoch,
+        };
+        let vault_small_id = self.next_vault_small_id;
+        self.next_vault_small_id = SmallId { 
+            inner: self.next_vault_small_id.inner + 1 
+        };
+        self.vaults.add(vault_small_id, vault);
+        sui::event::emit(VaultCreatedEvent {
+            vault_id: object::uid_to_inner(&vault_id),
+            small_id: vault_small_id,
+            selected_node,
+            num_compute_units,
+            expiration_epoch,
+            price,
+        });
+        VaultBadge {
+            id: vault_id,
+            small_id: vault_small_id,
+        }
     }
 
     /// The node owner announces that they can serve prompts for the given
@@ -944,7 +1199,7 @@ module atoma::db {
         self.tasks.borrow(task_small_id).task_metrics
     }  
 
-    public fun get_task_subscribed_nodes(self: &AtomaDb, task_small_id: SmallId): &TableVec<SmallId> {
+    public fun get_task_subscribed_nodes(self: &AtomaDb, task_small_id: SmallId): &TableVec<NodePriceData> {
         &self.tasks.borrow(task_small_id).subscribed_nodes
     }
 
@@ -1106,6 +1361,43 @@ module atoma::db {
         sample_unique_nodes(&self.nodes, &mut echelon.nodes, count, rng)
     }
 
+    public(package) fun sample_node_for_vault(
+        self: &mut AtomaDb,
+        task_small_id: SmallId,
+        price_cap: u64,
+        rng: &mut sui::random::RandomGenerator,
+    ): SmallId {
+        let task = self.tasks.borrow_mut(task_small_id);
+        let subscribed_nodes = &task.subscribed_nodes;
+        let nodes_count = table_vec::length(subscribed_nodes);
+        if (nodes_count == 0) {
+            // no nodes subscribed to this task, should not happen
+            abort ENoNodesSubscribedToTask
+        };
+
+        // First, collect all eligible nodes (i.e., whose price per compute unit is less than the price cap).
+        let mut eligible_nodes = vector::empty();
+        let mut i = 0;
+        while (i < nodes_count) {
+            let node_price_data = table_vec::borrow(subscribed_nodes, i);
+            let node_id = node_price_data.node_id;
+            let node_price = node_price_data.price_per_compute_unit;
+            if (node_price <= price_cap && self.nodes.contains(node_id)) {
+                let node = self.nodes.borrow(node_id);
+                if (balance::value(&node.collateral) > 0 && option::is_none(&node.was_disabled_in_epoch)) {
+                    vector::push_back(&mut eligible_nodes, node_id);
+                }
+            };
+            i = i + 1;
+        };
+
+        // Second, randomly select one of the eligible nodes.
+        let eligible_nodes_count = vector::length(&eligible_nodes);
+        assert!(eligible_nodes_count > 0, ENoNodesEligibleForTask);
+        let node_index = rng.generate_u64() % eligible_nodes_count;
+        *vector::borrow(&eligible_nodes, node_index)
+    }
+
     // =========================================================================
     //                          Admin functions
     // =========================================================================
@@ -1127,7 +1419,7 @@ module atoma::db {
     /// Removes a deprecated task from the task table.
     /// It only allows to remove deprecated tasks that 
     /// were deprecated at least 2 epochs from the current task.
-    public entry fun remove_deprecated_task(
+    public entry fun remove_deprecated_task_by_admin(
         self: &mut AtomaDb,
         _: &AtomaManagerBadge,
         task_small_id: u64,
@@ -1456,13 +1748,13 @@ module atoma::db {
 
     /// Helper function to find the index of a node's small_id in a TableVec
     fun find_node_index(
-        subscribed_nodes: &TableVec<SmallId>,
+        subscribed_nodes: &TableVec<NodePriceData>,
         node_small_id: SmallId,
     ): Option<u64> {
         let len = table_vec::length(subscribed_nodes);
         let mut i = 0;
         while (i < len) {
-            let node_id = table_vec::borrow(subscribed_nodes, i);
+            let node_id = table_vec::borrow(subscribed_nodes, i).node_id;
             if (node_id.inner == node_small_id.inner) {
                 return option::some(i)
             };
