@@ -95,7 +95,6 @@ module atoma::db {
     const ENodeNotSelectedForStack: u64 = EBase + 28;
     const EStackInSettlementDispute: u64 = EBase + 29;
     const ETooManyComputedUnits: u64 = EBase + 30;
-    const EStackDisputePeriodNotOver: u64 = EBase + 31;
     const EStackDoesNotRequireSamplingConsensus: u64 = EBase + 32;
     const EStackNotFound: u64 = EBase + 33;
     const EStackNotInSettlementDispute: u64 = EBase + 34;
@@ -1288,9 +1287,7 @@ module atoma::db {
         assert!(self.stack_settlement_tickets.contains(stack_small_id), EStackNotInSettlementDispute);
 
         let stack = self.stacks.borrow(stack_small_id);
-        
-        let stack_settlement_ticket = self.stack_settlement_tickets.borrow_mut(stack_small_id);
-
+    
         // 2. Verify that the stack requires sampling consensus security level
         let task_small_id = stack.task_small_id;
         let security_level = self.tasks.borrow(task_small_id).security_level;
@@ -1308,7 +1305,7 @@ module atoma::db {
         let mut attestation_node_index = 0;
         while (attestation_node_index < vector::length(&attestation_nodes)) {
             if (*vector::borrow(&attestation_nodes, attestation_node_index) == node_badge.small_id) {
-                break;
+                break
             };
             attestation_node_index = attestation_node_index + 1;
         };
@@ -1317,8 +1314,8 @@ module atoma::db {
         let original_committed_stack_proof = self.stack_settlement_tickets.borrow(stack_small_id).committed_stack_proof;
         if (committed_stack_proof != original_committed_stack_proof) {
             // Start attestation dispute and return immediately
-            self.start_attestation_dispute(node_badge, stack_small_id.inner, committed_stack_proof, ctx);
-            return;
+            self.start_attestation_dispute(node_badge, stack_small_id.inner, committed_stack_proof);
+            return
         };
 
         let stack_settlement_ticket = self.stack_settlement_tickets.borrow_mut(stack_small_id);
@@ -1345,7 +1342,7 @@ module atoma::db {
                 // 9. In case the committed `stack_merkle_root` does not agree with the computed `stack_merkle_root`,
                 //    start between the original node and every attestation node
                 //    to determine which one of them are faulty
-                self.start_attestation_dispute(node_badge, stack_small_id.inner, committed_stack_proof, ctx);
+                self.start_attestation_dispute(node_badge, stack_small_id.inner, committed_stack_proof);
             } else {
                 // 10. If the `stack_merkle_root` agrees with the committed `stack_merkle_root`,
                 //     then the attestation settlement is complete and we emit a StackSettlementTicketEvent
@@ -1728,7 +1725,7 @@ module atoma::db {
             let mut attestation_node_index = 0;
             while (attestation_node_index < vector::length(&attestation_nodes)) {
                 if (vector::borrow(&attestation_nodes, attestation_node_index) == node_badge.small_id) {
-                    break;
+                    break
                 };
                 attestation_node_index = attestation_node_index + 1;
             };
@@ -1757,7 +1754,6 @@ module atoma::db {
         node_badge: &NodeBadge,
         stack_small_id: u64,
         attestation_commitment: vector<u8>,
-        ctx: &mut TxContext,
     ) {
         let stack_small_id = SmallId { inner: stack_small_id };
         let stack_settlement_ticket = self.stack_settlement_tickets.borrow_mut(stack_small_id);
