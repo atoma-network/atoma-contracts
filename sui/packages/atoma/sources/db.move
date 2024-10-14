@@ -96,6 +96,14 @@ module atoma::db {
     const EStackInSettlementDispute: u64 = EBase + 29;
     const ETooManyComputedUnits: u64 = EBase + 30;
     const EStackDisputePeriodNotOver: u64 = EBase + 31;
+    const EStackDoesNotRequireSamplingConsensus: u64 = EBase + 32;
+    const EStackNotFound: u64 = EBase + 33;
+    const EStackNotInSettlementDispute: u64 = EBase + 34;
+    const EStackDisputePeriodOver: u64 = EBase + 35;
+    const ENodeNotSelectedForAttestation: u64 = EBase + 36;
+    const EStackInDispute: u64 = EBase + 37;
+    const EStackDisputePeriodIsNotOver: u64 = EBase + 38;
+    const ENodeNotSelectedForSettlement: u64 = EBase + 39;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -232,6 +240,14 @@ module atoma::db {
         num_claimed_compute_units: u64,
         /// The amount of funds refunded to the user for unused compute units.
         user_refund_amount: u64,
+    }
+
+    public struct StackAttestationDisputeEvent has copy, drop {
+        stack_small_id: SmallId,
+        attestation_commitment: vector<u8>,
+        attestation_node_id: SmallId,
+        original_node_id: SmallId,
+        original_commitment: vector<u8>,
     }
 
     /// Owned object.
@@ -1062,8 +1078,9 @@ module atoma::db {
         let owner = ctx.sender();
         let stack_id = object::new(ctx);
         let task_small_id = SmallId { inner: task_small_id };
-        let selected_node = self.sample_node_for_stack(task_small_id, price, rng);
-        
+        let selected_node = self.sample_node_for_stack(task_small_id, price, num_compute_units, rng);
+        let task = self.tasks.borrow(task_small_id);
+
         let stack = Stack { 
             owner,
             task_small_id,
@@ -1079,9 +1096,8 @@ module atoma::db {
         self.stacks.add(stack_small_id, stack);
 
         // transfer the funds for compute units to the contract
-        let task = self.tasks.borrow(task_small_id);
-        let fee_amount = if task.security_level == SamplingConsensusSecurityLevel {
-            (price * num_compute_units * (self.get_sampling_consensus_charge_permille()  + self.get_additional_attestation_node_charge_permille())) / 1000
+        let fee_amount = if (task.security_level == SamplingConsensusSecurityLevel) {
+            (price * num_compute_units * (self.get_sampling_consensus_charge_permille() + self.get_cross_validation_extra_nodes_charge_permille())) / 1000
         } else {
             (price * num_compute_units) / 1000
         };
@@ -1150,31 +1166,29 @@ module atoma::db {
         ctx: &mut TxContext,
     ) {
         let stack_small_id = SmallId { inner: stack_small_id };
-        let stack = self.stacks.borrow_mut(stack_small_id);
+        // Get all necessary values from self before any mutable borrows
+        let cross_validation_probability = self.get_cross_validation_probability_permille();
+        let cross_validation_extra_nodes_count = self.get_cross_validation_extra_nodes_count();
+
+        let stack = self.stacks.borrow(stack_small_id);
         assert!(stack.owner == ctx.sender(), ENotStackOwner);
 
         let node_small_id = node_badge.small_id;
-        if (node_small_id != stack.selected_node) {
-            abort ENodeNotSelectedForStack
-        };
-        if (num_claimed_compute_units > stack.num_compute_units) {
-            abort ETooManyComputedUnits
-        };
-        if (self.stack_settlement_tickets.contains(stack_small_id)) {
-            abort EStackInSettlementDispute
-        };
+        assert!(node_small_id == stack.selected_node, ENodeNotSelectedForStack);
+        assert!(num_claimed_compute_units <= stack.num_compute_units, ETooManyComputedUnits);
+        assert!(!self.stack_settlement_tickets.contains(stack_small_id), EStackInSettlementDispute);
 
         let task_small_id = stack.task_small_id;
         let task = self.tasks.borrow(task_small_id);
         let security_level = task.security_level;
         let stack_price = stack.price;
 
-        // Only Sampling Consensus security level needs to sample attestation nodes
+         // Only Sampling Consensus security level needs to sample attestation nodes
         let attestation_nodes: vector<SmallId> = if (security_level == SamplingConsensusSecurityLevel) {      
             let mut rng = random.new_generator(ctx);
             let random_number = (rng.generate_u64() % 1000) + 1;
-            if (random_number <= self.get_cross_validation_probability_permille()) {
-                self.sample_attestation_nodes(task_small_id, stack_price, stack_num_compute_units, &mut rng)
+            if (random_number <= cross_validation_probability) {
+                self.sample_attestation_nodes(task_small_id, stack_price, stack.num_compute_units, &mut rng)
             } else {
                 vector::empty()
             }
@@ -1189,11 +1203,15 @@ module atoma::db {
         let mut i = 0;
         while (i < BYTES_PER_HASH_COMMITMENT) {
             vector::push_back(&mut stack_merkle_leaves_vector, stack_merkle_leaf[i]);
-        }
+            i = i + 1;
+        };
+
         let mut j = 0;
-        while (j < self.get_cross_validation_extra_nodes_count() * BYTES_PER_HASH_COMMITMENT) {
+        while (j < cross_validation_extra_nodes_count * BYTES_PER_HASH_COMMITMENT) {
             vector::push_back(&mut stack_merkle_leaves_vector, 0);
-        }
+            j = j + 1;
+        };
+
         let ticket_id = object::new(ctx);
         let stack_settlement_ticket = StackSettlementTicket {
             id: ticket_id,
@@ -1266,57 +1284,52 @@ module atoma::db {
         let stack_small_id = SmallId { inner: stack_small_id };
 
         // 1. Verify that both the stack and the stack settlement ticket exist
-        if (!self.stacks.contains(stack_small_id)) {
-            abort EStackNotFound;
-        };
-        let stack = self.stacks.borrow_mut(stack_small_id);
+        assert!(self.stacks.contains(stack_small_id), EStackNotFound);
+        assert!(self.stack_settlement_tickets.contains(stack_small_id), EStackNotInSettlementDispute);
+
+        let stack = self.stacks.borrow(stack_small_id);
         
-        if (!self.stack_settlement_tickets.contains(stack_small_id)) {
-            abort EStackNotInSettlementDispute;
-        };
         let stack_settlement_ticket = self.stack_settlement_tickets.borrow_mut(stack_small_id);
 
         // 2. Verify that the stack requires sampling consensus security level
         let task_small_id = stack.task_small_id;
-        let task = self.tasks.borrow(task_small_id);
-        if (task.security_level != SamplingConsensusSecurityLevel) {
-            abort EStackDoesNotRequireSamplingConsensus;
-        };
-        
+        let security_level = self.tasks.borrow(task_small_id).security_level;
+        assert!(security_level == SamplingConsensusSecurityLevel, EStackDoesNotRequireSamplingConsensus);
+
         // 3. Verify that the dispute challenge is ongoing
-        if (stack_settlement_ticket.dispute_settled_at_epoch >= ctx.epoch()) {
-            abort EStackDisputePeriodOver;
-        };
+        let dispute_settled_at_epoch = self.stack_settlement_tickets.borrow(stack_small_id).dispute_settled_at_epoch;
+        assert!(dispute_settled_at_epoch >= ctx.epoch(), EStackDisputePeriodOver);
 
         // 4. Check that the current node was selected as an attestation node
-        if (!vector::contains(&stack_settlement_ticket.requested_attestation_nodes, node_badge.small_id)) {
-            abort ENodeNotSelectedForAttestation;
-        };
+        let attestation_nodes = self.stack_settlement_tickets.borrow(stack_small_id).requested_attestation_nodes;
+        assert!(vector::contains(&attestation_nodes, &node_badge.small_id), ENodeNotSelectedForAttestation);
 
         // 5. Obtain the index of the current attestation node in the attestation_nodes vector
-        let attestation_nodes = stack_settlement_ticket.requested_attestation_nodes;
         let mut attestation_node_index = 0;
-        while (attestation_node_index < vector::length(&requested_attestation_nodes)) {
-            if (vector::borrow(&attestation_nodes, attestation_node_index) == node_badge.small_id) {
+        while (attestation_node_index < vector::length(&attestation_nodes)) {
+            if (*vector::borrow(&attestation_nodes, attestation_node_index) == node_badge.small_id) {
                 break;
-            }
-            i = i + 1;
-        }
+            };
+            attestation_node_index = attestation_node_index + 1;
+        };
 
         // 6. Verify that the committed stack proof agrees with the stack merkle commitment
-        let committed_stack_proof = stack_settlement_ticket.committed_stack_proof;
-        let stack_merkle_leaf = stack_settlement_ticket.stack_merkle_leaf;
-        if (committed_stack_proof != stack_merkle_leaf) {
-            // TODO: Add logic for start attestation_dispute
-            self.start_attestation_dispute(stack_small_id, ctx);
+        let original_committed_stack_proof = self.stack_settlement_tickets.borrow(stack_small_id).committed_stack_proof;
+        if (committed_stack_proof != original_committed_stack_proof) {
+            // Start attestation dispute and return immediately
+            self.start_attestation_dispute(node_badge, stack_small_id.inner, committed_stack_proof, ctx);
+            return;
         };
+
+        let stack_settlement_ticket = self.stack_settlement_tickets.borrow_mut(stack_small_id);
 
         // 6. Write the merkle leaf to the stack
         let mut i = 0;
         while (i < BYTES_PER_HASH_COMMITMENT) { 
-            stack_settlement_ticket.stack_merkle_leaves_vector[attestation_node_index * BYTES_PER_HASH_COMMITMENT + i] = stack_merkle_leaf[i];
+            let starts_at = attestation_node_index * BYTES_PER_HASH_COMMITMENT;
+            *vector::borrow_mut(&mut stack_settlement_ticket.stack_merkle_leaves_vector, starts_at + i) = stack_merkle_leaf[i];
             i = i + 1;
-        }
+        };
 
         // 7. Check if the attestation node is the last one to submit the merkle leaf
         let num_of_committments = vector::length(&stack_settlement_ticket.already_attested_nodes);
@@ -1332,7 +1345,7 @@ module atoma::db {
                 // 9. In case the committed `stack_merkle_root` does not agree with the computed `stack_merkle_root`,
                 //    start between the original node and every attestation node
                 //    to determine which one of them are faulty
-                self.start_attestation_dispute(stack_small_id, ctx);
+                self.start_attestation_dispute(node_badge, stack_small_id.inner, committed_stack_proof, ctx);
             } else {
                 // 10. If the `stack_merkle_root` agrees with the committed `stack_merkle_root`,
                 //     then the attestation settlement is complete and we emit a StackSettlementTicketEvent
@@ -1340,7 +1353,7 @@ module atoma::db {
                     stack_small_id,
                     selected_node_id: stack.selected_node,
                     num_claimed_compute_units: stack_settlement_ticket.num_claimed_compute_units,
-                    attestation_nodes,
+                    requested_attestation_nodes: attestation_nodes,
                     dispute_settled_at_epoch: ctx.epoch(),
                     committed_stack_proof,
                 });
@@ -1399,89 +1412,364 @@ module atoma::db {
         // 1. The node claims the funds to which it was selected to process the stack
         let num_settled_tickets = vector::length(&settled_ticket_ids);
         let mut index = 0;
+
+        let sampling_consensus_charge_permille = self.get_sampling_consensus_charge_permille();
+        let cross_validation_extra_nodes_count = self.get_cross_validation_extra_nodes_count();
+
         while (index < num_settled_tickets) {
-            // 2. Fetch the stack settlement ticket, the stack and the task
-            let stack_small_id = SmallId { inner: settled_ticket_ids[index] };
-            let stack_settlement_ticket = self.stack_settlement_tickets.borrow(stack_small_id);
-            let stack = self.stacks.borrow(stack_small_id);
-            let task = self.tasks.borrow(stack.task_small_id);
-            let security_level = task.security_level;
-
-            // 3. Check if the stack settlement ticket is in dispute, if so abort the transaction
-            if (stack_settlement_ticket.is_in_dispute) {
-                abort EStackInDispute;
+        let stack_small_id = SmallId { inner: *vector::borrow(&settled_ticket_ids, index) };
+            // 2. Fetch relevant data
+            let (security_level, stack_price, num_compute_units, owner, selected_node_id, num_claimed_compute_units, attestation_nodes) = {
+                let stack_settlement_ticket = self.stack_settlement_tickets.borrow(stack_small_id);
+                let stack = self.stacks.borrow(stack_small_id);
+                let task = self.tasks.borrow(stack.task_small_id);
+                
+                assert!(stack_settlement_ticket.selected_node_id == node_badge.small_id, ENodeNotSelectedForSettlement);
+                assert!(!stack_settlement_ticket.is_in_dispute, EStackInDispute);
+                assert!(
+                    ctx.epoch() >= stack_settlement_ticket.dispute_settled_at_epoch, 
+                    EStackDisputePeriodIsNotOver
+                );
+                
+                (
+                    task.security_level,
+                    stack.price,
+                    stack.num_compute_units,
+                    stack.owner,
+                    stack_settlement_ticket.selected_node_id,
+                    stack_settlement_ticket.num_claimed_compute_units,
+                    stack_settlement_ticket.requested_attestation_nodes
+                )
             };
 
-            // 4. Check if the current epoch is after the dispute_settled_at_epoch
-            //    of the stack settlement ticket, if so set the dispute_settled_at_epoch
-            //    to the current epoch
-            if !(ctx.epoch() >= stack_settlement_ticket.dispute_settled_at_epoch) {
-                abort EStackDisputePeriodIsNotOver;
-            };
-
-            // 5. Compute the funds, for the current stack, to send to the node
-            let num_claimed_compute_units = stack_settlement_ticket.num_claimed_compute_units;
-            let stack_price = stack_settlement_ticket.stack_price;
-            let node_fee_amount = if security_level == SamplingConsensusSecurityLevel {
-                (num_claimed_compute_units * stack_price * self.get_sampling_consensus_charge_permille()) / 1000
+            // 6. Compute the funds, for the current stack, to send to the node
+            let node_fee_amount = if (security_level == SamplingConsensusSecurityLevel) {
+                (num_claimed_compute_units * stack_price * sampling_consensus_charge_permille) / 1000
             } else {
                 num_claimed_compute_units * stack_price
             };
 
-            // 6. Check if there are remaining funds to be sent back to the user
-            let remaining_compute_units = stack.num_compute_units - num_claimed_compute_units;
-            let user_refund_amount = if security_level == SamplingConsensusSecurityLevel {
-                (remaining_compute_units * stack_price * self.get_sampling_consensus_charge_permille()) / 1000
+            // 7. Check if there are remaining funds to be sent back to the user
+            let remaining_compute_units = num_compute_units - num_claimed_compute_units;
+            let user_refund_amount = if (security_level == SamplingConsensusSecurityLevel) {
+                (remaining_compute_units * stack_price * sampling_consensus_charge_permille) / 1000
             } else {
                 remaining_compute_units * stack_price
             };
 
-            // 7. Check if there are any attestation nodes for the current stack
-            let attestation_nodes = stack_settlement_ticket.requested_attestation_nodes;
+            // 8. Check if there are any attestation nodes for the current stack
             let num_attestation_nodes = vector::length(&attestation_nodes);
             if (num_attestation_nodes > 0) {
-                // 8. If there are attestation nodes, compute the amount of funds to send to each attestation node
-                let attestation_node_index = 0;
+                // 9. If there are attestation nodes, compute the amount of funds to send to each attestation node
+                let mut attestation_node_index = 0;
                 while (attestation_node_index < num_attestation_nodes) {
-                    let attestation_node_id = vector::borrow(&attestation_nodes, attestation_node_index);
-                    if (stack_settlement_ticket.already_attested_nodes.contains(attestation_node_id)) {
-                        // 9. In this case, the selected attestation node has already submitted its attestation
+                    let attestation_node_id = *vector::borrow(&attestation_nodes, attestation_node_index);
+                    let already_attested = {
+                        let stack_settlement_ticket = self.stack_settlement_tickets.borrow(stack_small_id);
+                        vector::contains(&stack_settlement_ticket.already_attested_nodes, &attestation_node_id)
+                    };
+
+                    if (already_attested) {
+                        // 10. In this case, the selected attestation node has already submitted its attestation
                         //     so we add the node fee amount to the node's available fee amount
+                        let attestation_node_fee = (node_fee_amount / cross_validation_extra_nodes_count);
                         let node_entry = self.nodes.borrow_mut(attestation_node_id);
-                        node_entry.available_fee_amount += (node_fee_amount / self.get_cross_validation_extra_nodes_count()); 
+                        node_entry.available_fee_amount = node_entry.available_fee_amount + attestation_node_fee;
                     } else {
-                        // 10. In this case, the selected attestation node has not submitted its attestation
+                        // 11. In this case, the selected attestation node has not submitted its attestation
                         //     so we should partially slash its collateral
-                        let node_entry = self.nodes.borrow_mut(attestation_node_id);
-                        self.slash_node_on_timeout(attestation_node_id);
-                    }
-                    let attestation_node_amount = node_fee_amount / num_attestation_nodes;
-            
+                        let conficasted_balance = self.slash_node_on_timeout(attestation_node_id);
+                        self.deposit_to_communal_treasury(conficasted_balance);
+                    };
+                    attestation_node_index = attestation_node_index + 1;
+                }
+            };
 
-            // 7. Send the funds to the node and the user
-            transfer_funds(self, node_fee_amount, ctx.sender(), ctx);
-            transfer_funds(self, user_refund_amount, stack.owner, ctx);
+            // 12. Send the remaining funds back to the user
+            self.transfer_funds(node_fee_amount, ctx.sender(), ctx);
+            self.transfer_funds(user_refund_amount, owner, ctx);
 
-            // 8. Delete the stack settlement ticket
-            self.stack_settlement_tickets.delete(stack_small_id);
-            // 9. Delete the stack
-            self.stacks.delete(stack_small_id);
+            // 13. Remove the stack settlement ticket from the ObjectTable
+            let StackSettlementTicket {
+                id,
+                stack_small_id: _,
+                num_claimed_compute_units: _,
+                stack_merkle_leaves_vector: _,
+                already_attested_nodes: _,
+                committed_stack_proof: _,
+                dispute_settled_at_epoch: _,
+                is_in_dispute: _,
+                requested_attestation_nodes: _,
+                selected_node_id: _,
+            } = object_table::remove(&mut self.stack_settlement_tickets, stack_small_id);
+            id.delete();
 
-            // 10. Emit a StackSettlementTicketClaimedEvent
+            // 14. Remove the stack from the Table
+            let Stack {
+                task_small_id: _,
+                selected_node: _,
+                owner: _,
+                price: _,
+                num_compute_units: _,
+            } = table::remove(&mut self.stacks, stack_small_id);
+
+            // 15. Emit a StackSettlementTicketClaimedEvent
             sui::event::emit(StackSettlementTicketClaimedEvent {
                 stack_small_id,
-                selected_node_id: stack.selected_node,
-                attestation_nodes,
+                selected_node_id: selected_node_id,
+                attestation_nodes: attestation_nodes,
                 num_claimed_compute_units,
                 user_refund_amount,
             });
 
-            // 11. Increment the index
+            // 16. Increment the index
             index = index + 1;
-        }
+        };
 
-        // 12. Finally, we distribute the remaning funds to the node
+        // 17. Finally, we distribute the remaning funds to the node
         self.withdraw_fees(node_badge, ctx);
+    }
+
+//     public entry fun claim_funds(
+//     self: &mut AtomaDb,
+//     node_badge: &NodeBadge,
+//     settled_ticket_ids: vector<u64>,
+//     ctx: &mut TxContext,
+// ) { 
+//     let num_settled_tickets = vector::length(&settled_ticket_ids);
+//     let mut index = 0;
+
+//     let sampling_consensus_charge_permille = self.get_sampling_consensus_charge_permille();
+//     let cross_validation_extra_nodes_count = self.get_cross_validation_extra_nodes_count();
+    
+//     while (index < num_settled_tickets) {
+//         let stack_small_id = SmallId { inner: *vector::borrow(&settled_ticket_ids, index) };
+        
+//         // Fetch necessary data without mutable borrows
+//         let (security_level, stack_price, num_compute_units, owner, selected_node_id, num_claimed_compute_units, attestation_nodes) = {
+//             let stack_settlement_ticket = self.stack_settlement_tickets.borrow(stack_small_id);
+//             let stack = self.stacks.borrow(stack_small_id);
+//             let task = self.tasks.borrow(stack.task_small_id);
+            
+//             assert!(stack_settlement_ticket.selected_node_id == node_badge.small_id, ENodeNotSelectedForSettlement);
+//             assert!(!stack_settlement_ticket.is_in_dispute, EStackInDispute);
+//             assert!(
+//                 ctx.epoch() >= stack_settlement_ticket.dispute_settled_at_epoch, 
+//                 EStackDisputePeriodIsNotOver
+//             );
+            
+//             (
+//                 task.security_level,
+//                 stack.price,
+//                 stack.num_compute_units,
+//                 stack.owner,
+//                 stack_settlement_ticket.selected_node_id,
+//                 stack_settlement_ticket.num_claimed_compute_units,
+//                 stack_settlement_ticket.requested_attestation_nodes
+//             )
+//         };
+
+//         // Compute fees
+//         let node_fee_amount = if (security_level == SamplingConsensusSecurityLevel) {
+//             (num_claimed_compute_units * stack_price * sampling_consensus_charge_permille) / 1000
+//         } else {
+//             num_claimed_compute_units * stack_price
+//         };
+
+//         let remaining_compute_units = num_compute_units - num_claimed_compute_units;
+//         let user_refund_amount = if (security_level == SamplingConsensusSecurityLevel) {
+//             (remaining_compute_units * stack_price * sampling_consensus_charge_permille) / 1000
+//         } else {
+//             remaining_compute_units * stack_price
+//         };
+
+//         // Handle attestation nodes
+//         let num_attestation_nodes = vector::length(&attestation_nodes);
+//         if (num_attestation_nodes > 0) {
+//             let mut attestation_node_index = 0;
+//             while (attestation_node_index < num_attestation_nodes) {
+//                 let attestation_node_id = *vector::borrow(&attestation_nodes, attestation_node_index);
+//                 let already_attested = {
+//                     let stack_settlement_ticket = self.stack_settlement_tickets.borrow(stack_small_id);
+//                     vector::contains(&stack_settlement_ticket.already_attested_nodes, &attestation_node_id)
+//                 };
+                
+//                 if (already_attested) {
+//                     let attestation_node_fee = (node_fee_amount / cross_validation_extra_nodes_count);
+//                     let node_entry = self.nodes.borrow_mut(attestation_node_id);
+//                     node_entry.available_fee_amount = node_entry.available_fee_amount + attestation_node_fee;
+//                 } else {
+//                     let confiscated_balance = self.slash_node_on_timeout(attestation_node_id);
+//                     self.deposit_to_communal_treasury(confiscated_balance);
+//                 };
+//                 attestation_node_index = attestation_node_index + 1;
+//             }
+//         };
+
+//         // Transfer funds
+//         self.transfer_funds(node_fee_amount, ctx.sender(), ctx);
+//         self.transfer_funds(user_refund_amount, owner, ctx);
+
+//         // Remove stack settlement ticket and stack
+//         let StackSettlementTicket {
+//             id,
+//             stack_small_id: _,
+//             num_claimed_compute_units: _,
+//             stack_merkle_leaves_vector: _,
+//             already_attested_nodes: _,
+//             committed_stack_proof: _,
+//             dispute_settled_at_epoch: _,
+//             is_in_dispute: _,
+//             requested_attestation_nodes: _,
+//             selected_node_id: _,
+//         } = object_table::remove(&mut self.stack_settlement_tickets, stack_small_id);
+//         id.delete();
+
+//         let Stack {
+//             task_small_id: _,
+//             selected_node: _,
+//             owner: _,
+//             price: _,
+//             num_compute_units: _,
+//         } = table::remove(&mut self.stacks, stack_small_id);
+
+//         // Emit event
+//         sui::event::emit(StackSettlementTicketClaimedEvent {
+//             stack_small_id,
+//             selected_node_id,
+//             attestation_nodes,
+//             num_claimed_compute_units,
+//             user_refund_amount,
+//         });
+
+//         index = index + 1;
+//     };
+
+//     // Distribute remaining funds to the node
+//     self.withdraw_fees(node_badge, ctx);
+// }
+
+    /// Claims funds for an attestation node that participated in stack settlements.
+    ///
+    /// This function allows an attestation node to claim its rewards for participating in the
+    /// cross-validation of stack settlements. It processes multiple settled tickets, verifies
+    /// the node's participation, and distributes rewards or applies penalties accordingly.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `node_badge` - A reference to the NodeBadge of the claiming attestation node.
+    /// * `settled_ticket_ids` - A vector of u64 representing the IDs of settled stack tickets to process.
+    /// * `ctx` - A mutable reference to the transaction context.
+    ///
+    /// # Behavior
+    /// For each settled stack ticket:
+    /// 1. Retrieves the stack settlement ticket, stack, and associated task information.
+    /// 2. Verifies that the stack requires sampling consensus security level.
+    /// 3. Checks that the stack settlement is not in dispute and the dispute period has ended.
+    /// 4. Verifies if the claiming node has submitted its attestation.
+    /// 5. If the node submitted an attestation, it receives a reward.
+    /// 6. If the node failed to submit an attestation, its collateral is slashed.
+    ///
+    /// After processing all tickets, the function withdraws the accumulated fees for the node.
+    ///
+    /// # Aborts
+    /// * `EStackDoesNotRequireSamplingConsensus` - If any stack doesn't use sampling consensus.
+    /// * `EStackInDispute` - If any stack settlement ticket is still in dispute.
+    /// * `EStackDisputePeriodIsNotOver` - If the dispute period for any stack has not yet ended.
+    ///
+    /// # Important Notes
+    /// - This function is specifically for attestation nodes participating in cross-validation.
+    /// - It handles both reward distribution and penalty application based on the node's performance.
+    /// - The function assumes that the caller has verified the node's eligibility to claim these funds.
+    /// - Rewards are calculated based on the number of cross-validation nodes set in the AtomaDb.
+    ///
+    /// # Security Considerations
+    /// - Only nodes that were selected for attestation can claim rewards through this function.
+    /// - The function enforces that claims can only be made after the dispute period has ended.
+    /// - Slashing of collateral for non-participation serves as a deterrent for negligent behavior.
+    public entry fun claim_funds_for_attestation_node(
+        self: &mut AtomaDb,
+        node_badge: &NodeBadge,
+        settled_ticket_ids: vector<u64>,
+        ctx: &mut TxContext,
+    ) {
+        // 1. The node claims the funds to which it was selected to attest the stacks
+        let attestation_node_id = node_badge.small_id;
+        let num_settled_tickets = vector::length(&settled_ticket_ids);
+        let cross_validation_extra_nodes_count = self.get_cross_validation_extra_nodes_count();
+        let mut index = 0;
+        while (index < num_settled_tickets) {
+            // 2. Fetch the stack settlement ticket, the stack and the task
+            let stack_small_id = SmallId { inner: *settled_ticket_ids.borrow(index) };
+            let stack_settlement_ticket = self.stack_settlement_tickets.borrow(stack_small_id);
+            let stack = self.stacks.borrow(stack_small_id);
+            let task = self.tasks.borrow(stack.task_small_id);
+
+            let node_fee_amount = (stack_settlement_ticket.num_claimed_compute_units * stack.price * self.get_sampling_consensus_charge_permille()) / 1000;
+
+            // 3. Check that the stack requires sampling consensus security level
+            let security_level = task.security_level;
+            if (security_level != SamplingConsensusSecurityLevel) {
+                abort EStackDoesNotRequireSamplingConsensus
+            };
+
+            // 4. Check that the stack settlement ticket is not in dispute
+            if (stack_settlement_ticket.is_in_dispute) {
+                abort EStackInDispute
+            };
+
+            // 5. Check that the dispute_settled_at_epoch is in the past
+            if (stack_settlement_ticket.dispute_settled_at_epoch >= ctx.epoch()) {
+                abort EStackDisputePeriodIsNotOver
+            };
+            
+            // 6. Retrieve the attestation node id for the current attestation node
+            let attestation_nodes = stack_settlement_ticket.requested_attestation_nodes;
+            let mut attestation_node_index = 0;
+            while (attestation_node_index < vector::length(&attestation_nodes)) {
+                if (vector::borrow(&attestation_nodes, attestation_node_index) == node_badge.small_id) {
+                    break;
+                };
+                attestation_node_index = attestation_node_index + 1;
+            };
+
+            // 7. Check if the current attestation node has submitted its attestation
+            if (vector::contains(&stack_settlement_ticket.already_attested_nodes, &attestation_node_id)) {
+                // 8. If the current attestation node has already submitted its attestation,
+                //    add the node fee amount to the node's available fee amount
+                let node_entry = self.nodes.borrow_mut(attestation_node_id);
+                node_entry.available_fee_amount = node_entry.available_fee_amount + (node_fee_amount / cross_validation_extra_nodes_count); 
+            } else {
+                // 9. If the current attestation node has not submitted its attestation,
+                //    slash the node's collateral
+                let confiscated_balance = self.slash_node_on_timeout(attestation_node_id);
+                self.deposit_to_communal_treasury(confiscated_balance);
+            };
+
+            index = index + 1;
+        };
+
+        withdraw_fees(self, node_badge, ctx);
+    }
+
+    public entry fun start_attestation_dispute(
+        self: &mut AtomaDb,
+        node_badge: &NodeBadge,
+        stack_small_id: u64,
+        attestation_commitment: vector<u8>,
+        ctx: &mut TxContext,
+    ) {
+        let stack_small_id = SmallId { inner: stack_small_id };
+        let stack_settlement_ticket = self.stack_settlement_tickets.borrow_mut(stack_small_id);
+        stack_settlement_ticket.is_in_dispute = true;
+
+        sui::event::emit(StackAttestationDisputeEvent {
+            stack_small_id,
+            attestation_commitment,
+            attestation_node_id: node_badge.small_id,
+            original_node_id: stack_settlement_ticket.selected_node_id,
+            original_commitment: stack_settlement_ticket.committed_stack_proof,
+        });
     }
 
     /// The node owner announces that they can serve prompts for the given
