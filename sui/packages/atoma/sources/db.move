@@ -261,7 +261,10 @@ module atoma::db {
     /// Data about a node's price per compute unit for a task
     public struct NodePriceData has store, copy, drop {
         node_id: SmallId,
+        /// Price per compute unit in TOMA for the current task
         price_per_compute_unit: u64,
+        /// The maximum number of compute units that the node is willing to process for the current task
+        max_num_compute_units: u64,
     }
 
     /// Stacks are owned by users and used to buy compute units for specific tasks.
@@ -786,6 +789,7 @@ module atoma::db {
         node_badge: &mut NodeBadge,
         task_small_id: u64,
         price_per_compute_unit: u64,
+        max_num_compute_units: u64,
     ) {
         let task_small_id = SmallId { inner: task_small_id };
         assert!(self.tasks.contains(task_small_id), ETaskNotFound);
@@ -801,6 +805,7 @@ module atoma::db {
         table_vec::push_back(&mut task.subscribed_nodes, NodePriceData {
             node_id: node_badge.small_id,
             price_per_compute_unit,
+            max_num_compute_units,
         });
         // Associate the task_small_id with the node badge
         dynamic_field::add(&mut node_badge.id, task_small_id, true);
@@ -1081,7 +1086,7 @@ module atoma::db {
             let mut rng = random.new_generator(ctx);
             let random_number = (rng.generate_u64() % 1000) + 1;
             if (random_number <= self.get_cross_validation_probability_permille()) {
-                self.sample_attestation_nodes(task_small_id, stack_price, &mut rng)
+                self.sample_attestation_nodes(task_small_id, stack_price, stack_num_compute_units, &mut rng)
             } else {
                 vector::empty()
             }
@@ -1110,6 +1115,29 @@ module atoma::db {
             committed_stack_proof,
             leaf_stack_commitment,
         });
+    }
+
+    public entry claim_stack_funds(
+        self: &mut AtomaDb,
+        stack_small_id: u64,
+        ctx: &mut TxContext,
+    ) {
+        let stack_small_id = SmallId { inner: stack_small_id };
+        if (!self.stacks.contains(stack_small_id)) {
+            abort EStackNotFound;
+        };
+
+        let stack = self.stacks.borrow_mut(stack_small_id);
+        if (!self.stack_settlement_tickets.contains(stack_small_id)) {
+            abort EStackNotInSettlementDispute;
+        };
+
+        let stack_settlement_ticket = self.stack_settlement_tickets.borrow(stack_small_id);
+        if (stack_settlement_ticket.dispute_settled_at_epoch > ctx.epoch()) {
+            abort EStackDisputePeriodNotOver;
+        };
+
+        let owner = stack.owner;
     }
 
     /// The node owner announces that they can serve prompts for the given
@@ -1525,10 +1553,46 @@ module atoma::db {
         sample_unique_nodes(&self.nodes, &mut echelon.nodes, count, rng)
     }
 
+    /// Samples a node for a given stack based on task requirements and node eligibility.
+    ///
+    /// This function selects a random node from the pool of eligible nodes for a given task.
+    /// A node is considered eligible if it meets the following criteria:
+    /// 1. It is subscribed to the task.
+    /// 2. Its price per compute unit is less than or equal to the specified price cap.
+    /// 3. Its maximum number of compute units is greater than or equal to the required amount.
+    /// 4. It has a positive collateral balance.
+    /// 5. It is not disabled.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `task_small_id` - The SmallId of the task for which a node is being sampled.
+    /// * `price_cap` - The maximum price per compute unit that a node can charge to be considered eligible.
+    /// * `num_compute_units` - The minimum number of compute units a node must offer to be eligible.
+    /// * `rng` - A mutable reference to a RandomGenerator for node selection.
+    ///
+    /// # Returns
+    /// The SmallId of the randomly selected eligible node.
+    ///
+    /// # Aborts
+    /// * `ENoNodesSubscribedToTask` - If there are no nodes subscribed to the given task.
+    /// * `ENoNodesEligibleForTask` - If there are no eligible nodes for the given task and requirements.
+    ///
+    /// # Behavior
+    /// 1. Retrieves the task and its subscribed nodes.
+    /// 2. Iterates through all subscribed nodes, collecting those that meet the eligibility criteria.
+    /// 3. Randomly selects one node from the pool of eligible nodes.
+    ///
+    /// # Important Notes
+    /// - This function ensures that the selected node is both capable (in terms of compute units) 
+    ///   and economically viable (in terms of price) for the given task.
+    /// - The random selection provides a fair distribution of work among eligible nodes.
+    /// - If no nodes are eligible, the function will abort, indicating that the task cannot be assigned
+    ///   with the given constraints.
     public(package) fun sample_node_for_stack(
         self: &mut AtomaDb,
         task_small_id: SmallId,
         price_cap: u64,
+        num_compute_units: u64,
         rng: &mut sui::random::RandomGenerator,
     ): SmallId {
         let task = self.tasks.borrow_mut(task_small_id);
@@ -1546,7 +1610,11 @@ module atoma::db {
             let node_price_data = table_vec::borrow(subscribed_nodes, i);
             let node_id = node_price_data.node_id;
             let node_price = node_price_data.price_per_compute_unit;
-            if (node_price <= price_cap && self.nodes.contains(node_id)) {
+            let node_max_num_compute_units = node_price_data.max_num_compute_units;
+            if (node_price <= price_cap 
+                && node_max_num_compute_units >= num_compute_units 
+                && self.nodes.contains(node_id)) 
+            {
                 let node = self.nodes.borrow(node_id);
                 if (balance::value(&node.collateral) > 0 && option::is_none(&node.was_disabled_in_epoch)) {
                     vector::push_back(&mut eligible_nodes, node_id);
@@ -1565,13 +1633,14 @@ module atoma::db {
     /// Samples attestation nodes for a given task and price cap.
     ///
     /// This function selects a set of nodes to attest to the results of a task execution.
-    /// It filters nodes based on their price and eligibility, then randomly selects a 
-    /// subset of these nodes to serve as attestation nodes.
+    /// It filters nodes based on their price, compute capacity, collateral, and active status,
+    /// then randomly selects a subset of these nodes to serve as attestation nodes.
     ///
     /// # Arguments
-    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `self` - A reference to the AtomaDb object.
     /// * `task_small_id` - The SmallId of the task for which attestation nodes are being sampled.
     /// * `price_cap` - The maximum price per compute unit that a node can charge to be considered eligible.
+    /// * `num_compute_units` - The minimum number of compute units a node must offer to be eligible.
     /// * `rng` - A mutable reference to a RandomGenerator for node selection.
     ///
     /// # Returns
@@ -1579,26 +1648,28 @@ module atoma::db {
     ///
     /// # Behavior
     /// 1. Retrieves the task and its subscribed nodes.
-    /// 2. Filters nodes based on price cap, collateral, and active status.
+    /// 2. Filters nodes based on price cap, compute capacity, collateral, and active status.
     /// 3. If there are fewer eligible nodes than the required attestation count, returns all eligible nodes.
     /// 4. Otherwise, randomly selects the required number of attestation nodes from the eligible set.
     ///
     /// # Notes
-    /// - The number of attestation nodes is determined by `InitialCrossValidationExtraNodesCount`.
+    /// - The number of attestation nodes is determined by `get_cross_validation_extra_nodes_count()`.
     /// - Nodes are considered eligible if:
     ///   a. Their price per compute unit is less than or equal to the price cap.
-    ///   b. They have positive collateral.
-    ///   c. They are not disabled.
-    /// - If there are not enough eligible nodes, the function returns all eligible nodes instead of aborting.
+    ///   b. They offer at least the required number of compute units.
+    ///   c. They have positive collateral.
+    ///   d. They are not disabled.
+    /// - If there are not enough eligible nodes, the function returns all eligible nodes.
     ///   This ensures that stack settlement can proceed even with fewer attestation nodes than ideal.
     ///
     /// # Important
-    /// This function does not guarantee enough selected nodes, according to the protocol pre-defined paramter,
-    /// if there are fewer eligible nodes than the required attestation count.
+    /// This function does not guarantee the return of the exact number of nodes specified by 
+    /// `get_cross_validation_extra_nodes_count()` if there are fewer eligible nodes than required.
     public(package) fun sample_attestation_nodes(
         self: &AtomaDb,
         task_small_id: SmallId,
         price_cap: u64,
+        num_compute_units: u64,
         rng: &mut sui::random::RandomGenerator,
     ): vector<SmallId> {
         let task = self.tasks.borrow(task_small_id);
@@ -1614,7 +1685,11 @@ module atoma::db {
             let node_price_data = table_vec::borrow(subscribed_nodes, i);
             let node_id = node_price_data.node_id;
             let node_price = node_price_data.price_per_compute_unit;
-            if (node_price <= price_cap && self.nodes.contains(node_id)) {
+            let node_max_num_compute_units = node_price_data.max_num_compute_units; 
+            if (node_price <= price_cap 
+                && node_max_num_compute_units >= num_compute_units 
+                && self.nodes.contains(node_id)) 
+            {
                 let node = self.nodes.borrow(node_id);  
                 if (balance::value(&node.collateral) > 0 && option::is_none(&node.was_disabled_in_epoch)) {
                     vector::push_back(&mut eligible_nodes, node_id);
