@@ -20,6 +20,11 @@ module atoma::db {
     /// Number of bytes per hash commitment
     const BYTES_PER_HASH_COMMITMENT: u64 = 32;
 
+    /// constants for task roles
+    const INFERENCE_ROLE: u16 = 0;
+    const EMBEDDING_ROLE: u16 = 1;
+    const FINE_TUNING_ROLE: u16 = 2;
+
     /// How much collateral is required at the time of package publication.
     const InitialCollateralRequiredForRegistration: u64 = 1_000;
     /// Maximum time nodes can take to settle a prompt before we attempt to
@@ -45,7 +50,14 @@ module atoma::db {
     /// A small increment on the sampling consensus charge permille for each extra attestation node sampled
     const InitialCrossValidationExtraAttestationNodesChargePermille: u64 = 12;
     /// Security level for the task
+    const NoSecurityLevel: u16 = 0;
+    /// Sampling consensus security level is used for tasks that require a high level of security and robustness.
+    /// Verifiability is achieved by sampling a subset of nodes to attest to the correctness of the stack execution,
+    /// following our Sampling Consensus protocol, see https://github.com/atoma-network/atoma-docs/blob/main/papers/atoma_whitepaper.pdf.
     const SamplingConsensusSecurityLevel: u16 = 1;
+    /// Tee security level is used for tasks that require a high level of security and robustness.
+    /// Verifiability is achieved by using a trusted execution environment (TEE).
+    const TeeSecurityLevel: u16 = 2;
 
     /// Additional fee charged per compute unit for the Sampling Consensus 
     /// attestation of the stack settlement ticket
@@ -103,6 +115,9 @@ module atoma::db {
     const EStackInDispute: u64 = EBase + 37;
     const EStackDisputePeriodIsNotOver: u64 = EBase + 38;
     const ENodeNotSelectedForSettlement: u64 = EBase + 39;
+    const ETaskAlreadyDeprecated: u64 = EBase + 40;
+    const EInvalidTaskRole: u64 = EBase + 41;
+    const EInvalidSecurityLevel: u64 = EBase + 42;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -142,6 +157,16 @@ module atoma::db {
         task_small_id: SmallId,
         /// The epoch in which the task was deprecated.
         epoch: u64,
+    }
+
+    /// Emitted when a task is removed from the task table.
+    public struct TaskRemovedEvent has copy, drop {
+        /// ID of the Task object
+        task_id: ID,
+        /// The task small identifier
+        task_small_id: SmallId,
+        /// The epoch in which the task was removed.
+        removed_at_epoch: u64,
     }
 
     public struct StackCreatedEvent has copy, drop {
@@ -358,6 +383,15 @@ module atoma::db {
         task_small_id: SmallId,
     }
 
+    /// Represents a settlement ticket for a completed stack execution in the Atoma network.
+    ///
+    /// This struct encapsulates all the necessary information for verifying and finalizing
+    /// the execution of a stack, including attestations from selected nodes and dispute resolution data.
+    ///
+    /// # Usage
+    /// This struct is crucial for the settlement and dispute resolution process in the Atoma network.
+    /// It stores all relevant data for verifying the correctness of stack executions and facilitates
+    /// the consensus mechanism, especially for high-security tasks requiring sampling consensus.
     public struct StackSettlementTicket has key, store {
         id: UID,
         /// The associated stack SmallId
@@ -622,7 +656,7 @@ module atoma::db {
     /// * `model_name` - An optional ASCII string representing the model name.
     /// * `valid_until_epoch` - An optional u64 representing the epoch until which the task is valid.
     /// * `optimizations` - A vector of u16 representing optimization types.
-    /// * `security_level` - An u16 representing the security level.
+    /// * `security_level` - An optional u16 representing the security level.
     /// * `efficiency_compute_units` - A u16 representing the compute units for efficiency metrics.
     /// * `efficiency_time_units` - An optional u16 representing the time units for efficiency metrics.
     /// * `efficiency_value` - An optional u64 representing the value for efficiency metrics.
@@ -641,7 +675,7 @@ module atoma::db {
         model_name: Option<ascii::String>,
         valid_until_epoch: Option<u64>,
         optimizations: vector<u16>,
-        security_level: u16,
+        security_level: Option<u16>,
         efficiency_compute_units: u16,
         efficiency_time_units: Option<u16>,
         efficiency_value: Option<u64>,
@@ -653,7 +687,7 @@ module atoma::db {
             model_name,
             valid_until_epoch,
             optimizations,
-            security_level,
+            option::get_with_default(&security_level, NoSecurityLevel),
             TaskMetrics {
                 compute_unit: efficiency_compute_units,
                 time_unit: efficiency_time_units,
@@ -668,14 +702,12 @@ module atoma::db {
     ///
     /// # Arguments
     /// * `self` - A mutable reference to the AtomaDb object.
-    /// * `model_name` - An optional ASCII string representing the model name.
     /// * `role` - A u16 representing the task role.
-    /// * `modality` - A u16 representing the task modality.
+    /// * `model_name` - An optional ASCII string representing the model name.
     /// * `valid_until_epoch` - An optional u64 representing the epoch until which the task is valid.
-    /// * `optimizations` - An optional vector of u16 representing optimization types.
+    /// * `optimizations` - A vector of u16 representing optimization types.
     /// * `security_level` - An u16 representing the security level.
-    /// * `task_metrics` - An optional vector of EfficiencyMetric representing efficiency metrics.
-    /// * `performance_unit` - An optional u16 representing the performance unit.
+    /// * `task_metrics` - A `TaskMetrics` instance representing efficiency metrics for the task.
     /// * `ctx` - A mutable reference to the transaction context.
     ///
     /// # Returns
@@ -683,21 +715,28 @@ module atoma::db {
     public fun create_task(
         self: &mut AtomaDb,
         role: u16,
-        mut model_name: Option<ascii::String>,
+        model_name: Option<ascii::String>,
         valid_until_epoch: Option<u64>,
         optimizations: vector<u16>,
         security_level: u16,
         task_metrics: TaskMetrics,
         ctx: &mut TxContext,
     ): TaskBadge {
+        // Validate inputs
+        assert!(is_valid_task_role(role), EInvalidTaskRole);
+        assert!(is_valid_security_level(security_level), EInvalidSecurityLevel);
+
+        // Generate new small_id
         let small_id = self.next_task_small_id;
         self.next_task_small_id.inner = self.next_task_small_id.inner + 1;
 
-        if (model_name.is_some()) {
-            let model_name = model_name.extract();
-            assert!(self.models.contains(model_name), EModelNotFound);
+        // Validate model_name if provided
+        if (option::is_some(&model_name)) {
+            let model_name_ref = option::borrow(&model_name);
+            assert!(self.models.contains(*model_name_ref), EModelNotFound);
         };
 
+        // Create task object
         let task = Task {
             id: object::new(ctx),
             role: TaskRole { inner: role },
@@ -710,62 +749,79 @@ module atoma::db {
             task_metrics,
             subscribed_nodes: table_vec::empty(ctx),
         };
-        let task_id = object::new(ctx);
+
+        // Add task to AtomaDb
         object_table::add(&mut self.tasks, small_id, task);
         
+        // Create and emit TaskRegisteredEvent
+        let task_badge = TaskBadge {
+            id: object::new(ctx),
+            small_id,
+        };
+        
+        // Emit TaskRegisteredEvent
         sui::event::emit(TaskRegisteredEvent {
-            task_id: object::uid_to_inner(&task_id),
+            task_id: object::uid_to_inner(&task_badge.id),
             task_small_id: small_id,
         });
 
-        TaskBadge {
-            id: task_id,
-            small_id,
-        }
+        task_badge
     }
 
     /// Deprecates a task in the Atoma network.
     ///
     /// This function marks a task as deprecated, preventing it from being used for new computations.
-    /// It also records the epoch at which the task was deprecated.
+    /// It also records the epoch at which the task was deprecated and updates related data structures.
     ///
     /// # Arguments
     /// * `self` - A mutable reference to the AtomaDb object.
-    /// * `task_badge` - A mutable reference to the TaskBadge of the task to be deprecated.
-    /// * `task_small_id` - The SmallId of the task to be deprecated.
+    /// * `task_badge` - A reference to the TaskBadge of the task to be deprecated.
     /// * `ctx` - A mutable reference to the transaction context.
     ///
     /// # Errors
     /// * `ETaskNotFound` - If the task specified by the TaskBadge is not found in the AtomaDb.
+    /// * `ETaskAlreadyDeprecated` - If the task is already deprecated.
+    /// * `ENotAuthorized` - If the caller is not the owner of the TaskBadge.
     ///
     /// # Effects
     /// * Sets the `is_deprecated` field of the task to `true`.
     /// * Sets the `deprecated_at_epoch` field of the task to the current epoch.
-    /// * Emits a `TaskDeprecationEvent` with the task's SmallId and the current epoch.
+    /// * Updates the `valid_until_epoch` field if it's not set or is later than the current epoch.
+    /// * Emits a `TaskDeprecationEvent` with the task's details.
     ///
     /// # Events
     /// Emits a `TaskDeprecationEvent` containing:
+    /// * `task_id` - The ID of the deprecated task.
     /// * `task_small_id` - The SmallId of the deprecated task.
     /// * `epoch` - The epoch at which the task was deprecated.
+    /// * `owner` - The address of the task owner.
     ///
     /// # Note
     /// This function does not delete the task from the database. It only marks it as deprecated,
     /// allowing for historical record-keeping while preventing future use of the task.
     public entry fun deprecate_task(
         self: &mut AtomaDb,
-        task_badge: &mut TaskBadge,
+        task_badge: &TaskBadge,
         ctx: &mut TxContext,
     ) {
         let task_small_id = task_badge.small_id;
         assert!(self.tasks.contains(task_small_id), ETaskNotFound);
 
         let task = self.tasks.borrow_mut(task_badge.small_id);
+        assert!(!task.is_deprecated, ETaskAlreadyDeprecated);
+
+        let current_epoch = tx_context::epoch(ctx);
         task.is_deprecated = true;
-        task.deprecated_at_epoch = option::some(tx_context::epoch(ctx));
+        task.deprecated_at_epoch = option::some(current_epoch);
+
+        // Update valid_until_epoch if it's not set or is later than the current epoch
+        if (option::is_none(&task.valid_until_epoch) || *option::borrow(&task.valid_until_epoch) > current_epoch) {
+            task.valid_until_epoch = option::some(current_epoch);
+        };
 
         sui::event::emit(TaskDeprecationEvent {
             task_id: object::uid_to_inner(&task.id),
-            task_small_id: task_badge.small_id,
+            task_small_id,
             epoch: tx_context::epoch(ctx),
         });
     }
@@ -791,7 +847,6 @@ module atoma::db {
         assert!(task.is_deprecated, ETaskNotDeprecated);
         
         // Check if the deprecated_at_epoch exists and if 4 epochs have passed
-        assert!(option::is_some(&task.deprecated_at_epoch), ETaskNotDeprecated);
         let deprecated_epoch = *option::borrow(&task.deprecated_at_epoch);
         assert!(ctx.epoch() >= deprecated_epoch + 2, ENotEnoughEpochsPassed);
 
@@ -812,8 +867,16 @@ module atoma::db {
         } = task;
 
         task_badge_id.delete();
-        task_id.delete();
         subscribed_nodes.drop();
+
+        // Emit an event for task removal
+        sui::event::emit(TaskRemovedEvent {
+            task_id: object::uid_to_inner(&task_id),
+            task_small_id,
+            removed_at_epoch: ctx.epoch(),
+        });
+
+        task_id.delete();
     }
 
     /// Splits the collateral from the sender's wallet and registers a new node.
@@ -2686,6 +2749,16 @@ module atoma::db {
         };
 
         false
+    }
+
+    // Helper function to validate task role
+    fun is_valid_task_role(role: u16): bool {
+        role == INFERENCE_ROLE || role == EMBEDDING_ROLE || role == FINE_TUNING_ROLE
+    }
+
+    // Helper function to validate security level
+    fun is_valid_security_level(security_level: u16): bool {
+        security_level == NoSecurityLevel || security_level == SamplingConsensusSecurityLevel || security_level == TeeSecurityLevel
     }
 
     fun remove_echelon(
