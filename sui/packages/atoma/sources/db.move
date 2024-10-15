@@ -1705,6 +1705,9 @@ module atoma::db {
         let attestation_node_id = node_badge.small_id;
         let num_settled_tickets = vector::length(&settled_ticket_ids);
         let cross_validation_extra_nodes_count = self.get_cross_validation_extra_nodes_count();
+        let sampling_consensus_charge_permille = self.get_sampling_consensus_charge_permille();
+
+        let mut total_reward= 0u64;
         let mut index = 0;
         while (index < num_settled_tickets) {
             // 2. Fetch the stack settlement ticket, the stack and the task
@@ -1713,7 +1716,7 @@ module atoma::db {
             let stack = self.stacks.borrow(stack_small_id);
             let task = self.tasks.borrow(stack.task_small_id);
 
-            let node_fee_amount = (stack_settlement_ticket.num_claimed_compute_units * stack.price * self.get_sampling_consensus_charge_permille()) / 1000;
+            let node_fee_amount = (stack_settlement_ticket.num_claimed_compute_units * stack.price * sampling_consensus_charge_permille) / 1000;
 
             // 3. Check that the stack requires sampling consensus security level
             let security_level = task.security_level;
