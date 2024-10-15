@@ -14,13 +14,16 @@ use env_home::env_home_dir;
 use move_core_types::{
     account_address::AccountAddress, language_storage::StructTag,
 };
-use sui_sdk::types::{dynamic_field::DynamicFieldName, TypeTag};
+use sui_sdk::types::{
+    base_types::ObjectID, dynamic_field::DynamicFieldName, TypeTag,
+};
 
 use crate::{dotenv_conf::DotenvConf, prelude::*};
 
 const DB_MANAGER_TYPE_NAME: &str = "AtomaManagerBadge";
 const DB_MODULE_NAME: &str = "db";
 const DB_NODE_TYPE_NAME: &str = "NodeBadge";
+const DB_TASK_TYPE_NAME: &str = "TaskBadge";
 const DB_TYPE_NAME: &str = "AtomaDb";
 const FAUCET_TYPE_NAME: &str = "Faucet";
 const PROMPTS_MODULE_NAME: &str = "prompts";
@@ -156,6 +159,181 @@ enum DbCmds {
         #[arg(short, long)]
         package: Option<String>,
     },
+    /// Create a new task entry in the database
+    CreateTaskEntry {
+        /// Optional package ID. If not provided, the default from the environment will be used.
+        #[arg(short, long)]
+        package: Option<String>,
+        /// The role ID for this task
+        #[arg(short, long)]
+        role: u16,
+        /// Optional model name for this task
+        #[arg(short, long)]
+        model_name: Option<String>,
+        /// Optional epoch until which this task is valid
+        #[arg(short, long)]
+        valid_until_epoch: Option<u64>,
+        /// List of optimization IDs applicable to this task
+        #[arg(short, long)]
+        optimizations: Vec<u16>,
+        /// Optional security level for this task
+        #[arg(short, long)]
+        security_level: Option<u16>,
+        /// Efficiency measure in compute units
+        #[arg(short, long)]
+        efficiency_compute_units: u16,
+        /// Optional efficiency measure in time units
+        #[arg(short, long)]
+        efficiency_time_units: Option<u16>,
+        /// Optional efficiency value
+        #[arg(short, long)]
+        efficiency_value: Option<u64>,
+        /// Optional minimum reputation score required for this task
+        #[arg(short, long)]
+        minimum_reputation_score: Option<u8>,
+    },
+    /// Deprecates a task in the database.
+    /// This command marks a task as deprecated, preventing new subscriptions.
+    /// Existing subscriptions and ongoing work are not affected.
+    DeprecateTask {
+        /// Optional package ID. If not provided, the default from the environment will be used.
+        #[arg(short, long)]
+        package: Option<String>,
+        /// The ObjectID of the TaskBadge for the task to be deprecated.
+        #[arg(short, long)]
+        task_badge: String,
+    },
+    /// Removes a deprecated task from the database.
+    /// This command completely removes a task that has been previously deprecated.
+    /// It should only be used when you're certain the task is no longer needed.
+    RemoveDeprecatedTask {
+        /// Optional package ID. If not provided, the default from the environment will be used.
+        #[arg(short, long)]
+        package: Option<String>,
+        /// The ObjectID of the TaskBadge for the deprecated task to be removed.
+        #[arg(short, long)]
+        task_badge: String,
+    },
+    /// Command to subscribe a node to a specific task in the Atoma network.
+    SubscribeNodeToTask {
+        /// Optional package ID. If not provided, the default from the environment will be used.
+        #[arg(short, long)]
+        package: Option<String>,
+        /// The small ID of the task to subscribe to. This is a unique identifier for the task.
+        #[arg(short, long)]
+        task_small_id: u64,
+        /// The price per compute unit that the node is willing to charge for this task.
+        /// This value is in the smallest unit of the network's native currency.
+        #[arg(short, long)]
+        price_per_compute_unit: u64,
+        /// The maximum number of compute units that the node is willing to provide for this task.
+        /// This limits the node's commitment to the task.
+        #[arg(short, long)]
+        max_num_compute_units: u64,
+    },
+    /// Unsubscribe a node from a specific task in the Atoma network.
+    /// This command removes a node's subscription to a task, preventing it from receiving further work for that task.
+    UnsubscribeNodeFromTask {
+        /// Optional package ID. If not provided, the default from the environment will be used.
+        #[arg(short, long)]
+        package: Option<String>,
+        /// The small ID of the task to unsubscribe from. This is a unique identifier for the task.
+        #[arg(short, long)]
+        task_small_id: u64,
+    },
+    /// Unsubscribe a node from a specific task in the Atoma network by its index.
+    /// This command removes a node's subscription to a task using the task's small ID and the node's index,
+    /// preventing it from receiving further work for that task.
+    UnsubscribeNodeFromTaskByIndex {
+        /// Optional package ID. If not provided, the default from the environment will be used.
+        #[arg(short, long)]
+        package: Option<String>,
+        /// The small ID of the task to unsubscribe from. This is a unique identifier for the task.
+        #[arg(short, long)]
+        task_small_id: u64,
+        /// The index of the node in the task's subscription list.
+        /// This is used to identify which node to unsubscribe when multiple nodes are subscribed to the same task.
+        #[arg(short, long)]
+        node_index: u64,
+    },
+    /// Acquires a new stack entry for a specific task.
+    /// This command allows a node to request a new stack entry, which represents
+    /// a unit of work to be performed for a given task.
+    AcquireNewStackEntry {
+        /// Optional package ID. If not provided, the default from the environment will be used.
+        #[arg(short, long)]
+        package: Option<String>,
+        /// The small ID of the task for which to acquire a new stack entry.
+        /// This ID uniquely identifies the task within the Atoma network.
+        #[arg(short, long)]
+        task_small_id: u64,
+        /// The number of compute units requested for this stack entry.
+        /// This represents the amount of computational work the node is willing to perform.
+        #[arg(short, long)]
+        num_compute_units: u64,
+        /// The price (in smallest unit of the network's native currency) that the node
+        /// is charging for the requested compute units.
+        /// This should be calculated based on the task's requirements and the node's pricing strategy.
+        #[arg(short, long)]
+        price: u64,
+    },
+    /// Attempts to settle a stack entry in the Atoma network.
+    /// This command is used by nodes to finalize their work on a stack entry
+    /// and claim the associated rewards.
+    TrySettleStack {
+        /// Optional package ID. If not provided, the default from the environment will be used.
+        #[arg(short, long)]
+        package: Option<String>,
+        /// The small ID of the stack entry to be settled.
+        /// This is a unique identifier for the stack within the Atoma network.
+        #[arg(short, long)]
+        stack_small_id: u64,
+        /// The number of compute units claimed by the node for this stack entry.
+        /// This should reflect the actual work performed by the node.
+        #[arg(short, long)]
+        num_claimed_compute_units: u64,
+        /// The committed stack proof, which is used to verify the node's work.
+        /// This is typically a cryptographic proof or hash of the work performed.
+        #[arg(short, long)]
+        committed_stack_proof: Vec<u8>,
+        /// The Merkle leaf for this stack entry.
+        /// This is part of the Merkle tree structure used for efficient verification
+        /// of the stack's state within the larger Atoma database.
+        #[arg(short, long)]
+        stack_merkle_leaf: Vec<u8>,
+    },
+    /// Submits a stack settlement attestation for a completed task.
+    /// This command is used by nodes to provide proof of work completion
+    /// and initiate the settlement process for a stack entry.
+    SubmitStackSettlementAttestation {
+        /// Optional package ID. If not provided, the default from the environment will be used.
+        #[arg(short, long)]
+        package: Option<String>,
+        /// The small ID of the stack entry for which the attestation is being submitted.
+        /// This is a unique identifier for the stack within the Atoma network.
+        #[arg(short, long)]
+        stack_small_id: u64,
+        /// The committed stack proof, which is used to verify the node's work.
+        /// This is typically a cryptographic proof or hash of the work performed.
+        #[arg(short, long)]
+        committed_stack_proof: Vec<u8>,
+        /// The Merkle leaf for this stack entry.
+        /// This is part of the Merkle tree structure used for efficient verification
+        /// of the stack's state within the larger Atoma database.
+        #[arg(short, long)]
+        stack_merkle_leaf: Vec<u8>,
+    },
+    /// Claims funds for settled tickets in the Atoma network.
+    /// This command allows a node to claim the rewards for successfully completed and settled tasks.
+    ClaimFunds {
+        /// Optional package ID. If not provided, the default from the environment will be used.
+        #[arg(short, long)]
+        package: Option<String>,
+        /// A list of settled stack small IDs for which the node can claim funds.
+        /// Each ID represents a completed and settled stack that the node has performed.
+        #[arg(short, long)]
+        settled_ticket_ids: Vec<u64>,
+    }
 }
 
 #[derive(Subcommand)]
@@ -269,6 +447,160 @@ async fn main() -> Result<()> {
     };
 
     match cli.command {
+        Some(Cmds::Db(DbCmds::CreateTaskEntry {
+            package,
+            role,
+            model_name,
+            valid_until_epoch,
+            optimizations,
+            security_level,
+            efficiency_compute_units,
+            efficiency_time_units,
+            efficiency_value,
+            minimum_reputation_score,
+        })) => {
+            let digest = db::create_task_entry(
+                &mut context.with_optional_atoma_package_id(package),
+                role,
+                model_name,
+                valid_until_epoch,
+                optimizations,
+                security_level,
+                efficiency_compute_units,
+                efficiency_time_units,
+                efficiency_value,
+                minimum_reputation_score,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::DeprecateTask {
+            package,
+            task_badge,
+        })) => {
+            let digest = db::deprecate_task(
+                &mut context.with_optional_atoma_package_id(package),
+                ObjectID::from_str(&task_badge)?,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::RemoveDeprecatedTask {
+            package,
+            task_badge,
+        })) => {
+            let digest = db::remove_deprecated_task(
+                &mut context.with_optional_atoma_package_id(package),
+                ObjectID::from_str(&task_badge)?,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::SubscribeNodeToTask {
+            package,
+            task_small_id,
+            price_per_compute_unit,
+            max_num_compute_units,
+        })) => {
+            let digest = db::subscribe_node_to_task(
+                &mut context.with_optional_atoma_package_id(package),
+                task_small_id,
+                price_per_compute_unit,
+                max_num_compute_units,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::UnsubscribeNodeFromTask {
+            package,
+            task_small_id,
+        })) => {
+            let digest = db::unsubscribe_node_from_task(
+                &mut context.with_optional_atoma_package_id(package),
+                task_small_id,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::UnsubscribeNodeFromTaskByIndex {
+            package,
+            task_small_id,
+            node_index,
+        })) => {
+            let digest = db::unsubscribe_node_from_task_by_index(
+                &mut context.with_optional_atoma_package_id(package),
+                task_small_id,
+                node_index,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::AcquireNewStackEntry {
+            package,
+            task_small_id,
+            num_compute_units,
+            price,
+        })) => {
+            let digest = db::acquire_new_stack_entry(
+                &mut context.with_optional_atoma_package_id(package),
+                task_small_id,
+                num_compute_units,
+                price,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::TrySettleStack {
+            package,
+            stack_small_id,
+            num_claimed_compute_units,
+            committed_stack_proof,
+            stack_merkle_leaf,
+        })) => {
+            let digest = db::try_settle_stack(
+                &mut context.with_optional_atoma_package_id(package),
+                stack_small_id,
+                num_claimed_compute_units,
+                committed_stack_proof,
+                stack_merkle_leaf,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::ClaimFunds {
+            package,
+            settled_ticket_ids,
+        })) => {
+            let digest = db::claim_funds(
+                &mut context.with_optional_atoma_package_id(package),
+                settled_ticket_ids,
+            )
+            .await?;
+        }
+        Some(Cmds::Db(DbCmds::SubmitStackSettlementAttestation {
+            package,
+            stack_small_id,
+            committed_stack_proof,
+            stack_merkle_leaf,
+        })) => {
+            let digest = db::submit_stack_settlement_attestation(
+                &mut context.with_optional_atoma_package_id(package),
+                stack_small_id,
+                committed_stack_proof,
+                stack_merkle_leaf,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
         Some(Cmds::Db(DbCmds::PrintEnv { package })) => {
             db::print_env(&mut context.with_optional_atoma_package_id(package))
                 .await?;
