@@ -118,6 +118,13 @@ module atoma::db {
     const ETaskAlreadyDeprecated: u64 = EBase + 40;
     const EInvalidTaskRole: u64 = EBase + 41;
     const EInvalidSecurityLevel: u64 = EBase + 42;
+    const EInvalidPricePerComputeUnit: u64 = EBase + 43;
+    const EInvalidMaxNumComputeUnits: u64 = EBase + 44;
+    const ENodeDoesNotMeetTaskRequirements: u64 = EBase + 45;
+    const EInvalidComputeUnits: u64 = EBase + 46;
+    const EInsufficientBalance: u64 = EBase + 47;
+    const EInvalidCommittedStackProof: u64 = EBase + 48;
+    const EInvalidStackMerkleLeaf: u64 = EBase + 49;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -142,6 +149,11 @@ module atoma::db {
         task_small_id: SmallId,
         node_small_id: SmallId,
         price_per_compute_unit: u64,
+    }
+
+    public struct NodeUnsubscribedFromTaskEvent has copy, drop {
+        task_small_id: SmallId,
+        node_small_id: SmallId,
     }
 
     public struct TaskRegisteredEvent has copy, drop {
@@ -210,6 +222,27 @@ module atoma::db {
         // proof_of_storage: vector<u8>,
         /// Number of compute units claimed by the user.
         num_claimed_compute_units: u64,
+    }
+
+    // Event emitted when a new attestation is submitted for a stack settlement.
+    ///
+    /// This event is triggered each time an attestation node submits its verification
+    /// for a stack settlement, but before all required attestations have been received.
+    /// It provides information about the progress of the settlement process.
+    ///
+    /// # Usage
+    /// This event can be used to track the progress of stack settlements, especially
+    /// for tasks requiring multiple attestations. It allows observers to monitor which
+    /// nodes have submitted attestations and how many attestations are still pending.
+    public struct NewStackSettlementAttestationEvent has copy, drop {
+        /// The unique identifier of the stack being settled.
+        stack_small_id: SmallId,
+        /// The identifier of the node originally selected to process the stack.
+        selected_node_id: SmallId,
+        /// The number of compute units claimed for this stack execution.
+        num_claimed_compute_units: u64,
+        /// The identifier of the node submitting this attestation.
+        attestation_node_id: SmallId,
     }
 
     /// Event emitted when an attestation node submits a new attestation for the original stack settlement ticket.
@@ -334,6 +367,8 @@ module atoma::db {
         /// Subscribed nodes table, where key is node SmallId and value is price per compute unit
         /// for this current task.
         subscribed_nodes: TableVec<NodePriceData>,
+        /// Minimum reputation score required for a node to subscribe to the task
+        minimum_reputation_score: Option<u8>,
     }
 
     /// Systems's efficiency metrics
@@ -660,6 +695,7 @@ module atoma::db {
     /// * `efficiency_compute_units` - A u16 representing the compute units for efficiency metrics.
     /// * `efficiency_time_units` - An optional u16 representing the time units for efficiency metrics.
     /// * `efficiency_value` - An optional u64 representing the value for efficiency metrics.
+    /// * `minimum_reputation_score` - An optional u8 representing the minimum reputation score required for a node to subscribe to the task.
     /// * `ctx` - A mutable reference to the transaction context.
     ///
     /// # Effects
@@ -679,6 +715,7 @@ module atoma::db {
         efficiency_compute_units: u16,
         efficiency_time_units: Option<u16>,
         efficiency_value: Option<u64>,
+        minimum_reputation_score: Option<u8>,
         ctx: &mut TxContext,
     ) {
         let badge = create_task(
@@ -693,6 +730,7 @@ module atoma::db {
                 time_unit: efficiency_time_units,
                 value: efficiency_value,
             },
+            minimum_reputation_score,
             ctx,
         );
         transfer::transfer(badge, ctx.sender());
@@ -708,6 +746,7 @@ module atoma::db {
     /// * `optimizations` - A vector of u16 representing optimization types.
     /// * `security_level` - An u16 representing the security level.
     /// * `task_metrics` - A `TaskMetrics` instance representing efficiency metrics for the task.
+    /// * `minimum_reputation_score` - An optional u8 representing the minimum reputation score required for a node to subscribe to the task.
     /// * `ctx` - A mutable reference to the transaction context.
     ///
     /// # Returns
@@ -720,6 +759,7 @@ module atoma::db {
         optimizations: vector<u16>,
         security_level: u16,
         task_metrics: TaskMetrics,
+        minimum_reputation_score: Option<u8>,
         ctx: &mut TxContext,
     ): TaskBadge {
         // Validate inputs
@@ -748,6 +788,7 @@ module atoma::db {
             security_level,
             task_metrics,
             subscribed_nodes: table_vec::empty(ctx),
+            minimum_reputation_score: minimum_reputation_score,
         };
 
         // Add task to AtomaDb
@@ -826,9 +867,37 @@ module atoma::db {
         });
     }
 
-    /// Removes a deprecated task from the task table.
-    /// It only allows to remove deprecated tasks that 
-    /// were deprecated at least 2 epochs from the current task.
+    /// Removes a deprecated task from the Atoma network.
+    ///
+    /// This function allows the removal of a task that has been previously deprecated.
+    /// It ensures that the task is eligible for removal by checking its deprecation status
+    /// and the time elapsed since deprecation.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `task_badge` - The TaskBadge associated with the task to be removed.
+    /// * `ctx` - A mutable reference to the transaction context.
+    ///
+    /// # Effects
+    /// - Removes the deprecated task from the tasks object table.
+    /// - Deletes the task's UID and associated data structures.
+    /// - Emits a TaskRemovedEvent.
+    ///
+    /// # Aborts
+    /// * `ETaskNotFound` - If the task specified by the TaskBadge is not found in the AtomaDb.
+    /// * `ETaskNotDeprecated` - If the task is not marked as deprecated.
+    /// * `ENotEnoughEpochsPassed` - If less than 2 epochs have passed since the task was deprecated.
+    ///
+    /// # Events
+    /// Emits a `TaskRemovedEvent` containing:
+    /// * `task_id` - The ID of the removed task.
+    /// * `task_small_id` - The SmallId of the removed task.
+    /// * `removed_at_epoch` - The epoch at which the task was removed.
+    ///
+    /// # Important Notes
+    /// - This function should only be called for tasks that have been properly deprecated.
+    /// - There is a mandatory waiting period of 2 epochs after deprecation before a task can be removed.
+    /// - Removal is permanent and cannot be undone. Ensure all necessary data has been archived if needed.
     public entry fun remove_deprecated_task(
         self: &mut AtomaDb,
         task_badge: TaskBadge,
@@ -864,6 +933,7 @@ module atoma::db {
             security_level: _,
             task_metrics: _,
             subscribed_nodes,
+            minimum_reputation_score: _,
         } = task;
 
         task_badge_id.delete();
@@ -944,24 +1014,41 @@ module atoma::db {
         max_num_compute_units: u64,
     ) {
         let task_small_id = SmallId { inner: task_small_id };
-        assert!(self.tasks.contains(task_small_id), ETaskNotFound);
 
+        // Check if the task exists
+        assert!(self.tasks.contains(task_small_id), ETaskNotFound);
+        // Check if the node's reputation score meets the task's minimum requirement
+        {
+            let task = self.tasks.borrow(task_small_id);
+            assert!(node_meets_task_requirements(self, node_badge, task), ENodeDoesNotMeetTaskRequirements);
+        };
+
+        // Check if the task is not deprecated
         let task = self.tasks.borrow_mut(task_small_id);
         assert!(!task.is_deprecated, ETaskDeprecated);
 
-        // a node can subscribe to a task only once
+        // Check if the node is already subscribed to the task
         assert!(
             !dynamic_field::exists_(&node_badge.id, task_small_id),
             ENodeAlreadySubscribedToTask,
         );
-        table_vec::push_back(&mut task.subscribed_nodes, NodePriceData {
+        
+        // Validate price_per_compute_unit and max_num_compute_units
+        assert!(price_per_compute_unit > 0, EInvalidPricePerComputeUnit);
+        assert!(max_num_compute_units > 0, EInvalidMaxNumComputeUnits);
+
+        // Add the node to the task's subscribed_nodes list
+        let node_price_data = NodePriceData {
             node_id: node_badge.small_id,
             price_per_compute_unit,
             max_num_compute_units,
-        });
+        };
+        table_vec::push_back(&mut task.subscribed_nodes, node_price_data);
+
         // Associate the task_small_id with the node badge
         dynamic_field::add(&mut node_badge.id, task_small_id, true);
 
+        // Emit a NodeSubscribedToTaskEvent
         sui::event::emit(NodeSubscribedToTaskEvent {
             node_small_id: node_badge.small_id,
             task_small_id,
@@ -988,8 +1075,13 @@ module atoma::db {
         task_small_id: u64,
     ) {
         let task_small_id = SmallId { inner: task_small_id };
-        let perhaps_task_small_id: Option<bool> = dynamic_field::remove_if_exists(&mut node_badge.id, task_small_id);
-        assert!(perhaps_task_small_id.is_some(), ENodeNotSubscribedToTask);
+
+        // Check if the task exists
+        assert!(self.tasks.contains(task_small_id), ETaskNotFound);
+
+        // Check if the node is subscribed to the task
+        let was_subscribed: Option<bool> = dynamic_field::remove_if_exists(&mut node_badge.id, task_small_id);
+        assert!(was_subscribed.is_some(), ENodeNotSubscribedToTask);
 
         let task = self.tasks.borrow_mut(task_small_id);
         let mut node_index = find_node_index(&task.subscribed_nodes, node_badge.small_id);
@@ -997,11 +1089,18 @@ module atoma::db {
 
         let node_index = option::extract(&mut node_index);
 
+        // Remove the node from the task's subscribed_nodes list
         let removed_node_price_data = table_vec::swap_remove(&mut task.subscribed_nodes, node_index);
         assert!(
             removed_node_price_data.node_id.inner == node_badge.small_id.inner,
             ENodeIndexMismatch,
         );
+
+        // Emit a NodeUnsubscribedFromTaskEvent
+        sui::event::emit(NodeUnsubscribedFromTaskEvent {
+            node_small_id: node_badge.small_id,
+            task_small_id,
+        });
     }
 
     /// Unsubscribes a node from a specific task, provided the index of the node in the task's subscribed_nodes list.
@@ -1028,8 +1127,8 @@ module atoma::db {
         node_index: u64,
     ) {
         let task_small_id = SmallId { inner: task_small_id };
-        let perhaps_task_small_id: Option<bool> = dynamic_field::remove_if_exists(&mut node_badge.id, task_small_id);
-        assert!(perhaps_task_small_id.is_some(), ENodeNotSubscribedToTask);
+        let was_subscribed: Option<bool> = dynamic_field::remove_if_exists(&mut node_badge.id, task_small_id);
+        assert!(was_subscribed.is_some(), ENodeNotSubscribedToTask);
 
         let task = self.tasks.borrow_mut(task_small_id);
         
@@ -1129,11 +1228,33 @@ module atoma::db {
         rng: &mut sui::random::RandomGenerator,
         ctx: &mut TxContext,
     ): StackBadge {
-        let owner = ctx.sender();
-        let stack_id = object::new(ctx);
+        // Input validation
+        assert!(num_compute_units > 0, EInvalidComputeUnits);
+        assert!(price > 0, EInvalidPricePerComputeUnit);
+
         let task_small_id = SmallId { inner: task_small_id };
+        assert!(self.tasks.contains(task_small_id), ETaskNotFound);
+        {
+            // transfer the funds for compute units to the contract
+            let task = self.tasks.borrow(task_small_id);
+            let security_level = task.security_level;
+            let fee_amount = if (security_level == SamplingConsensusSecurityLevel) {
+                let sampling_consensus_charge = self.get_sampling_consensus_charge_permille();
+                let cross_validation_charge = self.get_cross_validation_extra_nodes_charge_permille();
+                (price * num_compute_units * (sampling_consensus_charge + cross_validation_charge)) / 1000
+            } else {
+                (price * num_compute_units)
+            };
+            // Check if the wallet has enough balance to pay for the compute units
+            assert!(balance::value(wallet) >= fee_amount, EInsufficientBalance);
+            // Transfer the funds to the contract
+            let funds = wallet.split(fee_amount);
+            self.deposit_to_fee_treasury(funds);
+        };
+
+        // Sample a node and create the stack
+        let owner = ctx.sender();
         let selected_node = self.sample_node_for_stack(task_small_id, price, num_compute_units, rng);
-        let task = self.tasks.borrow(task_small_id);
 
         let stack = Stack { 
             owner,
@@ -1143,21 +1264,15 @@ module atoma::db {
             price,
         };
 
+        // Assign a new SmallId to the stack and add it to the stacks table
         let stack_small_id = self.next_stack_small_id;
         self.next_stack_small_id = SmallId { 
             inner: self.next_stack_small_id.inner + 1 
         };
         self.stacks.add(stack_small_id, stack);
 
-        // transfer the funds for compute units to the contract
-        let fee_amount = if (task.security_level == SamplingConsensusSecurityLevel) {
-            (price * num_compute_units * (self.get_sampling_consensus_charge_permille() + self.get_cross_validation_extra_nodes_charge_permille())) / 1000
-        } else {
-            (price * num_compute_units)
-        };
-        let funds = wallet.split(fee_amount);
-        self.deposit_to_fee_treasury(funds);
-
+        let stack_id = object::new(ctx);
+        // Emit a StackCreatedEvent
         sui::event::emit(StackCreatedEvent {
             stack_id: object::uid_to_inner(&stack_id),
             small_id: stack_small_id,
@@ -1166,6 +1281,7 @@ module atoma::db {
             price,
         });
 
+        // Return the StackBadge
         StackBadge {
             id: stack_id,
             small_id: stack_small_id,
@@ -1220,17 +1336,21 @@ module atoma::db {
         ctx: &mut TxContext,
     ) {
         let stack_small_id = SmallId { inner: stack_small_id };
-        // Get all necessary values from self before any mutable borrows
-        let cross_validation_probability = self.get_cross_validation_probability_permille();
-        let cross_validation_extra_nodes_count = self.get_cross_validation_extra_nodes_count();
 
         let stack = self.stacks.borrow(stack_small_id);
-        assert!(stack.owner == ctx.sender(), ENotStackOwner);
-
         let node_small_id = node_badge.small_id;
+        assert!(stack.owner == ctx.sender(), ENotStackOwner);
         assert!(node_small_id == stack.selected_node, ENodeNotSelectedForStack);
         assert!(num_claimed_compute_units <= stack.num_compute_units, ETooManyComputedUnits);
         assert!(!self.stack_settlement_tickets.contains(stack_small_id), EStackInSettlementDispute);
+
+        // Validate input data
+        assert!(vector::length(&committed_stack_proof) == BYTES_PER_HASH_COMMITMENT, EInvalidCommittedStackProof);
+        assert!(vector::length(&stack_merkle_leaf) == BYTES_PER_HASH_COMMITMENT, EInvalidStackMerkleLeaf);
+
+        // Get all necessary values from self beforehand to avoid mutable borrows
+        let cross_validation_probability_permille = self.get_cross_validation_probability_permille();
+        let cross_validation_extra_nodes_count = self.get_cross_validation_extra_nodes_count();
 
         let task_small_id = stack.task_small_id;
         let task = self.tasks.borrow(task_small_id);
@@ -1241,7 +1361,9 @@ module atoma::db {
         let attestation_nodes: vector<SmallId> = if (security_level == SamplingConsensusSecurityLevel) {      
             let mut rng = random.new_generator(ctx);
             let random_number = (rng.generate_u64() % 1000) + 1;
-            if (random_number <= cross_validation_probability) {
+            // Sample attestation nodes if the random number is less than or equal to the cross validation probability
+            // that is, the contract samples attestation nodes with a probability of cross_validation_probability_permille / 1000
+            if (random_number <= cross_validation_probability_permille) {
                 self.sample_attestation_nodes(task_small_id, stack_price, stack.num_compute_units, &mut rng)
             } else {
                 vector::empty()
@@ -1337,26 +1459,30 @@ module atoma::db {
     ) {
         let stack_small_id = SmallId { inner: stack_small_id };
 
-        // 1. Verify that both the stack and the stack settlement ticket exist
+        // Verify that both the stack and the stack settlement ticket exist
         assert!(self.stacks.contains(stack_small_id), EStackNotFound);
         assert!(self.stack_settlement_tickets.contains(stack_small_id), EStackNotInSettlementDispute);
 
-        let stack = self.stacks.borrow(stack_small_id);
+        // Validate input data
+        assert!(vector::length(&committed_stack_proof) == BYTES_PER_HASH_COMMITMENT, EInvalidCommittedStackProof);
+        assert!(vector::length(&stack_merkle_leaf) == BYTES_PER_HASH_COMMITMENT, EInvalidStackMerkleLeaf);
     
-        // 2. Verify that the stack requires sampling consensus security level
+        // Verify that the stack requires sampling consensus security level
+        let stack = self.stacks.borrow(stack_small_id);
         let task_small_id = stack.task_small_id;
         let security_level = self.tasks.borrow(task_small_id).security_level;
         assert!(security_level == SamplingConsensusSecurityLevel, EStackDoesNotRequireSamplingConsensus);
 
-        // 3. Verify that the dispute challenge is ongoing
-        let dispute_settled_at_epoch = self.stack_settlement_tickets.borrow(stack_small_id).dispute_settled_at_epoch;
+        // Verify that the dispute challenge is ongoing
+        let stack_settlement_ticket = self.stack_settlement_tickets.borrow_mut(stack_small_id);
+        let dispute_settled_at_epoch = stack_settlement_ticket.dispute_settled_at_epoch;
         assert!(dispute_settled_at_epoch >= ctx.epoch(), EStackDisputePeriodOver);
 
-        // 4. Check that the current node was selected as an attestation node
-        let attestation_nodes = self.stack_settlement_tickets.borrow(stack_small_id).requested_attestation_nodes;
+        // Check that the current node was selected as an attestation node
+        let attestation_nodes = stack_settlement_ticket.requested_attestation_nodes;
         assert!(vector::contains(&attestation_nodes, &node_badge.small_id), ENodeNotSelectedForAttestation);
 
-        // 5. Obtain the index of the current attestation node in the attestation_nodes vector
+        // Obtain the index of the current attestation node in the attestation_nodes vector
         let mut attestation_node_index = 0;
         while (attestation_node_index < vector::length(&attestation_nodes)) {
             if (*vector::borrow(&attestation_nodes, attestation_node_index) == node_badge.small_id) {
@@ -1365,17 +1491,15 @@ module atoma::db {
             attestation_node_index = attestation_node_index + 1;
         };
 
-        // 6. Verify that the committed stack proof agrees with the stack merkle commitment
-        let original_committed_stack_proof = self.stack_settlement_tickets.borrow(stack_small_id).committed_stack_proof;
+        // Verify that the committed stack proof agrees with the stack merkle commitment
+        let original_committed_stack_proof = stack_settlement_ticket.committed_stack_proof;
         if (committed_stack_proof != original_committed_stack_proof) {
             // Start attestation dispute and return immediately
             self.start_attestation_dispute(node_badge, stack_small_id.inner, committed_stack_proof);
             return
         };
 
-        let stack_settlement_ticket = self.stack_settlement_tickets.borrow_mut(stack_small_id);
-
-        // 6. Write the merkle leaf to the stack
+        // Write the merkle leaf to the stack
         let mut i = 0;
         while (i < BYTES_PER_HASH_COMMITMENT) { 
             let starts_at = attestation_node_index * BYTES_PER_HASH_COMMITMENT;
@@ -1383,24 +1507,26 @@ module atoma::db {
             i = i + 1;
         };
 
-        // 7. Check if the attestation node is the last one to submit the merkle leaf
+        // Check if the attestation node is the last one to submit the merkle leaf
         let num_of_committments = vector::length(&stack_settlement_ticket.already_attested_nodes);
         vector::push_back(&mut stack_settlement_ticket.already_attested_nodes, node_badge.small_id);
         let num_attestation_nodes = vector::length(&attestation_nodes);
         if (num_of_committments == num_attestation_nodes) {
-            // 8. If the last node has submitted the merkle leaf, 
-            //    compute the root hash of the merkle tree
-            //    and check that it agrees with the committed stack proof
+            // If the last node has submitted the merkle leaf, 
+            // compute the root hash of the merkle tree
+            // and check that it agrees with the committed stack proof
             let stack_merkle_leaves_vector = stack_settlement_ticket.stack_merkle_leaves_vector;
             let stack_merkle_root = sui::hash::blake2b256(&stack_merkle_leaves_vector);
             if (stack_merkle_root != committed_stack_proof) {
-                // 9. In case the committed `stack_merkle_root` does not agree with the computed `stack_merkle_root`,
-                //    start between the original node and every attestation node
-                //    to determine which one of them are faulty
+                // In case the committed `stack_merkle_root` does not agree with the computed `stack_merkle_root`,
+                // start between the original node and every attestation node
+                // to determine which one of them are faulty. We return immediately
+                // because the dispute is ongoing and more nodes can still submit their attestations
                 self.start_attestation_dispute(node_badge, stack_small_id.inner, committed_stack_proof);
+                return
             } else {
-                // 10. If the `stack_merkle_root` agrees with the committed `stack_merkle_root`,
-                //     then the attestation settlement is complete and we emit a StackSettlementTicketEvent
+                // If the `stack_merkle_root` agrees with the committed `stack_merkle_root`,
+                // then the attestation settlement is complete and we emit a StackSettlementTicketEvent
                 sui::event::emit(StackSettlementTicketEvent {
                     stack_small_id,
                     selected_node_id: stack.selected_node,
@@ -1409,8 +1535,19 @@ module atoma::db {
                     dispute_settled_at_epoch: ctx.epoch(),
                     committed_stack_proof,
                 });
+                return
             }
         };
+
+        // If we reach this point, it means that the stack has not been settled yet
+        // because not all attestation nodes have submitted their merkle leaves.
+        // In this case, we emit a NewStackSettlementAttestationEvent
+        sui::event::emit(NewStackSettlementAttestationEvent {
+            stack_small_id,
+            selected_node_id: stack.selected_node,
+            num_claimed_compute_units: stack_settlement_ticket.num_claimed_compute_units,
+            attestation_node_id: node_badge.small_id,
+        });
     }
 
     /// Claims funds for settled stacks and distributes rewards to nodes and users.
@@ -1461,111 +1598,46 @@ module atoma::db {
         settled_ticket_ids: vector<u64>,
         ctx: &mut TxContext,
     ) { 
-        // 1. The node claims the funds to which it was selected to process the stack
-        let num_settled_tickets = vector::length(&settled_ticket_ids);
-        let mut index = 0;
-
+        // The node claims the funds to which it was selected to process the stack
+        let num_settled_tickets = vector::length(&settled_ticket_ids);        
         let sampling_consensus_charge_permille = self.get_sampling_consensus_charge_permille();
         let cross_validation_extra_nodes_count = self.get_cross_validation_extra_nodes_count();
 
+        let mut total_node_fee = 0u64;
+        let mut index = 0;
         while (index < num_settled_tickets) {
-        let stack_small_id = SmallId { inner: *vector::borrow(&settled_ticket_ids, index) };
-            // 2. Fetch relevant data
-            let (security_level, stack_price, num_compute_units, owner, selected_node_id, num_claimed_compute_units, attestation_nodes) = {
-                let stack_settlement_ticket = self.stack_settlement_tickets.borrow(stack_small_id);
-                let stack = self.stacks.borrow(stack_small_id);
-                let task = self.tasks.borrow(stack.task_small_id);
-                
-                assert!(stack_settlement_ticket.selected_node_id == node_badge.small_id, ENodeNotSelectedForSettlement);
-                assert!(!stack_settlement_ticket.is_in_dispute, EStackInDispute);
-                assert!(
-                    ctx.epoch() >= stack_settlement_ticket.dispute_settled_at_epoch, 
-                    EStackDisputePeriodIsNotOver
-                );
-                
-                (
-                    task.security_level,
-                    stack.price,
-                    stack.num_compute_units,
-                    stack.owner,
-                    stack_settlement_ticket.selected_node_id,
-                    stack_settlement_ticket.num_claimed_compute_units,
-                    stack_settlement_ticket.requested_attestation_nodes
-                )
-            };
+            let stack_small_id = SmallId { inner: *vector::borrow(&settled_ticket_ids, index) };
+            // Fetch relevant data
+            let (security_level, stack_price, num_compute_units, owner, selected_node_id, num_claimed_compute_units, attestation_nodes) = 
+                fetch_stack_settlement_ticket_data(self, stack_small_id, node_badge.small_id, ctx);
 
-            // 6. Compute the funds, for the current stack, to send to the node
-            let node_fee_amount = if (security_level == SamplingConsensusSecurityLevel) {
-                (num_claimed_compute_units * stack_price * sampling_consensus_charge_permille) / 1000
-            } else {
-                num_claimed_compute_units * stack_price
-            };
-
-            // 7. Check if there are remaining funds to be sent back to the user
+            // Compute the funds accrued by the node, by processing the current stack
+            let node_fee_amount = 
+                calculate_stack_fee_amount(security_level, stack_price, num_claimed_compute_units, sampling_consensus_charge_permille);
+            
+            // Update the total node fee
+            total_node_fee = total_node_fee + node_fee_amount;
+            
+            // Check if there are remaining funds to be sent back to the user
             let remaining_compute_units = num_compute_units - num_claimed_compute_units;
-            let user_refund_amount = if (security_level == SamplingConsensusSecurityLevel) {
-                (remaining_compute_units * stack_price * sampling_consensus_charge_permille) / 1000
-            } else {
-                remaining_compute_units * stack_price
-            };
+            let user_refund_amount = 
+                calculate_stack_fee_amount(security_level, stack_price, remaining_compute_units, sampling_consensus_charge_permille);
 
-            // 8. Check if there are any attestation nodes for the current stack
-            let num_attestation_nodes = vector::length(&attestation_nodes);
-            if (num_attestation_nodes > 0) {
-                // 9. If there are attestation nodes, compute the amount of funds to send to each attestation node
-                let mut attestation_node_index = 0;
-                while (attestation_node_index < num_attestation_nodes) {
-                    let attestation_node_id = *vector::borrow(&attestation_nodes, attestation_node_index);
-                    let already_attested = {
-                        let stack_settlement_ticket = self.stack_settlement_tickets.borrow(stack_small_id);
-                        vector::contains(&stack_settlement_ticket.already_attested_nodes, &attestation_node_id)
-                    };
+            // Handle attestation nodes rewards and slashing
+            self.handle_attestation_nodes_rewards_and_slashing(
+                stack_small_id,
+                &attestation_nodes,
+                node_fee_amount,
+                cross_validation_extra_nodes_count,
+            );
 
-                    if (already_attested) {
-                        // 10. In this case, the selected attestation node has already submitted its attestation
-                        //     so we add the node fee amount to the node's available fee amount
-                        let attestation_node_fee = (node_fee_amount / cross_validation_extra_nodes_count);
-                        let node_entry = self.nodes.borrow_mut(attestation_node_id);
-                        node_entry.available_fee_amount = node_entry.available_fee_amount + attestation_node_fee;
-                    } else {
-                        // 11. In this case, the selected attestation node has not submitted its attestation
-                        //     so we should partially slash its collateral
-                        let conficasted_balance = self.slash_node_on_timeout(attestation_node_id);
-                        self.deposit_to_communal_treasury(conficasted_balance);
-                    };
-                    attestation_node_index = attestation_node_index + 1;
-                }
-            };
-
-            // 12. Send the remaining funds back to the user
-            self.transfer_funds(node_fee_amount, ctx.sender(), ctx);
+            // Refund the remaining funds back to the user
             self.transfer_funds(user_refund_amount, owner, ctx);
 
-            // 13. Remove the stack settlement ticket from the ObjectTable
-            let StackSettlementTicket {
-                id,
-                stack_small_id: _,
-                num_claimed_compute_units: _,
-                stack_merkle_leaves_vector: _,
-                already_attested_nodes: _,
-                committed_stack_proof: _,
-                dispute_settled_at_epoch: _,
-                is_in_dispute: _,
-                requested_attestation_nodes: _,
-                selected_node_id: _,
-            } = object_table::remove(&mut self.stack_settlement_tickets, stack_small_id);
-            id.delete();
+            // Remove the stack settlement ticket from the ObjectTable
+            self.cleanup_stack_data(stack_small_id);
 
-            // 14. Remove the stack from the Table
-            let Stack {
-                task_small_id: _,
-                selected_node: _,
-                owner: _,
-                price: _,
-                num_compute_units: _,
-            } = table::remove(&mut self.stacks, stack_small_id);
-
-            // 15. Emit a StackSettlementTicketClaimedEvent
+            // Emit a StackSettlementTicketClaimedEvent
             sui::event::emit(StackSettlementTicketClaimedEvent {
                 stack_small_id,
                 selected_node_id: selected_node_id,
@@ -1574,11 +1646,14 @@ module atoma::db {
                 user_refund_amount,
             });
 
-            // 16. Increment the index
+            // Increment the index
             index = index + 1;
         };
 
-        // 17. Finally, we distribute the remaning funds to the node
+        // Transfer the total node fee to the node
+        self.transfer_funds(total_node_fee, ctx.sender(), ctx);
+
+        // We distribute the remaning funds to the node
         self.withdraw_fees(node_badge, ctx);
     }
 
@@ -2322,6 +2397,215 @@ module atoma::db {
         selected_nodes
     }
 
+    /// Fetches and validates data related to a stack settlement ticket.
+    ///
+    /// This function retrieves essential information about a stack settlement ticket,
+    /// the associated stack, and the task. It also performs several validations to
+    /// ensure the settlement process is valid and ready to proceed.
+    ///
+    /// # Arguments
+    /// * `self` - A reference to the AtomaDb object.
+    /// * `stack_small_id` - The SmallId of the stack being settled.
+    /// * `node_small_id` - The SmallId of the node attempting to settle the stack.
+    /// * `ctx` - A reference to the transaction context.
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// 1. `u16` - The security level of the task.
+    /// 2. `u64` - The price of the stack.
+    /// 3. `u64` - The total number of compute units for the stack.
+    /// 4. `address` - The owner of the stack.
+    /// 5. `SmallId` - The ID of the selected node for this stack.
+    /// 6. `u64` - The number of compute units claimed by the node.
+    /// 7. `vector<SmallId>` - The list of requested attestation nodes, if any.
+    ///
+    /// # Aborts
+    /// * If the node attempting to settle is not the selected node for this stack.
+    /// * If the stack is currently in dispute.
+    /// * If the dispute settlement period has not yet ended.
+    ///
+    /// # Important Notes
+    /// - This function is crucial for the stack settlement process, ensuring that
+    ///   only the correct node can settle a stack and that the settlement occurs
+    ///   after the dispute period has ended.
+    /// - It centralizes the data fetching and validation logic, making it easier
+    ///   to maintain consistency in the settlement process across different parts
+    ///   of the contract.
+    fun fetch_stack_settlement_ticket_data(
+        self: &AtomaDb,
+        stack_small_id: SmallId,
+        node_small_id: SmallId,
+        ctx: &TxContext,
+    ): (u16, u64, u64, address, SmallId, u64, vector<SmallId>) {
+        let stack_settlement_ticket = self.stack_settlement_tickets.borrow(stack_small_id);
+        let stack = self.stacks.borrow(stack_small_id);
+        let task = self.tasks.borrow(stack.task_small_id);
+        
+        assert!(stack_settlement_ticket.selected_node_id == node_small_id, ENodeNotSelectedForSettlement);
+        assert!(!stack_settlement_ticket.is_in_dispute, EStackInDispute);
+        assert!(
+            ctx.epoch() >= stack_settlement_ticket.dispute_settled_at_epoch, 
+            EStackDisputePeriodIsNotOver
+        );
+        
+        (
+            task.security_level,
+            stack.price,
+            stack.num_compute_units,
+            stack.owner,
+            stack_settlement_ticket.selected_node_id,
+            stack_settlement_ticket.num_claimed_compute_units,
+            stack_settlement_ticket.requested_attestation_nodes
+        )
+    }
+
+    /// Calculates the fee amount for a stack based on its security level and other parameters.
+    ///
+    /// This function determines the fee amount to be paid for processing a stack. The calculation
+    /// differs based on the security level of the task associated with the stack.
+    ///
+    /// # Arguments
+    /// * `security_level` - The security level of the task (e.g., SamplingConsensusSecurityLevel).
+    /// * `stack_price` - The price per compute unit for the stack.
+    /// * `num_claimed_compute_units` - The number of compute units claimed for processing.
+    /// * `sampling_consensus_charge_permille` - The charge rate in permille (parts per thousand) for sampling consensus.
+    ///
+    /// # Returns
+    /// * `u64` - The calculated fee amount.
+    ///
+    /// # Behavior
+    /// - For SamplingConsensusSecurityLevel:
+    ///   The fee is calculated as: (num_claimed_compute_units * stack_price * sampling_consensus_charge_permille) / 1000
+    ///   This applies a fractional charge based on the sampling consensus rate.
+    /// - For other security levels:
+    ///   The fee is simply: num_claimed_compute_units * stack_price
+    ///   This charges the full price for each compute unit claimed.
+    ///
+    /// # Note
+    /// The division by 1000 in the SamplingConsensusSecurityLevel case converts the permille rate to a decimal fraction.
+    fun calculate_stack_fee_amount(
+        security_level: u16,
+        stack_price: u64,
+        num_claimed_compute_units: u64,
+        sampling_consensus_charge_permille: u64,
+    ): u64 {
+        if (security_level == SamplingConsensusSecurityLevel) {
+            (num_claimed_compute_units * stack_price * sampling_consensus_charge_permille) / 1000
+        } else {
+            num_claimed_compute_units * stack_price
+        }
+    }
+
+    /// Handles rewards distribution and slashing for attestation nodes in a stack settlement.
+    ///
+    /// This function processes the rewards and penalties for attestation nodes involved in a stack settlement.
+    /// It iterates through all attestation nodes, rewarding those who submitted attestations and
+    /// slashing those who failed to do so.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `stack_small_id` - The SmallId of the stack being settled.
+    /// * `attestation_nodes` - A reference to a vector of SmallIds representing the attestation nodes.
+    /// * `node_fee_amount` - The total fee amount allocated for attestation nodes.
+    /// * `cross_validation_extra_nodes_count` - The number of extra nodes used for cross-validation.
+    ///
+    /// # Behavior
+    /// For each attestation node:
+    /// 1. Checks if the node has submitted an attestation.
+    /// 2. If attested:
+    ///    - Calculates the node's share of the fee.
+    ///    - Adds the fee to the node's available fee amount.
+    /// 3. If not attested:
+    ///    - Slashes the node's collateral.
+    ///    - Deposits the slashed amount to the communal treasury.
+    ///
+    /// # Effects
+    /// - Updates the available fee amounts for attesting nodes.
+    /// - Slashes collateral from non-attesting nodes.
+    /// - Potentially modifies the communal treasury balance.
+    ///
+    /// # Note
+    /// This function is crucial for maintaining the integrity of the attestation process by
+    /// incentivizing correct behavior and penalizing non-participation.
+    fun handle_attestation_nodes_rewards_and_slashing(
+        self: &mut AtomaDb,
+        stack_small_id: SmallId,
+        attestation_nodes: &vector<SmallId>,
+        node_fee_amount: u64,
+        cross_validation_extra_nodes_count: u64,
+    ) {
+        let num_attestation_nodes = vector::length(attestation_nodes);
+        if (num_attestation_nodes > 0) {
+            // If there are attestation nodes, compute the amount of funds to send to each attestation node
+            let mut attestation_node_index = 0;
+            while (attestation_node_index < num_attestation_nodes) {
+                let attestation_node_id = *vector::borrow(attestation_nodes, attestation_node_index);
+                let already_attested = {
+                    let stack_settlement_ticket = self.stack_settlement_tickets.borrow(stack_small_id);
+                    vector::contains(&stack_settlement_ticket.already_attested_nodes, &attestation_node_id)
+                };
+
+                if (already_attested) {
+                    // The selected attestation node has already submitted its attestation
+                    // so we add the node fee amount to the node's available fee amount
+                    let attestation_node_fee = (node_fee_amount / cross_validation_extra_nodes_count);
+                    let node_entry = self.nodes.borrow_mut(attestation_node_id);
+                    node_entry.available_fee_amount = node_entry.available_fee_amount + attestation_node_fee;
+                } else {
+                    // The selected attestation node has not submitted its attestation
+                    // so we should partially slash its collateral
+                    let conficasted_balance = self.slash_node_on_timeout(attestation_node_id);
+                    self.deposit_to_communal_treasury(conficasted_balance);
+                };
+                attestation_node_index = attestation_node_index + 1;
+            }
+        };
+    }
+
+    /// Cleans up data structures associated with a settled stack.
+    ///
+    /// This function removes the StackSettlementTicket and Stack objects from their
+    /// respective storage structures after a stack has been successfully settled.
+    /// It ensures that unnecessary data is not kept in storage, helping to maintain
+    /// efficiency and reduce clutter in the AtomaDb.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `stack_small_id` - The SmallId of the stack to be cleaned up.
+    ///
+    /// # Effects
+    /// - Removes the StackSettlementTicket from `self.stack_settlement_tickets`.
+    /// - Deletes the UID associated with the StackSettlementTicket.
+    /// - Removes the Stack object from `self.stacks`.
+    ///
+    /// # Note
+    /// This function should only be called after a stack has been fully settled
+    /// and all necessary operations (like reward distribution) have been completed.
+    /// Calling this function prematurely could result in loss of important data.
+    fun cleanup_stack_data(self: &mut AtomaDb, stack_small_id: SmallId) {
+        let StackSettlementTicket {
+                id,
+                stack_small_id: _,
+                num_claimed_compute_units: _,
+                stack_merkle_leaves_vector: _,
+                already_attested_nodes: _,
+                committed_stack_proof: _,
+                dispute_settled_at_epoch: _,
+                is_in_dispute: _,
+                requested_attestation_nodes: _,
+                selected_node_id: _,
+            } = object_table::remove(&mut self.stack_settlement_tickets, stack_small_id);
+        id.delete();
+
+        let Stack {
+                task_small_id: _,
+                selected_node: _,
+                owner: _,
+                price: _,
+                num_compute_units: _,
+            } = table::remove(&mut self.stacks, stack_small_id);
+    }
+
     // =========================================================================
     //                          Admin functions
     // =========================================================================
@@ -2377,6 +2661,7 @@ module atoma::db {
             security_level: _,
             task_metrics: _,
             subscribed_nodes,
+            minimum_reputation_score: _,
         } = task;
 
         task_id.delete();
@@ -2701,6 +2986,18 @@ module atoma::db {
             i = i + 1;
         };
         option::none()
+    }
+
+    // Helper function to check if a node meets the task's requirements
+    fun node_meets_task_requirements(self: &AtomaDb, node_badge: &NodeBadge, task: &Task): bool {
+        let node = self.nodes.borrow(node_badge.small_id);
+        
+        // Check if the node's reputation score meets the task's minimum requirement
+        if (node.reputation_score.inner < option::get_with_default(&task.minimum_reputation_score, 0)) {
+            return false
+        };
+        // TODO: Add more checks as needed (e.g., hardware requirements, echelons, optimizations, etc.)
+        true
     }
 
     fun get_echelon_mut(
