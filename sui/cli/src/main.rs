@@ -333,6 +333,23 @@ enum DbCmds {
         /// Each ID represents a completed and settled stack that the node has performed.
         #[arg(short, long)]
         settled_ticket_ids: Vec<u64>,
+    },
+    /// Start an attestation dispute for a stack entry.
+    /// This can only be done by a selected attestation node,
+    /// and should only be done when the attestation node disagrees with the committed stack proof,
+    /// by the original selected node.
+    StartAttestationDispute { 
+        /// Optional package ID. If not provided, the default from the environment will be used.
+        #[arg(short, long)]
+        package: Option<String>,
+        /// The small ID of the stack entry for which the attestation is being disputed.
+        /// This is a unique identifier for the stack within the Atoma network.
+        #[arg(short, long)]
+        stack_small_id: u64,
+        /// The commitment to the stack entry that is being disputed.
+        /// This is typically a cryptographic proof or hash of the work performed.  
+        #[arg(short, long)]
+        attestation_commitment: Vec<u8>,
     }
 }
 
@@ -584,6 +601,8 @@ async fn main() -> Result<()> {
                 settled_ticket_ids,
             )
             .await?;
+            
+            println!("{digest}");
         }
         Some(Cmds::Db(DbCmds::SubmitStackSettlementAttestation {
             package,
@@ -596,6 +615,20 @@ async fn main() -> Result<()> {
                 stack_small_id,
                 committed_stack_proof,
                 stack_merkle_leaf,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::StartAttestationDispute {
+            package,
+            stack_small_id,
+            attestation_commitment,
+        })) => {
+            let digest = db::start_attestation_dispute(
+                &mut context.with_optional_atoma_package_id(package),
+                stack_small_id,
+                attestation_commitment,
             )
             .await?;
 

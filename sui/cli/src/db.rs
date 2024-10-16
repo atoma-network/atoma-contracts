@@ -22,6 +22,7 @@ mod try_settle_stack;
 mod unsubscribe_node_from_task;
 mod unsubscribe_node_from_task_by_index;
 mod claim_funds;
+mod start_attestation_dispute;
 
 pub(crate) use acquire_new_stack_entry::command as acquire_new_stack_entry;
 pub(crate) use add_model::command as add_model;
@@ -42,4 +43,4 @@ pub(crate) use try_settle_stack::command as try_settle_stack;
 pub(crate) use unsubscribe_node_from_task::command as unsubscribe_node_from_task;
 pub(crate) use unsubscribe_node_from_task_by_index::command as unsubscribe_node_from_task_by_index;
 pub(crate) use claim_funds::command as claim_funds;
-
+pub(crate) use start_attestation_dispute::command as start_attestation_dispute;
