@@ -99,32 +99,31 @@ module atoma::db {
     const ENodeNotSubscribedToTask: u64 = EBase + 18;
     const ENotEnoughEpochsPassed: u64 = EBase + 19;
     const ETaskNotDeprecated: u64 = EBase + 20;
-    const EInvalidNodeIndex: u64 = EBase + 21;
-    const EModelNotFound: u64 = EBase + 22;
-    const ENoNodesSubscribedToTask: u64 = EBase + 23;
-    const ENoNodesEligibleForTask: u64 = EBase + 25;
-    const ENotStackOwner: u64 = EBase + 26;
-    const ENodeNotSelectedForStack: u64 = EBase + 28;
-    const EStackInSettlementDispute: u64 = EBase + 29;
-    const ETooManyComputedUnits: u64 = EBase + 30;
-    const EStackDoesNotRequireSamplingConsensus: u64 = EBase + 32;
-    const EStackNotFound: u64 = EBase + 33;
-    const EStackNotInSettlementDispute: u64 = EBase + 34;
-    const EStackDisputePeriodOver: u64 = EBase + 35;
-    const ENodeNotSelectedForAttestation: u64 = EBase + 36;
-    const EStackInDispute: u64 = EBase + 37;
-    const EStackDisputePeriodIsNotOver: u64 = EBase + 38;
-    const ENodeNotSelectedForSettlement: u64 = EBase + 39;
-    const ETaskAlreadyDeprecated: u64 = EBase + 40;
-    const EInvalidTaskRole: u64 = EBase + 41;
-    const EInvalidSecurityLevel: u64 = EBase + 42;
-    const EInvalidPricePerComputeUnit: u64 = EBase + 43;
-    const EInvalidMaxNumComputeUnits: u64 = EBase + 44;
-    const ENodeDoesNotMeetTaskRequirements: u64 = EBase + 45;
-    const EInvalidComputeUnits: u64 = EBase + 46;
-    const EInsufficientBalance: u64 = EBase + 47;
-    const EInvalidCommittedStackProof: u64 = EBase + 48;
-    const EInvalidStackMerkleLeaf: u64 = EBase + 49;
+    const EModelNotFound: u64 = EBase + 21;
+    const ENoNodesSubscribedToTask: u64 = EBase + 22;
+    const ENoNodesEligibleForTask: u64 = EBase + 23;
+    const ENotStackOwner: u64 = EBase + 24;
+    const ENodeNotSelectedForStack: u64 = EBase + 25;
+    const EStackInSettlementDispute: u64 = EBase + 26;
+    const ETooManyComputedUnits: u64 = EBase + 27;
+    const EStackDoesNotRequireSamplingConsensus: u64 = EBase + 28;
+    const EStackNotFound: u64 = EBase + 29;
+    const EStackNotInSettlementDispute: u64 = EBase + 30;
+    const EStackDisputePeriodOver: u64 = EBase + 31;
+    const ENodeNotSelectedForAttestation: u64 = EBase + 32;
+    const EStackInDispute: u64 = EBase + 33;
+    const EStackDisputePeriodIsNotOver: u64 = EBase + 34;
+    const ENodeNotSelectedForSettlement: u64 = EBase + 35;
+    const ETaskAlreadyDeprecated: u64 = EBase + 36;
+    const EInvalidTaskRole: u64 = EBase + 37;
+    const EInvalidSecurityLevel: u64 = EBase + 38;
+    const EInvalidPricePerComputeUnit: u64 = EBase + 39;
+    const EInvalidMaxNumComputeUnits: u64 = EBase + 40;
+    const ENodeDoesNotMeetTaskRequirements: u64 = EBase + 41;
+    const EInvalidComputeUnits: u64 = EBase + 42;
+    const EInsufficientBalance: u64 = EBase + 43;
+    const EInvalidCommittedStackProof: u64 = EBase + 44;
+    const EInvalidStackMerkleLeaf: u64 = EBase + 45;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -149,6 +148,14 @@ module atoma::db {
         task_small_id: SmallId,
         node_small_id: SmallId,
         price_per_compute_unit: u64,
+        max_num_compute_units: u64,
+    }
+
+    public struct NodeSubscriptionUpdatedEvent has copy, drop {
+        node_small_id: SmallId,
+        task_small_id: SmallId,
+        price_per_compute_unit: u64,
+        max_num_compute_units: u64,
     }
 
     public struct NodeUnsubscribedFromTaskEvent has copy, drop {
@@ -160,6 +167,13 @@ module atoma::db {
         /// ID of the Task object
         task_id: ID,
         task_small_id: SmallId,
+        role: TaskRole,
+        model_name: Option<ascii::String>,
+        valid_until_epoch: Option<u64>,
+        optimizations: vector<u16>,
+        security_level: u16,
+        task_metrics: TaskMetrics,
+        minimum_reputation_score: Option<u8>,
     }
 
     public struct TaskDeprecationEvent has copy, drop {
@@ -185,9 +199,13 @@ module atoma::db {
         /// ID of the Stack object
         stack_id: ID,
         /// Unique identifier for the stack within the Atoma network
-        small_id: SmallId,
+        stack_small_id: SmallId,
+        /// The address of the owner of the stack
+        owner: address,
+        /// The SmallId of the task associated with this stack
+        task_small_id: SmallId,
         /// The SmallId of the node selected to process this stack's requests
-        selected_node: SmallId,
+        selected_node_id: SmallId,
         /// The number of compute units allocated to this stack
         num_compute_units: u64,
         /// The price per compute unit in TOMA tokens
@@ -237,15 +255,15 @@ module atoma::db {
     public struct NewStackSettlementAttestationEvent has copy, drop {
         /// The unique identifier of the stack being settled.
         stack_small_id: SmallId,
-        /// The identifier of the node originally selected to process the stack.
-        selected_node_id: SmallId,
-        /// The number of compute units claimed for this stack execution.
-        num_claimed_compute_units: u64,
-        /// The identifier of the node submitting this attestation.
+        /// The identifier of the node that submitted the attestation.
         attestation_node_id: SmallId,
+        /// Committed stack proof
+        committed_stack_proof: vector<u8>,
+        /// The root of the Merkle tree root MH_stack(0), which is leaf for the current attestation node
+        stack_merkle_leaf: vector<u8>,
     }
 
-    /// Event emitted when an attestation node submits a new attestation for the original stack settlement ticket.
+    /// Event emitted when an attestation node submits the final attestation for the original stack settlement ticket.
     ///
     /// This event represents the successful completion of the stack execution and verification process.
     /// It provides details about the executed stack, the node that processed it, and the attestation process.
@@ -366,7 +384,10 @@ module atoma::db {
         task_metrics: TaskMetrics,
         /// Subscribed nodes table, where key is node SmallId and value is price per compute unit
         /// for this current task.
-        subscribed_nodes: TableVec<NodePriceData>,
+        subscribed_nodes: Table<SmallId, NodePriceData>,
+        /// Subscribed nodes small ids, we need to keep track of them separately
+        /// because we need to iterate over them to find eligible nodes for a stack.
+        subscribed_nodes_small_ids: TableVec<SmallId>,
         /// Minimum reputation score required for a node to subscribe to the task
         minimum_reputation_score: Option<u8>,
     }
@@ -413,7 +434,7 @@ module atoma::db {
         /// Number of compute units remaining in the stack
         num_compute_units: u64,
         /// Node selected to process the requests in the stack
-        selected_node: SmallId,
+        selected_node_id: SmallId,
         /// The associated task SmallId
         task_small_id: SmallId,
     }
@@ -787,7 +808,8 @@ module atoma::db {
             optimizations,
             security_level,
             task_metrics,
-            subscribed_nodes: table_vec::empty(ctx),
+            subscribed_nodes: table::new(ctx),
+            subscribed_nodes_small_ids: table_vec::empty(ctx),
             minimum_reputation_score: minimum_reputation_score,
         };
 
@@ -804,6 +826,13 @@ module atoma::db {
         sui::event::emit(TaskRegisteredEvent {
             task_id: object::uid_to_inner(&task_badge.id),
             task_small_id: small_id,
+            role: TaskRole { inner: role },
+            model_name,
+            valid_until_epoch,
+            optimizations,
+            security_level,
+            task_metrics,
+            minimum_reputation_score,
         });
 
         task_badge
@@ -933,11 +962,13 @@ module atoma::db {
             security_level: _,
             task_metrics: _,
             subscribed_nodes,
+            subscribed_nodes_small_ids,
             minimum_reputation_score: _,
         } = task;
 
         task_badge_id.delete();
         subscribed_nodes.drop();
+        subscribed_nodes_small_ids.drop();
 
         // Emit an event for task removal
         sui::event::emit(TaskRemovedEvent {
@@ -1043,8 +1074,8 @@ module atoma::db {
             price_per_compute_unit,
             max_num_compute_units,
         };
-        table_vec::push_back(&mut task.subscribed_nodes, node_price_data);
-
+        table::add(&mut task.subscribed_nodes, node_badge.small_id, node_price_data);
+        table_vec::push_back(&mut task.subscribed_nodes_small_ids, node_badge.small_id);
         // Associate the task_small_id with the node badge
         dynamic_field::add(&mut node_badge.id, task_small_id, true);
 
@@ -1053,6 +1084,82 @@ module atoma::db {
             node_small_id: node_badge.small_id,
             task_small_id,
             price_per_compute_unit,
+            max_num_compute_units,
+        });
+    }
+
+    /// Updates a node's subscription details for a specific task.
+    ///
+    /// This function allows a node to modify its price per compute unit and maximum number of compute units
+    /// for a task it's already subscribed to. This enables nodes to dynamically adjust their pricing and
+    /// capacity based on current conditions or strategy.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `node_badge` - A mutable reference to the NodeBadge of the node updating its subscription.
+    /// * `task_small_id` - The SmallId of the task for which the subscription is being updated.
+    /// * `price_per_compute_unit` - The new price per compute unit in TOMA tokens.
+    /// * `max_num_compute_units` - The new maximum number of compute units the node is willing to process.
+    ///
+    /// # Errors
+    /// * `ETaskNotFound` - If the specified task does not exist in the AtomaDb.
+    /// * `ENodeNotSubscribedToTask` - If the node is not currently subscribed to the specified task.
+    ///
+    /// # Effects
+    /// - Updates the node's price per compute unit and maximum number of compute units for the specified task.
+    /// - Emits a `NodeSubscriptionUpdatedEvent` with the updated subscription details.
+    ///
+    /// # Events
+    /// Emits a `NodeSubscriptionUpdatedEvent` containing:
+    /// - `node_small_id`: The SmallId of the node updating its subscription.
+    /// - `task_small_id`: The SmallId of the task being updated.
+    /// - `price_per_compute_unit`: The new price per compute unit.
+    /// - `max_num_compute_units`: The new maximum number of compute units.
+    ///
+    /// # Usage
+    /// This function is typically called by nodes when they want to adjust their pricing or capacity
+    /// for a specific task. It allows for dynamic market adjustments without requiring nodes to
+    /// unsubscribe and resubscribe to tasks.
+    /// 
+    /// # Note
+    /// We do not update any current active stacks of a node when its subscription is updated.
+    /// The node will continue to process its active stacks with the old subscription details.
+    /// The new subscription will take effect for any new stacks the node starts.
+    /// If the node wishes to update their stacks, it must then redeem each of their active stacks (for old subscriptions),
+    /// so that any acquired new stacks have the new subscription details.
+    public entry fun update_node_subscription(
+        self: &mut AtomaDb,
+        node_badge: &mut NodeBadge,
+        task_small_id: u64,
+        price_per_compute_unit: u64,
+        max_num_compute_units: u64,
+    ) { 
+        // Validate price_per_compute_unit and max_num_compute_units
+        assert!(price_per_compute_unit > 0, EInvalidPricePerComputeUnit);
+        assert!(max_num_compute_units > 0, EInvalidMaxNumComputeUnits);
+
+        let task_small_id = SmallId { inner: task_small_id };
+
+        // Check if the task exists
+        assert!(self.tasks.contains(task_small_id), ETaskNotFound);
+
+        // Check if the node is subscribed to the task
+        assert!(dynamic_field::exists_(&node_badge.id, task_small_id), ENodeNotSubscribedToTask);
+        
+        let task = self.tasks.borrow_mut(task_small_id);
+        assert!(!task.is_deprecated, ETaskDeprecated);
+
+        let node_price_data = task.subscribed_nodes.borrow_mut(node_badge.small_id);
+
+        node_price_data.price_per_compute_unit = price_per_compute_unit;
+        node_price_data.max_num_compute_units = max_num_compute_units;
+
+        // Emit a NodeSubscriptionUpdatedEvent
+        sui::event::emit(NodeSubscriptionUpdatedEvent {
+            node_small_id: node_badge.small_id,
+            task_small_id,
+            price_per_compute_unit,
+            max_num_compute_units,
         });
     }
 
@@ -1084,13 +1191,13 @@ module atoma::db {
         assert!(was_subscribed.is_some(), ENodeNotSubscribedToTask);
 
         let task = self.tasks.borrow_mut(task_small_id);
-        let mut node_index = find_node_index(&task.subscribed_nodes, node_badge.small_id);
-        assert!(node_index.is_some(), ENodeNotSubscribedToTask);
+        assert!(!task.is_deprecated, ETaskDeprecated);
 
-        let node_index = option::extract(&mut node_index);
-
-        // Remove the node from the task's subscribed_nodes list
-        let removed_node_price_data = table_vec::swap_remove(&mut task.subscribed_nodes, node_index);
+        // Remove the node from the task's subscribed_nodes list and the subscribed_nodes_small_ids list
+        // NOTE: we do not need to swap remove from subscribed_nodes_small_ids right now, we can remove it
+        // when we iterate over the subscribed_nodes_small_ids table_vec and do not find the corresponding
+        // node price data in that Task's subscribed_nodes table.
+        let removed_node_price_data = table::remove(&mut task.subscribed_nodes, node_badge.small_id);
         assert!(
             removed_node_price_data.node_id.inner == node_badge.small_id.inner,
             ENodeIndexMismatch,
@@ -1101,45 +1208,6 @@ module atoma::db {
             node_small_id: node_badge.small_id,
             task_small_id,
         });
-    }
-
-    /// Unsubscribes a node from a specific task, provided the index of the node in the task's subscribed_nodes list.
-    /// This method is similar to `unsubscribe_node_from_task` but takes an additional `node_index` parameter, and 
-    /// has potential lower gas costs.
-    ///
-    /// This function removes a node's subscription to a task, updating both the node's
-    /// dynamic fields and the task's list of subscribed nodes.
-    ///
-    /// # Arguments
-    /// * `self` - A mutable reference to the AtomaDb object.
-    /// * `node_badge` - A mutable reference to the NodeBadge of the node being unsubscribed.
-    /// * `task_small_id` - The SmallId of the task from which the node is unsubscribing.
-    /// * `node_index` - The index of the node in the task's subscribed_nodes list.
-    ///
-    /// # Errors
-    /// * `ENodeNotSubscribedToTask` - If the node is not subscribed to the specified task.
-    /// * `ENodeIndexMismatch` - If the node at the given index doesn't match the node being unsubscribed.
-    /// * `EInvalidNodeIndex` - If the provided node_index is out of bounds.
-    public entry fun unsubscribe_node_from_task_by_index(
-        self: &mut AtomaDb,
-        node_badge: &mut NodeBadge,
-        task_small_id: u64,
-        node_index: u64,
-    ) {
-        let task_small_id = SmallId { inner: task_small_id };
-        let was_subscribed: Option<bool> = dynamic_field::remove_if_exists(&mut node_badge.id, task_small_id);
-        assert!(was_subscribed.is_some(), ENodeNotSubscribedToTask);
-
-        let task = self.tasks.borrow_mut(task_small_id);
-        
-        // Check if the provided node_index is valid
-        assert!(node_index < task.subscribed_nodes.length(), EInvalidNodeIndex);
-
-        let removed_node_price_data = task.subscribed_nodes.swap_remove(node_index);
-        assert!(
-            removed_node_price_data.node_id.inner == node_badge.small_id.inner,
-            ENodeIndexMismatch,
-        );
     }
 
     /// Creates a new stack for a specific task and transfers the resulting StackBadge to the sender.
@@ -1254,20 +1322,20 @@ module atoma::db {
 
         // Sample a node and create the stack
         let owner = ctx.sender();
-        let selected_node = self.sample_node_for_stack(task_small_id, price, num_compute_units, rng);
+        let selected_node_id = self.sample_node_for_stack(task_small_id, price, num_compute_units, rng);
 
         let stack = Stack { 
             owner,
             task_small_id,
             num_compute_units,
-            selected_node,
+            selected_node_id,
             price,
         };
 
         // Assign a new SmallId to the stack and add it to the stacks table
         let stack_small_id = self.next_stack_small_id;
         self.next_stack_small_id = SmallId { 
-            inner: self.next_stack_small_id.inner + 1 
+            inner: self.next_stack_small_id.inner + 1
         };
         self.stacks.add(stack_small_id, stack);
 
@@ -1275,8 +1343,10 @@ module atoma::db {
         // Emit a StackCreatedEvent
         sui::event::emit(StackCreatedEvent {
             stack_id: object::uid_to_inner(&stack_id),
-            small_id: stack_small_id,
-            selected_node,
+            stack_small_id,
+            owner,
+            task_small_id,
+            selected_node_id,
             num_compute_units,
             price,
         });
@@ -1340,7 +1410,7 @@ module atoma::db {
         let stack = self.stacks.borrow(stack_small_id);
         let node_small_id = node_badge.small_id;
         assert!(stack.owner == ctx.sender(), ENotStackOwner);
-        assert!(node_small_id == stack.selected_node, ENodeNotSelectedForStack);
+        assert!(node_small_id == stack.selected_node_id, ENodeNotSelectedForStack);
         assert!(num_claimed_compute_units <= stack.num_compute_units, ETooManyComputedUnits);
         assert!(!self.stack_settlement_tickets.contains(stack_small_id), EStackInSettlementDispute);
 
@@ -1509,8 +1579,8 @@ module atoma::db {
         };
 
         // Check if the attestation node is the last one to submit the merkle leaf
+        vector::push_back(&mut stack_settlement_ticket.already_attested_nodes, node_badge.small_id);    
         let num_of_committments = vector::length(&stack_settlement_ticket.already_attested_nodes);
-        vector::push_back(&mut stack_settlement_ticket.already_attested_nodes, node_badge.small_id);
         let num_attestation_nodes = vector::length(&attestation_nodes);
         if (num_of_committments == num_attestation_nodes) {
             // If the last node has submitted the merkle leaf, 
@@ -1527,10 +1597,18 @@ module atoma::db {
                 return
             } else {
                 // If the `stack_merkle_root` agrees with the committed `stack_merkle_root`,
+                // so we emit a NewStackSettlementAttestationEvent (the final attestation settlement event)
+                sui::event::emit(NewStackSettlementAttestationEvent {
+                    stack_small_id,
+                    attestation_node_id: node_badge.small_id,
+                    committed_stack_proof,
+                    stack_merkle_leaf,
+                });
+                // If the `stack_merkle_root` agrees with the committed `stack_merkle_root`,
                 // then the attestation settlement is complete and we emit a StackSettlementTicketEvent
                 sui::event::emit(StackSettlementTicketEvent {
                     stack_small_id,
-                    selected_node_id: stack.selected_node,
+                    selected_node_id: stack.selected_node_id,
                     num_claimed_compute_units: stack_settlement_ticket.num_claimed_compute_units,
                     requested_attestation_nodes: attestation_nodes,
                     dispute_settled_at_epoch: ctx.epoch(),
@@ -1545,9 +1623,9 @@ module atoma::db {
         // In this case, we emit a NewStackSettlementAttestationEvent
         sui::event::emit(NewStackSettlementAttestationEvent {
             stack_small_id,
-            selected_node_id: stack.selected_node,
-            num_claimed_compute_units: stack_settlement_ticket.num_claimed_compute_units,
             attestation_node_id: node_badge.small_id,
+            committed_stack_proof,
+            stack_merkle_leaf,
         });
     }
 
@@ -1965,8 +2043,12 @@ module atoma::db {
         self.tasks.borrow(task_small_id).task_metrics
     }  
 
-    public fun get_task_subscribed_nodes(self: &AtomaDb, task_small_id: SmallId): &TableVec<NodePriceData> {
+    public fun get_task_subscribed_nodes(self: &AtomaDb, task_small_id: SmallId): &Table<SmallId, NodePriceData> {
         &self.tasks.borrow(task_small_id).subscribed_nodes
+    }
+
+    public fun get_task_subscribed_nodes_small_ids(self: &AtomaDb, task_small_id: SmallId): &TableVec<SmallId> {
+        &self.tasks.borrow(task_small_id).subscribed_nodes_small_ids
     }
 
     // =========================================================================
@@ -2170,21 +2252,28 @@ module atoma::db {
         rng: &mut sui::random::RandomGenerator,
     ): SmallId {
         let task = self.tasks.borrow_mut(task_small_id);
-        let subscribed_nodes = &task.subscribed_nodes;
-        let nodes_count = table_vec::length(subscribed_nodes);
+        let nodes_count = table_vec::length(&task.subscribed_nodes_small_ids);
         if (nodes_count == 0) {
             // no nodes subscribed to this task, should not happen
             abort ENoNodesSubscribedToTask
         };
 
-        // First, collect all eligible nodes (i.e., whose price per compute unit is less than the price cap).
-        let mut eligible_nodes = vector::empty();
         let mut i = 0;
+        let mut eligible_nodes = vector::empty();
         while (i < nodes_count) {
-            let node_price_data = table_vec::borrow(subscribed_nodes, i);
-            let node_id = node_price_data.node_id;
+        let node_id = *table_vec::borrow(&task.subscribed_nodes_small_ids, i);
+            if (!task.subscribed_nodes.contains(node_id)) {
+                // NOTE: in this case, we have already removed the node price data from the Task's subscribed_nodes
+                // after the node was unsubscribed from the task, so we can remove it now from the subscribed_nodes_small_ids
+                // table_vec as well, and continue with the next node
+                table_vec::swap_remove(&mut task.subscribed_nodes_small_ids, i);
+                continue
+            };
+            let node_price_data = task.subscribed_nodes.borrow(node_id);
+            
             let node_price = node_price_data.price_per_compute_unit;
             let node_max_num_compute_units = node_price_data.max_num_compute_units;
+            
             if (node_price <= price_cap 
                 && node_max_num_compute_units >= num_compute_units 
                 && self.nodes.contains(node_id)) 
@@ -2194,6 +2283,7 @@ module atoma::db {
                     vector::push_back(&mut eligible_nodes, node_id);
                 }
             };
+
             i = i + 1;
         };
 
@@ -2248,7 +2338,8 @@ module atoma::db {
     ): vector<SmallId> {
         let task = self.tasks.borrow(task_small_id);
         let subscribed_nodes = &task.subscribed_nodes;
-        let nodes_count = table_vec::length(subscribed_nodes);
+        let subscribed_nodes_small_ids = &task.subscribed_nodes_small_ids;
+        let nodes_count = table_vec::length(subscribed_nodes_small_ids);
 
         let attestation_nodes_count = self.get_cross_validation_extra_nodes_count();
 
@@ -2256,8 +2347,8 @@ module atoma::db {
         let mut eligible_nodes = vector::empty();
         let mut i = 0;
         while (i < nodes_count) {
-            let node_price_data = table_vec::borrow(subscribed_nodes, i);
-            let node_id = node_price_data.node_id;
+            let node_id = *table_vec::borrow(subscribed_nodes_small_ids, i);
+            let node_price_data = subscribed_nodes.borrow(node_id);
             let node_price = node_price_data.price_per_compute_unit;
             let node_max_num_compute_units = node_price_data.max_num_compute_units; 
             if (node_price <= price_cap 
@@ -2497,7 +2588,7 @@ module atoma::db {
 
         let Stack {
                 task_small_id: _,
-                selected_node: _,
+                selected_node_id: _,
                 owner: _,
                 price: _,
                 num_compute_units: _,
@@ -2559,11 +2650,13 @@ module atoma::db {
             security_level: _,
             task_metrics: _,
             subscribed_nodes,
+            subscribed_nodes_small_ids,
             minimum_reputation_score: _,
         } = task;
 
         task_id.delete();
         subscribed_nodes.drop();
+        subscribed_nodes_small_ids.drop();
     }
 
     /// As per the gate module:
@@ -2868,23 +2961,6 @@ module atoma::db {
     // =========================================================================
     //                          Helpers
     // =========================================================================
-
-    /// Helper function to find the index of a node's small_id in a TableVec
-    fun find_node_index(
-        subscribed_nodes: &TableVec<NodePriceData>,
-        node_small_id: SmallId,
-    ): Option<u64> {
-        let len = table_vec::length(subscribed_nodes);
-        let mut i = 0;
-        while (i < len) {
-            let node_id = table_vec::borrow(subscribed_nodes, i).node_id;
-            if (node_id.inner == node_small_id.inner) {
-                return option::some(i)
-            };
-            i = i + 1;
-        };
-        option::none()
-    }
 
     // Helper function to check if a node meets the task's requirements
     fun node_meets_task_requirements(self: &AtomaDb, node_badge: &NodeBadge, task: &Task): bool {
