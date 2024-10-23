@@ -14,7 +14,7 @@ use sui_sdk::{
 
 use crate::{
     prelude::*, DB_MANAGER_TYPE_NAME, DB_MODULE_NAME, DB_NODE_TYPE_NAME,
-    DB_TYPE_NAME, FAUCET_TYPE_NAME, SETTLEMENT_MODULE_NAME,
+    DB_TASK_TYPE_NAME, DB_TYPE_NAME, FAUCET_TYPE_NAME, SETTLEMENT_MODULE_NAME,
     SETTLEMENT_TICKET_TYPE_NAME, TOMA_COIN_MODULE_NAME,
 };
 
@@ -25,6 +25,8 @@ pub(crate) const GAS_BUDGET: &str = "GAS_BUDGET";
 pub(crate) const MANAGER_BADGE_ID: &str = "MANAGER_BADGE_ID";
 pub(crate) const NODE_BADGE_ID: &str = "NODE_BADGE_ID";
 pub(crate) const NODE_ID: &str = "NODE_ID";
+pub(crate) const TASK_BADGE_ID: &str = "TASK_BADGE_ID";
+pub(crate) const TASK_SMALL_ID: &str = "TASK_SMALL_ID";
 pub(crate) const TOMA_PACKAGE_ID: &str = "TOMA_PACKAGE_ID";
 pub(crate) const TOMA_WALLET_ID: &str = "TOMA_WALLET_ID";
 pub(crate) const WALLET_PATH: &str = "WALLET_PATH";
@@ -42,6 +44,8 @@ pub(crate) struct DotenvConf {
     pub(crate) atoma_db_id: Option<ObjectID>,
     pub(crate) manager_badge_id: Option<ObjectID>,
     pub(crate) node_badge_id: Option<ObjectID>,
+    pub(crate) task_badge_id: Option<ObjectID>,
+    pub(crate) task_id: Option<u64>,
     pub(crate) node_id: Option<u64>,
     pub(crate) faucet_id: Option<ObjectID>,
     pub(crate) toma_wallet_id: Option<ObjectID>,
@@ -72,6 +76,14 @@ impl DotenvConf {
                 .ok()
                 .filter(|s| !s.is_empty())
                 .map(|s| ObjectID::from_str(&s).unwrap()),
+            task_badge_id: std::env::var(TASK_BADGE_ID)
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(|s| ObjectID::from_str(&s).unwrap()),
+            task_id: std::env::var(TASK_SMALL_ID)
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(|s| s.parse().unwrap()),
             faucet_id: std::env::var(FAUCET_ID)
                 .ok()
                 .filter(|s| !s.is_empty())
@@ -260,6 +272,26 @@ impl Context {
         }
     }
 
+    pub(crate) async fn get_or_load_task_badge(
+        &mut self,
+    ) -> Result<(ObjectID, u64)> {
+        if let (Some(task_badge_id), Some(task_id)) =
+            (self.conf.task_badge_id, self.conf.task_id)
+        {
+            Ok((task_badge_id, task_id))
+        } else {
+            let package_id = self.unwrap_atoma_package_id();
+            let (task_badge_id, task_id) = get_task_badge(
+                &self.get_client().await?,
+                package_id,
+                self.wallet.active_address()?,
+            )
+            .await?;
+            self.conf.task_badge_id = Some(task_badge_id);
+            Ok((task_badge_id, task_id))
+        }
+    }
+
     pub(crate) async fn get_or_load_toma_wallet(&mut self) -> Result<ObjectID> {
         if let Some(toma_wallet_id) = self.conf.toma_wallet_id {
             Ok(toma_wallet_id)
@@ -399,6 +431,64 @@ async fn get_node_badge(
 
             if type_.module().as_str() == DB_MODULE_NAME
                 && type_.name().as_str() == DB_NODE_TYPE_NAME
+            {
+                let id = object
+                    .content?
+                    .try_as_move()?
+                    .clone()
+                    .fields
+                    .to_json_value();
+
+                Some((
+                    object.object_id,
+                    id["small_id"]["inner"].as_str()?.parse().ok()?,
+                ))
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!("No {DB_NODE_TYPE_NAME} found for the package")
+        })
+}
+
+async fn get_task_badge(
+    client: &SuiClient,
+    package: ObjectID,
+    active_address: SuiAddress,
+) -> Result<(ObjectID, u64)> {
+    let Page {
+        data,
+        has_next_page,
+        ..
+    } = client
+        .read_api()
+        .get_owned_objects(
+            active_address,
+            Some(SuiObjectResponseQuery {
+                filter: Some(SuiObjectDataFilter::Package(package)),
+                options: Some(SuiObjectDataOptions {
+                    show_type: true,
+                    show_content: true,
+                    ..Default::default()
+                }),
+            }),
+            None,
+            None,
+        )
+        .await?;
+    assert!(!has_next_page, "We don't support pagination yet");
+
+    data.into_iter()
+        .find_map(|resp| {
+            let object = resp.data?;
+
+            let ObjectType::Struct(type_) = object.type_? else {
+                return None;
+            };
+
+            if type_.module().as_str() == DB_MODULE_NAME
+                && type_.name().as_str() == DB_TASK_TYPE_NAME
             {
                 let id = object
                     .content?
