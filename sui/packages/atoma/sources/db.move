@@ -224,7 +224,7 @@ module atoma::db {
         num_claimed_compute_units: u64,
     }
 
-    // Event emitted when a new attestation is submitted for a stack settlement.
+    /// Event emitted when a new attestation is submitted for a stack settlement.
     ///
     /// This event is triggered each time an attestation node submits its verification
     /// for a stack settlement, but before all required attestations have been received.
@@ -471,7 +471,7 @@ module atoma::db {
         /// We keep track of total registered nodes so that we can generate
         /// SmallId for newly registered nodes as these IDs are sequential.
         next_node_small_id: SmallId,
-        /// We keep track of registered tasks so taht we can generate
+        /// We keep track of registered tasks so that we can generate
         /// SmallId for newly registered tasks as these IDs are sequential.
         next_task_small_id: SmallId,
         /// We keep track of registered stacks so that we can generate
@@ -3189,6 +3189,7 @@ module atoma::db {
                 last_fee_epoch: 0,
                 last_fee_epoch_amount: 0,
                 available_fee_amount: 0,
+                reputation_score: ReputationScore { inner: 100 },
             });
             echelon_nodes.push_back(node_id);
         };
