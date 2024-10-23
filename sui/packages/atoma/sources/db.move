@@ -37,6 +37,10 @@ module atoma::db {
     /// How many extra nodes to sample when cross validating.
     const InitialCrossValidationExtraNodesCount: u64 = 1;
 
+    /// Start value for reputation scores. It is the same
+    /// for every node, in the initial state.
+    const REPUTATION_SCORE_START: u8 = 100;
+
     /// To be able to identify the errors faster in the logs, we start the
     /// counter from a number that's leet for "error_000".
     const EBase: u64 = 312012_000;
@@ -63,6 +67,14 @@ module atoma::db {
     /// N + 2.
     const ENodeMustWaitBeforeDestroy: u64 = EBase + 13;
     const ECannotSampleZeroNodes: u64 = EBase + 14;
+    const ETaskDeprecated: u64 = EBase + 15;
+    const ENodeAlreadySubscribedToTask: u64 = EBase + 16;
+    const ETaskNotFound: u64 = EBase + 17;
+    const ENodeNotSubscribedToTask: u64 = EBase + 18;
+    const ENotEnoughEpochsPassed: u64 = EBase + 19;
+    const ETaskNotDeprecated: u64 = EBase + 20;
+    const EInvalidNodeIndex: u64 = EBase + 21;
+    const EModelNotFound: u64 = EBase + 22;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -83,6 +95,21 @@ module atoma::db {
         echelon_id: EchelonId,
     }
 
+    public struct NodeSubscribedToTaskEvent has copy, drop {
+        task_small_id: SmallId,
+        node_small_id: SmallId,
+    }
+
+    public struct TaskRegisteredEvent has copy, drop {
+        task_small_id: SmallId,
+    }
+
+    public struct TaskDeprecationEvent has copy, drop {
+        task_small_id: SmallId,
+        /// The epoch in which the task was deprecated.
+        epoch: u64,
+    }
+
     /// Owned object.
     ///
     /// Represents authority over the package.
@@ -98,6 +125,14 @@ module atoma::db {
         small_id: SmallId,
     }
 
+    /// Owned object, transferred to the creator of a task.
+    ///
+    /// Proof of task creation.
+    public struct TaskBadge has key, store {
+        id: UID,
+        small_id: SmallId,
+    }
+
     /// Since referring to node is ubiquitous and potentially large collections
     /// are at stake, we assign a u64 ID to each node instead of using Sui
     /// address which is 32 bytes.
@@ -106,6 +141,58 @@ module atoma::db {
         /// We start from 1 because 0 is reserved an empty node, which might
         /// become valuable to represent in future.
         inner: u64,
+    }
+
+    /// Represents a computational task on the Atoma network.
+    /// Tasks can include model inference, text embeddings, fine-tuning, training,
+    /// or other arbitrary computations.
+    public struct Task has key, store {
+        id: UID,
+        /// The specific role or purpose of the task (e.g., "inference", "embedding", "fine-tuning")
+        role: TaskRole,
+        /// An optional unique identifier for a `ModelEntry`, if the task is associated with a particular model
+        model_name: Option<ascii::String>,
+        /// Indicates whether the task is deprecated and should no longer be used
+        /// Deprecated tasks may be kept for historical reasons but should not be assigned to nodes
+        is_deprecated: bool,
+        /// The epoch until which this task is valid (inclusive)
+        /// If Some(epoch), the task expires after this epoch. If None, the task doesn't expire
+        valid_until_epoch: Option<u64>,
+        /// Deprecated at epoch
+        deprecated_at_epoch: Option<u64>,
+        /// Unique set of optimizations that can be applied to the task
+        optimizations: vector<u16>,
+        /// Security level for the task
+        security_level: Option<u16>,
+        /// Efficiency metrics for the task (e.g. throughput, latency, cost, energy).
+        /// Note: we might want to support multiple combined input efficiency metrics in the future.
+        task_metrics: TaskMetrics,
+        /// Subscribed nodes
+        subscribed_nodes: TableVec<SmallId>,
+    }
+
+    /// Systems's efficiency metrics
+    public struct TaskMetrics has store, copy, drop {
+        /// The unit of compute for the efficiency metric
+        compute_unit: u16,
+        /// The time unit for which to evaluate the efficiency of the system required to complete the task.
+        time_unit: Option<u16>,
+        /// The value of the efficiency metric
+        /// For example, if compute_unit corresponds to number of tokens, and time_unit corresponds to seconds,
+        /// then the value represents the number of tokens processed per second.
+        value: Option<u64>,
+    }
+
+    /// Represents the role or purpose of a computational task in the Atoma network.
+    /// Each role is associated with a specific type of operation or computation,
+    /// according to the predefined values above.
+    public struct TaskRole has store, copy, drop { 
+        inner: u16,
+    }
+
+    /// Reputation score of a node
+    public struct ReputationScore has store, copy, drop {
+        inner: u8,
     }
 
     /// Shared object.
@@ -118,6 +205,7 @@ module atoma::db {
     /// - random node selection per model
     /// - O(1) access to node metadata
     /// - O(1) access to model
+    /// - O(1) access to tasks
     public struct AtomaDb has key {
         id: UID,
         /// Settlement is done via tickets that are associated with the
@@ -128,10 +216,15 @@ module atoma::db {
         /// We keep track of total registered nodes so that we can generate
         /// SmallId for newly registered nodes as these IDs are sequential.
         next_node_small_id: SmallId,
+        /// We keep track of registered tasks so that we can generate
+        /// SmallId for newly registered tasks as these IDs are sequential.
+        next_task_small_id: SmallId,
         /// Holds information about each node.
         nodes: Table<SmallId, NodeEntry>,
         /// Each model is represented here and stores which nodes support it.
         models: ObjectTable<ascii::String, ModelEntry>,
+        /// Holds information about the registered tasks
+        tasks: ObjectTable<SmallId, Task>,
         /// All fees and honest node rewards go here.
         /// We then do book-keeping on NodeEntry objects to calculate how much
         /// is available for withdrawal by each node.
@@ -185,6 +278,15 @@ module atoma::db {
         last_fee_epoch_amount: u64,
         /// These fees are unlocked for the node to collect.
         available_fee_amount: u64,
+        /// The relative performance of the node.
+        ///
+        /// We start from 100 and increase the reputation by 1,
+        /// every epoch in which nodes are responsive
+        /// and accurate.
+        /// Nodes that are offline or produce incorrect results 
+        /// will have their reputation score decreased, by 1 or more points.
+        /// To a minimum of 0, in which case the node is slashed from the network.
+        reputation_score: ReputationScore,
     }
 
     /// Object field of AtomaDb.
@@ -261,10 +363,12 @@ module atoma::db {
             tickets: object::new(ctx),
             nodes: table::new(ctx),
             models: object_table::new(ctx),
+            tasks: object_table::new(ctx),
             fee_treasury: balance::zero(),
             communal_treasury: balance::zero(),
             // IMPORTANT: we start from 1 because 0 is reserved
             next_node_small_id: SmallId { inner: 1 },
+            next_task_small_id: SmallId { inner: 1 },
             is_registration_disabled: false,
             registration_collateral_in_protocol_token:
                 InitialCollateralRequiredForRegistration,
@@ -305,12 +409,145 @@ module atoma::db {
         transfer::transfer(badge, ctx.sender());
     }
 
+    public entry fun create_task_entry(
+        self: &mut AtomaDb,
+        role: u16,
+        model_name: Option<ascii::String>,
+        valid_until_epoch: Option<u64>,
+        optimizations: vector<u16>,
+        security_level: Option<u16>,
+        efficiency_compute_units: u16,
+        efficiency_time_units: Option<u16>,
+        efficiency_value: Option<u64>,
+        ctx: &mut TxContext,
+    ) {
+        let badge = create_task(
+            self,
+            role,
+            model_name,
+            valid_until_epoch,
+            optimizations,
+            security_level,
+            TaskMetrics {
+                compute_unit: efficiency_compute_units,
+                time_unit: efficiency_time_units,
+                value: efficiency_value,
+            },
+            ctx,
+        );
+        transfer::transfer(badge, ctx.sender());
+    }
+
+    /// Creates a new task in the Atoma network and returns a TaskBadge.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `model_name` - An optional ASCII string representing the model name.
+    /// * `role` - A u16 representing the task role.
+    /// * `modality` - A u16 representing the task modality.
+    /// * `valid_until_epoch` - An optional u64 representing the epoch until which the task is valid.
+    /// * `optimizations` - An optional vector of u16 representing optimization types.
+    /// * `security_level` - An optional u16 representing the security level.
+    /// * `task_metrics` - An optional vector of EfficiencyMetric representing efficiency metrics.
+    /// * `performance_unit` - An optional u16 representing the performance unit.
+    /// * `ctx` - A mutable reference to the transaction context.
+    ///
+    /// # Returns
+    /// A TaskBadge object representing the created task.
+    public fun create_task(
+        self: &mut AtomaDb,
+        role: u16,
+        mut model_name: Option<ascii::String>,
+        valid_until_epoch: Option<u64>,
+        optimizations: vector<u16>,
+        security_level: Option<u16>,
+        task_metrics: TaskMetrics,
+        ctx: &mut TxContext,
+    ): TaskBadge {
+        let small_id = self.next_task_small_id;
+        self.next_task_small_id.inner = self.next_task_small_id.inner + 1;
+
+        if (model_name.is_some()) {
+            let model_name = model_name.extract();
+            assert!(self.models.contains(model_name), EModelNotFound);
+        };
+
+        let task = Task {
+            id: object::new(ctx),
+            role: TaskRole { inner: role },
+            model_name,
+            is_deprecated: false,
+            valid_until_epoch,
+            deprecated_at_epoch: option::none(),
+            optimizations,
+            security_level,
+            task_metrics,
+            subscribed_nodes: table_vec::empty(ctx),
+        };
+        object_table::add(&mut self.tasks, small_id, task);
+        
+        sui::event::emit(TaskRegisteredEvent {
+            task_small_id: small_id,
+        });
+
+        TaskBadge {
+            id: object::new(ctx),
+            small_id,
+        }
+    }
+
+    /// Deprecates a task in the Atoma network.
+    ///
+    /// This function marks a task as deprecated, preventing it from being used for new computations.
+    /// It also records the epoch at which the task was deprecated.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `task_badge` - A mutable reference to the TaskBadge of the task to be deprecated.
+    /// * `task_small_id` - The SmallId of the task to be deprecated.
+    /// * `ctx` - A mutable reference to the transaction context.
+    ///
+    /// # Errors
+    /// * `ETaskNotFound` - If the task specified by the TaskBadge is not found in the AtomaDb.
+    ///
+    /// # Effects
+    /// * Sets the `is_deprecated` field of the task to `true`.
+    /// * Sets the `deprecated_at_epoch` field of the task to the current epoch.
+    /// * Emits a `TaskDeprecationEvent` with the task's SmallId and the current epoch.
+    ///
+    /// # Events
+    /// Emits a `TaskDeprecationEvent` containing:
+    /// * `task_small_id` - The SmallId of the deprecated task.
+    /// * `epoch` - The epoch at which the task was deprecated.
+    ///
+    /// # Note
+    /// This function does not delete the task from the database. It only marks it as deprecated,
+    /// allowing for historical record-keeping while preventing future use of the task.
+    public entry fun deprecate_task(
+        self: &mut AtomaDb,
+        task_badge: &mut TaskBadge,
+        task_small_id: u64,
+        ctx: &mut TxContext,
+    ) {
+        let task_small_id = SmallId { inner: task_small_id };
+        assert!(self.tasks.contains(task_small_id), ETaskNotFound);
+
+        let task = self.tasks.borrow_mut(task_badge.small_id);
+        task.is_deprecated = true;
+        task.deprecated_at_epoch = option::some(tx_context::epoch(ctx));
+
+        sui::event::emit(TaskDeprecationEvent {
+            task_small_id: task_badge.small_id,
+            epoch: tx_context::epoch(ctx),
+        });
+    }
+
     /// Splits the collateral from the sender's wallet and registers a new node.
     /// Returns a node badge.
     /// The node badge is intended to be owned by the node as a proof of
     /// registration.
     /// It can be used later to add or remove available models, delete account,
-    /// etc.
+    /// subscribe to new tasks, unsubscribe from previous tasks, etc.
     public fun register_node(
         self: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
@@ -330,6 +567,7 @@ module atoma::db {
             last_fee_epoch: ctx.epoch(),
             last_fee_epoch_amount: 0,
             available_fee_amount: 0,
+            reputation_score: ReputationScore { inner: REPUTATION_SCORE_START },
         };
         self.nodes.add(small_id, node_entry);
 
@@ -342,6 +580,117 @@ module atoma::db {
             id: badge_id,
             small_id,
         }
+    }
+
+    /// Subscribes a node to a specific task.
+    /// 
+    /// This function allows a node to subscribe to a task, enabling it to participate in
+    /// the execution of that task within the Atoma network.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `node_badge` - A mutable reference to the NodeBadge of the subscribing node.
+    /// * `task_small_id` - The SmallId of the task to subscribe to.
+    ///
+    /// # Errors
+    /// * `ETaskNotFound` - If the specified task does not exist in the AtomaDb.
+    /// * `ETaskDeprecated` - If the specified task has been deprecated.
+    /// * `ENodeAlreadySubscribedToTask` - If the node is already subscribed to the task.
+    ///
+    /// # Events
+    /// Emits a `NodeSubscribedToTaskEvent` upon successful subscription.
+    public entry fun subscribe_node_to_task(
+        self: &mut AtomaDb,
+        node_badge: &mut NodeBadge,
+        task_small_id: u64,
+    ) {
+        let task_small_id = SmallId { inner: task_small_id };
+        assert!(self.tasks.contains(task_small_id), ETaskNotFound);
+
+        let task = self.tasks.borrow_mut(task_small_id);
+        assert!(!task.is_deprecated, ETaskDeprecated);
+
+        // a node can subscribe to a task only once
+        assert!(
+            !dynamic_field::exists_(&node_badge.id, task_small_id),
+            ENodeAlreadySubscribedToTask,
+        );
+        table_vec::push_back(&mut task.subscribed_nodes, node_badge.small_id);
+        // Associate the task_small_id with the node badge
+        dynamic_field::add(&mut node_badge.id, task_small_id, true);
+
+        sui::event::emit(NodeSubscribedToTaskEvent {
+            node_small_id: node_badge.small_id,
+            task_small_id,
+        });
+    }
+
+    /// Unsubscribes a node from a specific task.
+    ///
+    /// This function removes a node's subscription to a task, updating both the node's
+    /// dynamic fields and the task's list of subscribed nodes.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `node_badge` - A mutable reference to the NodeBadge of the node being unsubscribed.
+    /// * `task_small_id` - The SmallId of the task from which the node is unsubscribing.
+    ///
+    /// # Errors
+    /// * `ENodeNotSubscribedToTask` - If the node is not subscribed to the specified task.
+    /// * `ENodeIndexMismatch` - If the node is not found in the task's subscribed_nodes list.
+    public entry fun unsubscribe_node_from_task(
+        self: &mut AtomaDb,
+        node_badge: &mut NodeBadge,
+        task_small_id: u64,
+    ) {
+        let task_small_id = SmallId { inner: task_small_id };
+        let perhaps_task_small_id: Option<bool> = dynamic_field::remove_if_exists(&mut node_badge.id, task_small_id);
+        assert!(perhaps_task_small_id.is_some(), ENodeNotSubscribedToTask);
+
+        let task = self.tasks.borrow_mut(task_small_id);
+        let mut node_index = find_node_index(&task.subscribed_nodes, node_badge.small_id);
+        assert!(node_index.is_some(), ENodeNotSubscribedToTask);
+
+        let node_index = option::extract(&mut node_index);
+
+        let remove_id = task.subscribed_nodes.swap_remove(node_index);
+        assert!(remove_id == node_badge.small_id, ENodeIndexMismatch);
+    }
+
+    /// Unsubscribes a node from a specific task, provided the index of the node in the task's subscribed_nodes list.
+    /// This method is similar to `unsubscribe_node_from_task` but takes an additional `node_index` parameter, and 
+    /// has potential lower gas costs.
+    ///
+    /// This function removes a node's subscription to a task, updating both the node's
+    /// dynamic fields and the task's list of subscribed nodes.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `node_badge` - A mutable reference to the NodeBadge of the node being unsubscribed.
+    /// * `task_small_id` - The SmallId of the task from which the node is unsubscribing.
+    /// * `node_index` - The index of the node in the task's subscribed_nodes list.
+    ///
+    /// # Errors
+    /// * `ENodeNotSubscribedToTask` - If the node is not subscribed to the specified task.
+    /// * `ENodeIndexMismatch` - If the node at the given index doesn't match the node being unsubscribed.
+    /// * `EInvalidNodeIndex` - If the provided node_index is out of bounds.
+    public entry fun unsubscribe_node_from_task_by_index(
+        self: &mut AtomaDb,
+        node_badge: &mut NodeBadge,
+        task_small_id: u64,
+        node_index: u64,
+    ) {
+        let task_small_id = SmallId { inner: task_small_id };
+        let perhaps_task_small_id: Option<bool> = dynamic_field::remove_if_exists(&mut node_badge.id, task_small_id);
+        assert!(perhaps_task_small_id.is_some(), ENodeNotSubscribedToTask);
+
+        let task = self.tasks.borrow_mut(task_small_id);
+        
+        // Check if the provided node_index is valid
+        assert!(node_index < task.subscribed_nodes.length(), EInvalidNodeIndex);
+
+        let remove_id = task.subscribed_nodes.swap_remove(node_index);
+        assert!(remove_id == node_badge.small_id, ENodeIndexMismatch);
     }
 
     /// The node owner announces that they can serve prompts for the given
@@ -424,14 +773,18 @@ module atoma::db {
         node.was_disabled_in_epoch = option::some(ctx.epoch());
     }
 
-    /// You must wait 2 epochs after `permanently_disable_node` before you can
+    /// Node operators must wait 4 epochs after `permanently_disable_node` before they can
     /// destroy the node and collect the collateral.
     /// This prevents nodes that disable themselves just before a new epoch
     /// starts and then destroy themselves immediately once it starts,
     /// potentially causing problems with open prompts without any repercussions.
+    /// It also guarantees that all tasks for which the node has subscribed to
+    /// have been settled for user requests.
     ///
-    /// Also, 2 epochs guarantee that all the fees have been settled and are
+    /// Also, 4 epochs guarantee that all the fees have been settled and are
     /// available for withdrawal, so the node is not cut short.
+    ///
+    /// This function assumes the node has already been disabled (see `permanently_disable_node`).
     public entry fun destroy_disabled_node(
         self: &mut AtomaDb,
         node_badge: NodeBadge,
@@ -448,10 +801,11 @@ module atoma::db {
             // that's one epoch longer than the fee withdrawal delay
             last_fee_epoch_amount: _,
             available_fee_amount: _,
+            reputation_score: _,
         } = self.nodes.remove(node_badge.small_id);
 
         let was_disabled_in_epoch = was_disabled_in_epoch.extract();
-        assert!(was_disabled_in_epoch + 2 <= ctx.epoch(), ENodeMustWaitBeforeDestroy);
+        assert!(was_disabled_in_epoch + 4 <= ctx.epoch(), ENodeMustWaitBeforeDestroy);
 
         let wallet = coin::from_balance(collateral, ctx);
         transfer::public_transfer(wallet, ctx.sender());
@@ -499,7 +853,9 @@ module atoma::db {
 
     public fun get_permille_for_honest_nodes_on_dispute(self: &AtomaDb): u64 {
         self.permille_for_honest_nodes_on_dispute
-    }
+    }   
+
+    // Models
 
     public fun get_model_echelons_if_enabled(
         self: &AtomaDb, model_name: ascii::String,
@@ -548,6 +904,48 @@ module atoma::db {
 
     public fun get_cross_validation_extra_nodes_count(self: &AtomaDb): u64 {
         self.cross_validation_extra_nodes_count
+    }
+
+    // Tasks 
+
+    public fun get_task(self: &AtomaDb, task_small_id: SmallId): &Task {
+        self.tasks.borrow(task_small_id)
+    }
+
+    public fun get_task_role(self: &AtomaDb, task_small_id: SmallId): TaskRole {
+        self.tasks.borrow(task_small_id).role
+    }
+
+    public fun get_task_model_name(self: &AtomaDb, task_small_id: SmallId): Option<ascii::String> {
+        self.tasks.borrow(task_small_id).model_name
+    }
+
+    public fun is_task_deprecated(self: &AtomaDb, task_small_id: SmallId): bool {
+        self.tasks.borrow(task_small_id).is_deprecated
+    }
+
+    public fun get_task_valid_until_epoch(self: &AtomaDb, task_small_id: SmallId): Option<u64> {
+        self.tasks.borrow(task_small_id).valid_until_epoch
+    }
+
+    public fun get_task_deprecated_at_epoch(self: &AtomaDb, task_small_id: SmallId): Option<u64> {
+        self.tasks.borrow(task_small_id).deprecated_at_epoch
+    }
+
+    public fun get_task_optimizations(self: &AtomaDb, task_small_id: SmallId): vector<u16> {
+        self.tasks.borrow(task_small_id).optimizations
+    }
+
+    public fun get_task_security_level(self: &AtomaDb, task_small_id: SmallId): Option<u16> {
+        self.tasks.borrow(task_small_id).security_level
+    }
+
+    public fun get_task_task_metrics(self: &AtomaDb, task_small_id: SmallId): TaskMetrics {
+        self.tasks.borrow(task_small_id).task_metrics
+    }  
+
+    public fun get_task_subscribed_nodes(self: &AtomaDb, task_small_id: SmallId): &TableVec<SmallId> {
+        &self.tasks.borrow(task_small_id).subscribed_nodes
     }
 
     // =========================================================================
@@ -724,6 +1122,49 @@ module atoma::db {
     ): AtomaManagerBadge {
         assert!(package::from_module<ATOMA>(pub), ENotAuthorized);
         AtomaManagerBadge { id: object::new(ctx) }
+    }
+
+    /// Removes a deprecated task from the task table.
+    /// It only allows to remove deprecated tasks that 
+    /// were deprecated at least 2 epochs from the current task.
+    public entry fun remove_deprecated_task(
+        self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
+        task_small_id: u64,
+        ctx: &mut TxContext,
+    ) {
+        let task_small_id = SmallId { inner: task_small_id };
+        // Check if the task exists
+        assert!(object_table::contains(&self.tasks, task_small_id), ETaskNotFound);
+
+        let task = object_table::borrow(&self.tasks, task_small_id);
+        
+        // Check if the task is deprecated
+        assert!(task.is_deprecated, ETaskNotDeprecated);
+        
+        // Check if the deprecated_at_epoch exists and if 4 epochs have passed
+        assert!(option::is_some(&task.deprecated_at_epoch), ETaskNotDeprecated);
+        let deprecated_epoch = *option::borrow(&task.deprecated_at_epoch);
+        assert!(ctx.epoch() >= deprecated_epoch + 2, ENotEnoughEpochsPassed);
+
+        // If all checks pass, remove the task from the object table
+        // and drop the task object altogether
+        let task = object_table::remove(&mut self.tasks, task_small_id);
+        let Task {
+            id: task_id,
+            role: _,
+            model_name: _,
+            is_deprecated: _,
+            valid_until_epoch: _,
+            deprecated_at_epoch: _,
+            optimizations: _,
+            security_level: _,
+            task_metrics: _,
+            subscribed_nodes,
+        } = task;
+
+        task_id.delete();
+        subscribed_nodes.drop();
     }
 
     /// As per the gate module:
@@ -1012,6 +1453,23 @@ module atoma::db {
     // =========================================================================
     //                          Helpers
     // =========================================================================
+
+    /// Helper function to find the index of a node's small_id in a TableVec
+    fun find_node_index(
+        subscribed_nodes: &TableVec<SmallId>,
+        node_small_id: SmallId,
+    ): Option<u64> {
+        let len = table_vec::length(subscribed_nodes);
+        let mut i = 0;
+        while (i < len) {
+            let node_id = table_vec::borrow(subscribed_nodes, i);
+            if (node_id.inner == node_small_id.inner) {
+                return option::some(i)
+            };
+            i = i + 1;
+        };
+        option::none()
+    }
 
     fun get_echelon_mut(
         echelons: &mut vector<ModelEchelon>, id: EchelonId
