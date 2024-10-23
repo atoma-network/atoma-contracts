@@ -216,7 +216,7 @@ module atoma::db {
         /// We keep track of total registered nodes so that we can generate
         /// SmallId for newly registered nodes as these IDs are sequential.
         next_node_small_id: SmallId,
-        /// We keep track of registered tasks so taht we can generate
+        /// We keep track of registered tasks so that we can generate
         /// SmallId for newly registered tasks as these IDs are sequential.
         next_task_small_id: SmallId,
         /// Holds information about each node.
