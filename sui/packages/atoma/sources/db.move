@@ -135,38 +135,38 @@ module atoma::db {
     public struct NodeRegisteredEvent has copy, drop {
         /// ID of the NodeBadge object
         badge_id: ID,
-        node_small_id: SmallId,
+        node_small_id: NodeSmallId,
     }
 
     public struct NodeSubscribedToModelEvent has copy, drop {
-        node_small_id: SmallId,
+        node_small_id: NodeSmallId,
         model_name: ascii::String,
         echelon_id: EchelonId,
     }
 
     public struct NodeSubscribedToTaskEvent has copy, drop {
-        task_small_id: SmallId,
-        node_small_id: SmallId,
+        task_small_id: TaskSmallId,
+        node_small_id: NodeSmallId,
         price_per_compute_unit: u64,
         max_num_compute_units: u64,
     }
 
     public struct NodeSubscriptionUpdatedEvent has copy, drop {
-        node_small_id: SmallId,
-        task_small_id: SmallId,
+        node_small_id: NodeSmallId,
+        task_small_id: TaskSmallId,
         price_per_compute_unit: u64,
         max_num_compute_units: u64,
     }
 
     public struct NodeUnsubscribedFromTaskEvent has copy, drop {
-        task_small_id: SmallId,
-        node_small_id: SmallId,
+        task_small_id: TaskSmallId,
+        node_small_id: NodeSmallId,
     }
 
     public struct TaskRegisteredEvent has copy, drop {
         /// ID of the Task object
         task_id: ID,
-        task_small_id: SmallId,
+        task_small_id: TaskSmallId,
         role: TaskRole,
         model_name: Option<ascii::String>,
         valid_until_epoch: Option<u64>,
@@ -180,7 +180,7 @@ module atoma::db {
         /// ID of the Task object
         task_id: ID,
         /// The task small identifier
-        task_small_id: SmallId,
+        task_small_id: TaskSmallId,
         /// The epoch in which the task was deprecated.
         epoch: u64,
     }
@@ -190,7 +190,7 @@ module atoma::db {
         /// ID of the Task object
         task_id: ID,
         /// The task small identifier
-        task_small_id: SmallId,
+        task_small_id: TaskSmallId,
         /// The epoch in which the task was removed.
         removed_at_epoch: u64,
     }
@@ -199,13 +199,13 @@ module atoma::db {
         /// ID of the Stack object
         stack_id: ID,
         /// Unique identifier for the stack within the Atoma network
-        stack_small_id: SmallId,
+        stack_small_id: StackSmallId,
         /// The address of the owner of the stack
         owner: address,
         /// The SmallId of the task associated with this stack
-        task_small_id: SmallId,
+        task_small_id: TaskSmallId,
         /// The SmallId of the node selected to process this stack's requests
-        selected_node_id: SmallId,
+        selected_node_id: NodeSmallId,
         /// The number of compute units allocated to this stack
         num_compute_units: u64,
         /// The price per compute unit in TOMA tokens
@@ -213,12 +213,12 @@ module atoma::db {
     }
 
     public struct StackTrySettleEvent has copy, drop {
-        stack_small_id: SmallId,
+        stack_small_id: StackSmallId,
         /// The node selected to process the requests in the stack
-        selected_node_id: SmallId,
+        selected_node_id: NodeSmallId,
         /// Nodes selected for attestation of the commitment output, either
         /// of size 0 or size `CrossValidationExtraNodesCount`.
-        requested_attestation_nodes: vector<SmallId>,
+        requested_attestation_nodes: vector<NodeSmallId>,
         /// Corresponds to the `committed_stack_proof` in the `settlement` module.
         /// It is computed as a '2-dimensional' Merkle root of the each (input, output) pair
         /// that is processed through the stack, iterated over the range [0, CrossValidationExtraNodesCount).
@@ -254,9 +254,9 @@ module atoma::db {
     /// nodes have submitted attestations and how many attestations are still pending.
     public struct NewStackSettlementAttestationEvent has copy, drop {
         /// The unique identifier of the stack being settled.
-        stack_small_id: SmallId,
+        stack_small_id: StackSmallId,
         /// The identifier of the node that submitted the attestation.
-        attestation_node_id: SmallId,
+        attestation_node_id: NodeSmallId,
         /// Committed stack proof
         committed_stack_proof: vector<u8>,
         /// The root of the Merkle tree root MH_stack(0), which is leaf for the current attestation node
@@ -273,14 +273,14 @@ module atoma::db {
     /// in the Atoma network. It serves as a record of successful settlements and can be used for 
     /// auditing, reward distribution, and system monitoring purposes.
     public struct StackSettlementTicketEvent has copy, drop {
-        stack_small_id: SmallId,
+        stack_small_id: StackSmallId,
         /// The node that was initially selected to process the requests in the stack
-        selected_node_id: SmallId,
+        selected_node_id: NodeSmallId,
         /// Number of claimed computed units
         num_claimed_compute_units: u64,
         /// Nodes selected for attestation of the commitment output, either
         /// of size 0 or size `CrossValidationExtraNodesCount`, if the associated `Task` has security level set to `SamplingConsensusSecurityLevel`.
-        requested_attestation_nodes: vector<SmallId>,
+        requested_attestation_nodes: vector<NodeSmallId>,
         /// The epoch at which the stack attestion is completely settled
         dispute_settled_at_epoch: u64,
         /// The committed stack proof
@@ -298,11 +298,11 @@ module atoma::db {
     /// monitoring the financial aspects of stack executions in the Atoma network.
     public struct StackSettlementTicketClaimedEvent has copy, drop {
         /// The unique identifier of the stack that was settled.
-        stack_small_id: SmallId,
+        stack_small_id: StackSmallId,
         /// The identifier of the node that processed the stack and is claiming the funds.
-        selected_node_id: SmallId,
+        selected_node_id: NodeSmallId,
         /// The nodes that have attested to the stack settlement ticket commitment, if any
-        attestation_nodes: vector<SmallId>,
+        attestation_nodes: vector<NodeSmallId>,
         /// The number of compute units actually used and claimed by the node.
         num_claimed_compute_units: u64,
         /// The amount of funds refunded to the user for unused compute units.
@@ -310,10 +310,10 @@ module atoma::db {
     }
 
     public struct StackAttestationDisputeEvent has copy, drop {
-        stack_small_id: SmallId,
+        stack_small_id: StackSmallId,
         attestation_commitment: vector<u8>,
-        attestation_node_id: SmallId,
-        original_node_id: SmallId,
+        attestation_node_id: NodeSmallId,
+        original_node_id: NodeSmallId,
         original_commitment: vector<u8>,
     }
 
@@ -329,7 +329,7 @@ module atoma::db {
     /// Proof of registration for a node.
     public struct NodeBadge has key, store {
         id: UID,
-        small_id: SmallId,
+        small_id: NodeSmallId,
     }
 
     /// Owned object, transferred to the creator of a task.
@@ -337,7 +337,7 @@ module atoma::db {
     /// Proof of task creation.
     public struct TaskBadge has key, store {
         id: UID,
-        small_id: SmallId,
+        small_id: TaskSmallId,
     }
 
     /// Owned object, transferred to the creator of a stack.
@@ -345,13 +345,37 @@ module atoma::db {
     /// Proof of stack creation.
     public struct StackBadge has key, store {
         id: UID,
-        small_id: SmallId,
+        small_id: StackSmallId,
     }
 
     /// Since referring to node is ubiquitous and potentially large collections
     /// are at stake, we assign a u64 ID to each node instead of using Sui
     /// address which is 32 bytes.
-    public struct SmallId has store, copy, drop {
+    public struct NodeSmallId has store, copy, drop {
+        /// # Important
+        /// We start from 1 because 0 is reserved an empty node, which might
+        /// become valuable to represent in future.
+        inner: u64,
+    }
+
+    /// Represents a unique identifier for a Task in the Atoma network.
+    ///
+    /// The `TaskSmallId` struct is used to uniquely identify tasks within the 
+    /// Atoma database. It is designed to be lightweight and efficient, 
+    /// allowing for quick lookups and associations with task-related data. 
+    public struct TaskSmallId has store, copy, drop {
+        /// # Important
+        /// We start from 1 because 0 is reserved an empty node, which might
+        /// become valuable to represent in future.
+        inner: u64,
+    }
+
+    /// Represents a unique identifier for a Stack in the Atoma network.
+    ///
+    /// The `StackSmallId` struct is used to uniquely identify stacks within the 
+    /// Atoma database. It is designed to be lightweight and efficient, 
+    /// allowing for quick lookups and associations with stack-related data.
+    public struct StackSmallId has store, copy, drop {
         /// # Important
         /// We start from 1 because 0 is reserved an empty node, which might
         /// become valuable to represent in future.
@@ -384,10 +408,10 @@ module atoma::db {
         task_metrics: TaskMetrics,
         /// Subscribed nodes table, where key is node SmallId and value is price per compute unit
         /// for this current task.
-        subscribed_nodes: Table<SmallId, NodePriceData>,
+        subscribed_nodes: Table<NodeSmallId, NodePriceData>,
         /// Subscribed nodes small ids, we need to keep track of them separately
         /// because we need to iterate over them to find eligible nodes for a stack.
-        subscribed_nodes_small_ids: TableVec<SmallId>,
+        subscribed_nodes_small_ids: TableVec<NodeSmallId>,
         /// Minimum reputation score required for a node to subscribe to the task
         minimum_reputation_score: Option<u8>,
     }
@@ -418,7 +442,7 @@ module atoma::db {
 
     /// Data about a node's price per compute unit for a task
     public struct NodePriceData has store, copy, drop {
-        node_id: SmallId,
+        node_id: NodeSmallId,
         /// Price per compute unit in TOMA for the current task
         price_per_compute_unit: u64,
         /// The maximum number of compute units that the node is willing to process for the current task
@@ -434,9 +458,9 @@ module atoma::db {
         /// Number of compute units remaining in the stack
         num_compute_units: u64,
         /// Node selected to process the requests in the stack
-        selected_node_id: SmallId,
+        selected_node_id: NodeSmallId,
         /// The associated task SmallId
-        task_small_id: SmallId,
+        task_small_id: TaskSmallId,
     }
 
     /// Represents a settlement ticket for a completed stack execution in the Atoma network.
@@ -451,14 +475,14 @@ module atoma::db {
     public struct StackSettlementTicket has key, store {
         id: UID,
         /// The associated stack SmallId
-        stack_small_id: SmallId,
+        stack_small_id: StackSmallId,
         /// The node selected to process the requests in the stack
-        selected_node_id: SmallId,
+        selected_node_id: NodeSmallId,
         /// Number of claimed computed units
         num_claimed_compute_units: u64,
         /// Nodes selected for attestation of the commitment output, either
         /// of size 0 or size `CrossValidationExtraNodesCount`, if the associated `Task` has security level set to `SamplingConsensusSecurityLevel`.
-        requested_attestation_nodes: vector<SmallId>,
+        requested_attestation_nodes: vector<NodeSmallId>,
         /// The epoch after which the stack dispute is settled
         dispute_settled_at_epoch: u64,
         /// Corresponds to the `committed_stack_proof` in the `settlement` module.
@@ -466,7 +490,7 @@ module atoma::db {
         /// Corresponds to the `stack_merkle_leaf` in the `settlement` module.
         stack_merkle_leaves_vector: vector<u8>,
         /// Nodes that have already attested to the stack settlement ticket commitment (initialized to empty vector)
-        already_attested_nodes: vector<SmallId>,
+        already_attested_nodes: vector<NodeSmallId>,
         /// Checks if the current ticket is in dispute or not
         is_in_dispute: bool,
     }
@@ -491,23 +515,23 @@ module atoma::db {
         tickets: UID,
         /// We keep track of total registered nodes so that we can generate
         /// SmallId for newly registered nodes as these IDs are sequential.
-        next_node_small_id: SmallId,
+        next_node_small_id: NodeSmallId,
         /// We keep track of registered tasks so taht we can generate
         /// SmallId for newly registered tasks as these IDs are sequential.
-        next_task_small_id: SmallId,
+        next_task_small_id: TaskSmallId,
         /// We keep track of registered stacks so that we can generate
         /// SmallId for newly registered stacks as these IDs are sequential.
-        next_stack_small_id: SmallId,
+        next_stack_small_id: StackSmallId,
         /// Holds information about each node.
-        nodes: Table<SmallId, NodeEntry>,
+        nodes: Table<NodeSmallId, NodeEntry>,
         /// Each model is represented here and stores which nodes support it.
         models: ObjectTable<ascii::String, ModelEntry>,
         /// Each task is represented here and stores which nodes support it.
-        tasks: ObjectTable<SmallId, Task>,
+        tasks: ObjectTable<TaskSmallId, Task>,
         /// Holds information about each stack
-        stacks: Table<SmallId, Stack>,
+        stacks: Table<StackSmallId, Stack>,
         /// Holds information about each stack settlement ticket
-        stack_settlement_tickets: ObjectTable<SmallId, StackSettlementTicket>,
+        stack_settlement_tickets: ObjectTable<StackSmallId, StackSettlementTicket>,
         /// All fees and honest node rewards go here.
         /// We then do book-keeping on NodeEntry objects to calculate how much
         /// is available for withdrawal by each node.
@@ -622,7 +646,7 @@ module atoma::db {
         relative_performance: u64,
         /// Nodes that are elevated to an oracle level.
         /// These nodes are trusted and can settle disputes.
-        oracles: VecSet<SmallId>,
+        oracles: VecSet<NodeSmallId>,
         /// Which nodes support this model.
         /// We group nodes by HW and SW specs, because different echelons
         /// might end up having different outputs for the same model due to
@@ -630,7 +654,7 @@ module atoma::db {
         /// Using a vector allows for a random access using an index.
         /// The order of nodes will not be preserved because we use
         /// `swap_remove` op on table vec.
-        nodes: TableVec<SmallId>,
+        nodes: TableVec<NodeSmallId>,
     }
 
     /// An opaque identifier for an echelon.
@@ -656,9 +680,9 @@ module atoma::db {
             fee_treasury: balance::zero(),
             communal_treasury: balance::zero(),
             // IMPORTANT: we start from 1 because 0 is reserved
-            next_node_small_id: SmallId { inner: 1 },
-            next_task_small_id: SmallId { inner: 1 },
-            next_stack_small_id: SmallId { inner: 1 },
+            next_node_small_id: NodeSmallId { inner: 1 },
+            next_task_small_id: TaskSmallId { inner: 1 },
+            next_stack_small_id: StackSmallId { inner: 1 },
             is_registration_disabled: false,
             registration_collateral_in_protocol_token:
                 InitialCollateralRequiredForRegistration,
@@ -1044,7 +1068,7 @@ module atoma::db {
         price_per_compute_unit: u64,
         max_num_compute_units: u64,
     ) {
-        let task_small_id = SmallId { inner: task_small_id };
+        let task_small_id = TaskSmallId { inner: task_small_id };
 
         // Check if the task exists
         assert!(self.tasks.contains(task_small_id), ETaskNotFound);
@@ -1138,7 +1162,7 @@ module atoma::db {
         assert!(price_per_compute_unit > 0, EInvalidPricePerComputeUnit);
         assert!(max_num_compute_units > 0, EInvalidMaxNumComputeUnits);
 
-        let task_small_id = SmallId { inner: task_small_id };
+        let task_small_id = TaskSmallId { inner: task_small_id };
 
         // Check if the task exists
         assert!(self.tasks.contains(task_small_id), ETaskNotFound);
@@ -1181,7 +1205,7 @@ module atoma::db {
         node_badge: &mut NodeBadge,
         task_small_id: u64,
     ) {
-        let task_small_id = SmallId { inner: task_small_id };
+        let task_small_id = TaskSmallId { inner: task_small_id };
 
         // Check if the task exists
         assert!(self.tasks.contains(task_small_id), ETaskNotFound);
@@ -1300,7 +1324,7 @@ module atoma::db {
         assert!(num_compute_units > 0, EInvalidComputeUnits);
         assert!(price > 0, EInvalidPricePerComputeUnit);
 
-        let task_small_id = SmallId { inner: task_small_id };
+        let task_small_id = TaskSmallId { inner: task_small_id };
         assert!(self.tasks.contains(task_small_id), ETaskNotFound);
         {
             // transfer the funds for compute units to the contract
@@ -1334,7 +1358,7 @@ module atoma::db {
 
         // Assign a new SmallId to the stack and add it to the stacks table
         let stack_small_id = self.next_stack_small_id;
-        self.next_stack_small_id = SmallId { 
+        self.next_stack_small_id = StackSmallId { 
             inner: self.next_stack_small_id.inner + 1
         };
         self.stacks.add(stack_small_id, stack);
@@ -1405,7 +1429,7 @@ module atoma::db {
         random: &sui::random::Random,
         ctx: &mut TxContext,
     ) {
-        let stack_small_id = SmallId { inner: stack_small_id };
+        let stack_small_id = StackSmallId { inner: stack_small_id };
 
         let stack = self.stacks.borrow(stack_small_id);
         let node_small_id = node_badge.small_id;
@@ -1428,7 +1452,7 @@ module atoma::db {
         let stack_price = stack.price;
 
          // Only Sampling Consensus security level needs to sample attestation nodes
-        let attestation_nodes: vector<SmallId> = if (security_level == SamplingConsensusSecurityLevel) {      
+        let attestation_nodes: vector<NodeSmallId> = if (security_level == SamplingConsensusSecurityLevel) {      
             let mut rng = random.new_generator(ctx);
             let random_number = (rng.generate_u64() % 1000) + 1;
             // Sample attestation nodes if the random number is less than or equal to the cross validation probability
@@ -1527,7 +1551,7 @@ module atoma::db {
         stack_merkle_leaf: vector<u8>,
         ctx: &mut TxContext,
     ) {
-        let stack_small_id = SmallId { inner: stack_small_id };
+        let stack_small_id = StackSmallId { inner: stack_small_id };
 
         // Verify that both the stack and the stack settlement ticket exist
         assert!(self.stacks.contains(stack_small_id), EStackNotFound);
@@ -1685,7 +1709,7 @@ module atoma::db {
         let mut total_node_fee = 0u64;
         let mut index = 0;
         while (index < num_settled_tickets) {
-            let stack_small_id = SmallId { inner: *vector::borrow(&settled_ticket_ids, index) };
+            let stack_small_id = StackSmallId { inner: *vector::borrow(&settled_ticket_ids, index) };
             // Fetch relevant data
             let (security_level, stack_price, num_compute_units, owner, selected_node_id, num_claimed_compute_units, attestation_nodes) = 
                 fetch_stack_settlement_ticket_data(self, stack_small_id, node_badge.small_id, ctx);
@@ -1771,7 +1795,7 @@ module atoma::db {
         stack_small_id: u64,
         attestation_commitment: vector<u8>,
     ) {
-        let stack_small_id = SmallId { inner: stack_small_id };
+        let stack_small_id = StackSmallId { inner: stack_small_id };
         let stack_settlement_ticket = self.stack_settlement_tickets.borrow_mut(stack_small_id);
         stack_settlement_ticket.is_in_dispute = true;
 
@@ -1931,7 +1955,7 @@ module atoma::db {
         self: &AtomaDb,
         model_name: ascii::String,
         echelon_id: EchelonId,
-        node_id: SmallId,
+        node_id: NodeSmallId,
     ): bool {
         let model = self.models.borrow(model_name);
         let echelon = get_echelon(&model.echelons, echelon_id);
@@ -1969,7 +1993,7 @@ module atoma::db {
         (self.input_fee_per_token, self.output_fee_per_token)
     }
 
-    public fun get_model_echelon_nodes(self: &ModelEchelon): &TableVec<SmallId> {
+    public fun get_model_echelon_nodes(self: &ModelEchelon): &TableVec<NodeSmallId> {
         &self.nodes
     }
 
@@ -1981,9 +2005,9 @@ module atoma::db {
         self.settlement_timeout_ms
     }
 
-    public fun get_node_id(self: &NodeBadge): SmallId { self.small_id }
+    public fun get_node_id(self: &NodeBadge): NodeSmallId { self.small_id }
 
-    public fun get_opaque_inner_id(self: SmallId): u64 { self.inner }
+    public fun get_opaque_inner_id(self: NodeSmallId): u64 { self.inner }
 
     public fun get_model_modality(self: &AtomaDb, model_name: ascii::String): u64 {
         self.models.borrow(model_name).modality
@@ -2007,47 +2031,47 @@ module atoma::db {
 
     // Tasks 
 
-    public fun get_task(self: &AtomaDb, task_small_id: SmallId): &Task {
+    public fun get_task(self: &AtomaDb, task_small_id: TaskSmallId): &Task {
         self.tasks.borrow(task_small_id)
     }
 
-    public fun get_task_role(self: &AtomaDb, task_small_id: SmallId): TaskRole {
+    public fun get_task_role(self: &AtomaDb, task_small_id: TaskSmallId): TaskRole {
         self.tasks.borrow(task_small_id).role
     }
 
-    public fun get_task_model_name(self: &AtomaDb, task_small_id: SmallId): Option<ascii::String> {
+    public fun get_task_model_name(self: &AtomaDb, task_small_id: TaskSmallId): Option<ascii::String> {
         self.tasks.borrow(task_small_id).model_name
     }
 
-    public fun is_task_deprecated(self: &AtomaDb, task_small_id: SmallId): bool {
+    public fun is_task_deprecated(self: &AtomaDb, task_small_id: TaskSmallId): bool {
         self.tasks.borrow(task_small_id).is_deprecated
     }
 
-    public fun get_task_valid_until_epoch(self: &AtomaDb, task_small_id: SmallId): Option<u64> {
+    public fun get_task_valid_until_epoch(self: &AtomaDb, task_small_id: TaskSmallId): Option<u64> {
         self.tasks.borrow(task_small_id).valid_until_epoch
     }
 
-    public fun get_task_deprecated_at_epoch(self: &AtomaDb, task_small_id: SmallId): Option<u64> {
+    public fun get_task_deprecated_at_epoch(self: &AtomaDb, task_small_id: TaskSmallId): Option<u64> {
         self.tasks.borrow(task_small_id).deprecated_at_epoch
     }
 
-    public fun get_task_optimizations(self: &AtomaDb, task_small_id: SmallId): vector<u16> {
+    public fun get_task_optimizations(self: &AtomaDb, task_small_id: TaskSmallId): vector<u16> {
         self.tasks.borrow(task_small_id).optimizations
     }
 
-    public fun get_task_security_level(self: &AtomaDb, task_small_id: SmallId): u16 {
+    public fun get_task_security_level(self: &AtomaDb, task_small_id: TaskSmallId): u16 {
         self.tasks.borrow(task_small_id).security_level
     }
 
-    public fun get_task_task_metrics(self: &AtomaDb, task_small_id: SmallId): TaskMetrics {
+    public fun get_task_task_metrics(self: &AtomaDb, task_small_id: TaskSmallId): TaskMetrics {
         self.tasks.borrow(task_small_id).task_metrics
     }  
 
-    public fun get_task_subscribed_nodes(self: &AtomaDb, task_small_id: SmallId): &Table<SmallId, NodePriceData> {
+    public fun get_task_subscribed_nodes(self: &AtomaDb, task_small_id: TaskSmallId): &Table<NodeSmallId, NodePriceData> {
         &self.tasks.borrow(task_small_id).subscribed_nodes
     }
 
-    public fun get_task_subscribed_nodes_small_ids(self: &AtomaDb, task_small_id: SmallId): &TableVec<SmallId> {
+    public fun get_task_subscribed_nodes_small_ids(self: &AtomaDb, task_small_id: TaskSmallId): &TableVec<NodeSmallId> {
         &self.tasks.borrow(task_small_id).subscribed_nodes_small_ids
     }
 
@@ -2077,7 +2101,7 @@ module atoma::db {
     /// It's possible that the node is slashed to zero balance, in which case it
     /// won't participate in new prompts.
     public(package) fun slash_node_on_timeout(
-        self: &mut AtomaDb, node_id: SmallId,
+        self: &mut AtomaDb, node_id: NodeSmallId,
     ): Balance<TOMA> {
         let has_node = self.nodes.contains(node_id);
         if (!has_node) {
@@ -2103,7 +2127,7 @@ module atoma::db {
 
     /// Takes away all node's collateral.
     public(package) fun slash_node_on_dispute(
-        self: &mut AtomaDb, node_id: SmallId,
+        self: &mut AtomaDb, node_id: NodeSmallId,
     ): Balance<TOMA> {
         if (!self.nodes.contains(node_id)) {
             // this node has already been removed
@@ -2116,7 +2140,7 @@ module atoma::db {
     /// Make sure that the fee has been inserted into the treasury!
     public(package) fun attribute_fee_to_node(
         self: &mut AtomaDb,
-        node_id: SmallId,
+        node_id: NodeSmallId,
         fee_amount: u64,
         ctx: &TxContext,
     ) {
@@ -2143,7 +2167,7 @@ module atoma::db {
 
     public(package) fun deposit_fee_to_node(
         self: &mut AtomaDb,
-        node_id: SmallId,
+        node_id: NodeSmallId,
         fee: Balance<TOMA>,
         ctx: &TxContext,
     ) {
@@ -2176,7 +2200,7 @@ module atoma::db {
         model_name: ascii::String,
         echelon_id: EchelonId,
         rng: &mut sui::random::RandomGenerator,
-    ): Option<SmallId> {
+    ): Option<NodeSmallId> {
         let model = self.models.borrow_mut(model_name);
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
         sample_node(&self.nodes, &mut echelon.nodes, rng)
@@ -2190,7 +2214,7 @@ module atoma::db {
         echelon_id: EchelonId,
         count: u64,
         rng: &mut sui::random::RandomGenerator,
-    ): vector<SmallId> {
+    ): vector<NodeSmallId> {
         let model = self.models.borrow_mut(model_name);
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
         sample_unique_nodes(&self.nodes, &mut echelon.nodes, count, rng)
@@ -2203,7 +2227,7 @@ module atoma::db {
         echelon_index: u64,
         count: u64,
         rng: &mut sui::random::RandomGenerator,
-    ): vector<SmallId> {
+    ): vector<NodeSmallId> {
         let model = self.models.borrow_mut(model_name);
         let echelon = model.echelons.borrow_mut(echelon_index);
         sample_unique_nodes(&self.nodes, &mut echelon.nodes, count, rng)
@@ -2246,11 +2270,11 @@ module atoma::db {
     ///   with the given constraints.
     public(package) fun sample_node_for_stack(
         self: &mut AtomaDb,
-        task_small_id: SmallId,
+        task_small_id: TaskSmallId,
         price_cap: u64,
         num_compute_units: u64,
         rng: &mut sui::random::RandomGenerator,
-    ): SmallId {
+    ): NodeSmallId {
         let task = self.tasks.borrow_mut(task_small_id);
         let nodes_count = table_vec::length(&task.subscribed_nodes_small_ids);
         if (nodes_count == 0) {
@@ -2330,11 +2354,11 @@ module atoma::db {
     /// `get_cross_validation_extra_nodes_count()` if there are fewer eligible nodes than required.
     public(package) fun sample_attestation_nodes(
         self: &AtomaDb,
-        task_small_id: SmallId,
+        task_small_id: TaskSmallId,
         price_cap: u64,
         num_compute_units: u64,
         rng: &mut sui::random::RandomGenerator,
-    ): vector<SmallId> {
+    ): vector<NodeSmallId> {
         let task = self.tasks.borrow(task_small_id);
         let subscribed_nodes = &task.subscribed_nodes;
         let subscribed_nodes_small_ids = &task.subscribed_nodes_small_ids;
@@ -2421,10 +2445,10 @@ module atoma::db {
     ///   of the contract.
     fun fetch_stack_settlement_ticket_data(
         self: &AtomaDb,
-        stack_small_id: SmallId,
-        node_small_id: SmallId,
+        stack_small_id: StackSmallId,
+        node_small_id: NodeSmallId,
         ctx: &TxContext,
-    ): (u16, u64, u64, address, SmallId, u64, vector<SmallId>) {
+    ): (u16, u64, u64, address, NodeSmallId, u64, vector<NodeSmallId>) {
         let stack_settlement_ticket = self.stack_settlement_tickets.borrow(stack_small_id);
         let stack = self.stacks.borrow(stack_small_id);
         let task = self.tasks.borrow(stack.task_small_id);
@@ -2517,8 +2541,8 @@ module atoma::db {
     /// incentivizing correct behavior and penalizing non-participation.
     fun handle_attestation_nodes_rewards_and_slashing(
         self: &mut AtomaDb,
-        stack_small_id: SmallId,
-        attestation_nodes: &vector<SmallId>,
+        stack_small_id: StackSmallId,
+        attestation_nodes: &vector<NodeSmallId>,
         node_fee_amount: u64,
         cross_validation_extra_nodes_count: u64,
     ) {
@@ -2570,7 +2594,7 @@ module atoma::db {
     /// This function should only be called after a stack has been fully settled
     /// and all necessary operations (like reward distribution) have been completed.
     /// Calling this function prematurely could result in loss of important data.
-    fun cleanup_stack_data(self: &mut AtomaDb, stack_small_id: SmallId) {
+    fun cleanup_stack_data(self: &mut AtomaDb, stack_small_id: StackSmallId) {
         let StackSettlementTicket {
                 id,
                 stack_small_id: _,
@@ -2621,7 +2645,7 @@ module atoma::db {
         task_small_id: u64,
         ctx: &mut TxContext,
     ) {
-        let task_small_id = SmallId { inner: task_small_id };
+        let task_small_id = TaskSmallId { inner: task_small_id };
         // Check if the task exists
         assert!(object_table::contains(&self.tasks, task_small_id), ETaskNotFound);
 
@@ -2895,7 +2919,7 @@ module atoma::db {
         let model = self.models.borrow_mut(model_name);
         let echelon_id = EchelonId { id: echelon };
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
-        let node_id = SmallId { inner: node_small_id };
+        let node_id = NodeSmallId { inner: node_small_id };
         echelon.oracles.insert(node_id);
     }
 
@@ -2909,7 +2933,7 @@ module atoma::db {
         let model = self.models.borrow_mut(model_name);
         let echelon_id = EchelonId { id: echelon };
         let echelon = get_echelon_mut(&mut model.echelons, echelon_id);
-        echelon.oracles.remove(&SmallId { inner: node_small_id });
+        echelon.oracles.remove(&NodeSmallId { inner: node_small_id });
     }
 
     public entry fun set_model_echelon_settlement_timeout_ms(
@@ -3053,10 +3077,10 @@ module atoma::db {
     ///
     /// In case all nodes have been slashed returns none.
     fun sample_node(
-        nodes: &Table<SmallId, NodeEntry>,
-        echelon_nodes: &mut TableVec<SmallId>,
+        nodes: &Table<NodeSmallId, NodeEntry>,
+        echelon_nodes: &mut TableVec<NodeSmallId>,
         rng: &mut sui::random::RandomGenerator,
-    ): Option<SmallId> {
+    ): Option<NodeSmallId> {
         loop {
             let nodes_count = echelon_nodes.length();
             if (nodes_count == 0) {
@@ -3093,11 +3117,11 @@ module atoma::db {
     /// It's also possible there are no unslashed nodes at all, returning
     /// an empty vector.
     fun sample_unique_nodes(
-        nodes: &Table<SmallId, NodeEntry>,
-        echelon_nodes: &mut TableVec<SmallId>,
+        nodes: &Table<NodeSmallId, NodeEntry>,
+        echelon_nodes: &mut TableVec<NodeSmallId>,
         how_many_nodes_to_sample: u64,
         rng: &mut sui::random::RandomGenerator,
-    ): vector<SmallId> {
+    ): vector<NodeSmallId> {
         assert!(how_many_nodes_to_sample > 0, ECannotSampleZeroNodes);
 
         let mut sampled_nodes = vector::empty();
@@ -3192,10 +3216,10 @@ module atoma::db {
     }
 
     fun get_node_id_if_unslashed_or_swap_remove(
-        nodes: &Table<SmallId, NodeEntry>,
-        echelon_nodes: &mut TableVec<SmallId>,
+        nodes: &Table<NodeSmallId, NodeEntry>,
+        echelon_nodes: &mut TableVec<NodeSmallId>,
         node_index: u64,
-    ): Option<SmallId> {
+    ): Option<NodeSmallId> {
         let node_id = *echelon_nodes.borrow(node_index);
         let has_node = nodes.contains(node_id);
         if (has_node) {
@@ -3245,7 +3269,7 @@ module atoma::db {
     /// So that we don't have to manually destroy table in the tests.
     public struct NodeEntryBin has key {
         id: UID,
-        entries: Table<SmallId, NodeEntry>,
+        entries: Table<NodeSmallId, NodeEntry>,
     }
 
     #[test]
@@ -3257,7 +3281,7 @@ module atoma::db {
         let mut echelon_nodes = sui::table_vec::empty(&mut ctx);
 
         while (nodes.length() < 10) {
-            let node_id = SmallId { inner: nodes.length() + 1 };
+            let node_id = NodeSmallId { inner: nodes.length() + 1 };
             nodes.add(node_id, NodeEntry {
                 collateral: sui::balance::create_for_testing(100),
                 was_disabled_in_epoch: option::none(),
