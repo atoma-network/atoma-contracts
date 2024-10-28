@@ -550,14 +550,13 @@ async fn get_faucet_id(
     client: &SuiClient,
     toma_package: ObjectID,
 ) -> Result<ObjectID> {
-    // get_publish_tx_created_object(
-    //     client,
-    //     toma_package,
-    //     TOMA_COIN_MODULE_NAME,
-    //     FAUCET_TYPE_NAME,
-    // )
-    // .await
-    Ok(ObjectID::from_str("0xeef012ef16681b151db14110266c218e7485eaef806aa4e6655690d6723f12f5").unwrap())
+    get_publish_tx_created_object(
+        client,
+        toma_package,
+        TOMA_COIN_MODULE_NAME,
+        FAUCET_TYPE_NAME,
+    )
+    .await
 }
 
 async fn get_publish_tx_created_object(
