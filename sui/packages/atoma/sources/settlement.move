@@ -1,5 +1,5 @@
 module atoma::settlement {
-    use atoma::db::{EchelonId, SmallId, NodeBadge, AtomaDb};
+    use atoma::db::{EchelonId, NodeSmallId, NodeBadge, AtomaDb};
     use std::ascii;
     use sui::balance;
     use sui::dynamic_object_field;
@@ -25,7 +25,7 @@ module atoma::settlement {
     /// Node is the first to submit a commitment for a given ticket
     public struct FirstSubmissionEvent has copy, drop {
         ticket_id: ID,
-        node_id: SmallId,
+        node_id: NodeSmallId,
     }
 
     /// Nodes did not agree on the settlement.
@@ -49,7 +49,7 @@ module atoma::settlement {
     /// Informs newly sampled node about the chunk that it should
     /// submit commitment for.
     public struct MapNodeToChunk has store, copy, drop {
-        node_id: SmallId,
+        node_id: NodeSmallId,
         order: u64,
     }
 
@@ -57,7 +57,7 @@ module atoma::settlement {
     public struct SettledEvent has copy, drop {
         ticket_id: ID,
         /// If there was a dispute, this is the oracle that resolved it.
-        oracle_node_id: Option<SmallId>,
+        oracle_node_id: Option<NodeSmallId>,
     }
 
     /// Retry settlement when there are at least this many nodes in the echelon.
@@ -101,10 +101,10 @@ module atoma::settlement {
         /// It's important that this vector cannot be read outside of this
         /// package so that txs cannot be aborted unless specific nodes were
         /// sampled.
-        all: vector<SmallId>,
+        all: vector<NodeSmallId>,
         /// This vector is sorted, ie. the first element is the first node that
         /// submitted the commitment first.
-        completed: vector<SmallId>,
+        completed: vector<NodeSmallId>,
         /// The root of the merkle tree that contains the prompt data.
         /// It's empty when the ticket is created.
         /// The first node that submits commitment will fill in this root.
@@ -173,7 +173,7 @@ module atoma::settlement {
         ///
         /// # Important
         /// Can only be some if `is_being_disputed` is true.
-        token_counts_disputed_by: Option<SmallId>,
+        token_counts_disputed_by: Option<NodeSmallId>,
         /// There's only limited time to settle the prompt.
         timeout: TimeoutInfo,
         /// Can only be some if there is exactly one node sampled so far.
@@ -671,7 +671,7 @@ module atoma::settlement {
     public(package) fun new_ticket(
         model_name: ascii::String,
         echelon_id: EchelonId,
-        nodes: vector<SmallId>,
+        nodes: vector<NodeSmallId>,
         input_fee_per_token: u64,
         output_fee_per_token: u64,
         collected_fee_in_protocol_token: u64,

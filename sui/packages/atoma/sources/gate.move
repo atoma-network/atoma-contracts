@@ -1,5 +1,5 @@
 module atoma::gate {
-    use atoma::db::{SmallId, ModelEchelon, AtomaDb};
+    use atoma::db::{NodeSmallId, ModelEchelon, AtomaDb};
     use atoma::settlement::SettlementTicket;
     use std::ascii;
     use sui::balance::Balance;
@@ -69,7 +69,7 @@ module atoma::gate {
         /// there will only be one node sampled, but the prompt will still be
         /// split into several chunks.
         /// See the settlement module for more info.
-        nodes: vector<SmallId>,
+        nodes: vector<NodeSmallId>,
         /// This is the output destination where the output will be stored. The output is serialized with a MessagePack.
         output_destination: vector<u8>,
     }
@@ -122,7 +122,7 @@ module atoma::gate {
         /// there will only be one node sampled, but the prompt will still be
         /// split into several chunks.
         /// See the settlement module for more info.
-        nodes: vector<SmallId>,
+        nodes: vector<NodeSmallId>,
         /// This is the output destination where the output will be stored. The output is serialized with a MessagePack.
         output_destination: vector<u8>,
     }
@@ -343,7 +343,7 @@ module atoma::gate {
         requested_nodes_to_sample: Option<u64>,
         rng: &mut sui::random::RandomGenerator,
         ctx: &mut TxContext,
-    ): (SettlementTicket, u64, vector<SmallId>) {
+    ): (SettlementTicket, u64, vector<NodeSmallId>) {
         let expected_model_modality = atoma.get_model_modality(model);
         assert!(expected_model_modality == model_modality, EModalityMismatch);
 

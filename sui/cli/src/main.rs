@@ -241,21 +241,6 @@ enum DbCmds {
         #[arg(short, long)]
         task_small_id: u64,
     },
-    /// Unsubscribe a node from a specific task in the Atoma network by its index.
-    /// This command removes a node's subscription to a task using the task's small ID and the node's index,
-    /// preventing it from receiving further work for that task.
-    UnsubscribeNodeFromTaskByIndex {
-        /// Optional package ID. If not provided, the default from the environment will be used.
-        #[arg(short, long)]
-        package: Option<String>,
-        /// The small ID of the task to unsubscribe from. This is a unique identifier for the task.
-        #[arg(short, long)]
-        task_small_id: u64,
-        /// The index of the node in the task's subscription list.
-        /// This is used to identify which node to unsubscribe when multiple nodes are subscribed to the same task.
-        #[arg(short, long)]
-        node_index: u64,
-    },
     /// Acquires a new stack entry for a specific task.
     /// This command allows a node to request a new stack entry, which represents
     /// a unit of work to be performed for a given task.
@@ -539,20 +524,6 @@ async fn main() -> Result<()> {
             let digest = db::unsubscribe_node_from_task(
                 &mut context.with_optional_atoma_package_id(package),
                 task_small_id,
-            )
-            .await?;
-
-            println!("{digest}");
-        }
-        Some(Cmds::Db(DbCmds::UnsubscribeNodeFromTaskByIndex {
-            package,
-            task_small_id,
-            node_index,
-        })) => {
-            let digest = db::unsubscribe_node_from_task_by_index(
-                &mut context.with_optional_atoma_package_id(package),
-                task_small_id,
-                node_index,
             )
             .await?;
 
