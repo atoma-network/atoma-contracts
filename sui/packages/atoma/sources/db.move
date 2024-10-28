@@ -3272,6 +3272,130 @@ module atoma::db {
         entries: Table<NodeSmallId, NodeEntry>,
     }
 
+    #[test_only]
+    public(package) fun init_for_testing(ctx: &mut TxContext) {
+        init(ctx);
+    }
+
+    #[test_only]
+    public fun create_task_metrics_for_testing(
+        compute_unit: u16,
+        time_unit: Option<u16>,
+        value: Option<u64>,
+    ): TaskMetrics {
+        TaskMetrics {
+            compute_unit,
+            time_unit,
+            value,
+        }
+    }
+
+    #[test_only]
+    public fun get_task_badge_small_id(task_badge: &TaskBadge): u64 {
+        task_badge.small_id.inner
+    }
+
+    #[test_only]
+    public fun verify_task_badge_id(task_badge: &TaskBadge): bool {
+        // Using uid_to_inner will abort if the ID is not valid
+        let _id = object::uid_to_inner(&task_badge.id);
+        true
+    }
+
+    #[test_only]
+    public fun create_task_badge_for_testing(ctx: &mut TxContext, small_id: u64): TaskBadge {
+        TaskBadge {
+            id: object::new(ctx),
+            small_id: TaskSmallId { inner: small_id },
+        }
+    }
+
+    #[test_only]
+    public fun check_deprecated_task(db: &AtomaDb, task_small_id: u64): bool {
+        let task = db.tasks.borrow(TaskSmallId { inner: task_small_id });
+        task.is_deprecated
+    }
+
+    #[test_only]
+    public fun check_task_deprecated_epoch_at(db: &AtomaDb, task_small_id: u64, deprecated_epoch_at: u64): bool {
+        let task = db.tasks.borrow(TaskSmallId { inner: task_small_id });
+        task.deprecated_at_epoch == option::some(deprecated_epoch_at)
+    }
+
+    #[test_only]
+    public fun check_valid_until_epoch(db: &AtomaDb, task_small_id: u64, valid_until_epoch: u64): bool {
+        let task = db.tasks.borrow(TaskSmallId { inner: task_small_id });
+        task.valid_until_epoch == option::some(valid_until_epoch)
+    }
+
+    #[test_only]
+    public fun check_task_exists(db: &AtomaDb, task_small_id: u64): bool {
+        db.tasks.contains(TaskSmallId { inner: task_small_id })
+    }
+
+    #[test_only]
+    public fun is_node_subscribed_to_task(db: &AtomaDb, node_badge: &NodeBadge, task_small_id: u64): bool {
+        let task = db.tasks.borrow(TaskSmallId { inner: task_small_id });
+        task.subscribed_nodes.contains(NodeSmallId { inner: get_node_badge_small_id(node_badge) })
+    }
+
+    #[test_only]
+    public fun get_node_subscription_price(db: &AtomaDb, task_small_id: u64, node_small_id: u64): u64 {
+        let task = db.tasks.borrow(TaskSmallId { inner: task_small_id });
+        let node_subscription = task.subscribed_nodes.borrow(NodeSmallId { inner: node_small_id });
+        node_subscription.price_per_compute_unit
+    }
+
+    #[test_only]
+    public fun get_node_badge_small_id(node_badge: &NodeBadge): u64 {
+        node_badge.small_id.inner
+    }
+
+    #[test_only]
+    public fun get_node_subscription_max_units(db: &AtomaDb, task_small_id: u64, node_small_id: u64): u64 {
+        let task = db.tasks.borrow(TaskSmallId { inner: task_small_id });
+        let node_subscription = task.subscribed_nodes.borrow(NodeSmallId { inner: node_small_id });
+        node_subscription.max_num_compute_units
+    }
+
+    #[test_only]
+    /// Creates a test node entry directly in the DB and returns a NodeBadge
+    public fun create_test_node(
+        db: &mut AtomaDb,
+        ctx: &mut TxContext,
+    ) {
+        // Get next node ID
+        let small_id = db.next_node_small_id;
+        db.next_node_small_id.inner = db.next_node_small_id.inner + 1;
+
+        // Create test node entry
+        let node_entry = NodeEntry {
+            collateral: balance::create_for_testing<TOMA>(1000000), // Test collateral amount
+            was_disabled_in_epoch: option::none(),
+            last_fee_epoch: tx_context::epoch(ctx),
+            last_fee_epoch_amount: 0,
+            available_fee_amount: 0,
+            reputation_score: ReputationScore { inner: REPUTATION_SCORE_START },
+        };
+
+        // Add node to DB
+        table::add(&mut db.nodes, small_id, node_entry);
+
+        // Create and return badge
+        let badge_id = object::new(ctx);
+        
+        // Emit the same event as the real registration would
+        sui::event::emit(NodeRegisteredEvent {
+            badge_id: object::uid_to_inner(&badge_id),
+            node_small_id: small_id,
+        });
+
+        transfer::transfer(NodeBadge {
+            id: badge_id,
+            small_id,
+        }, ctx.sender());
+    }
+
     #[test]
     fun it_samples_unique_random_nodes() {
         let mut ctx = sui::tx_context::dummy();
