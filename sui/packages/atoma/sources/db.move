@@ -44,11 +44,11 @@ module atoma::db {
     /// We perform cross validation when the user does not specify how many
     /// nodes to sampled.
     /// See `gate` and `settlement` modules for more info.
-    const InitialCrossValidationProbabilityPermille: u64 = 10;
+    const InitialCrossValidationProbabilityPermille: u64 = 10; // 1%
     /// How many extra nodes to sample when cross validating.
     const InitialCrossValidationExtraNodesCount: u64 = 1;
     /// A small increment on the sampling consensus charge permille for each extra attestation node sampled
-    const InitialCrossValidationExtraAttestationNodesChargePermille: u64 = 12;
+    const InitialCrossValidationExtraAttestationNodesChargePermille: u64 = 12; // 1.2%
     /// Security level for the task
     const NoSecurityLevel: u16 = 0;
     /// Sampling consensus security level is used for tasks that require a high level of security and robustness.
@@ -102,28 +102,27 @@ module atoma::db {
     const EModelNotFound: u64 = EBase + 21;
     const ENoNodesSubscribedToTask: u64 = EBase + 22;
     const ENoNodesEligibleForTask: u64 = EBase + 23;
-    const ENotStackOwner: u64 = EBase + 24;
-    const ENodeNotSelectedForStack: u64 = EBase + 25;
-    const EStackInSettlementDispute: u64 = EBase + 26;
-    const ETooManyComputedUnits: u64 = EBase + 27;
-    const EStackDoesNotRequireSamplingConsensus: u64 = EBase + 28;
-    const EStackNotFound: u64 = EBase + 29;
-    const EStackNotInSettlementDispute: u64 = EBase + 30;
-    const EStackDisputePeriodOver: u64 = EBase + 31;
-    const ENodeNotSelectedForAttestation: u64 = EBase + 32;
-    const EStackInDispute: u64 = EBase + 33;
-    const EStackDisputePeriodIsNotOver: u64 = EBase + 34;
-    const ENodeNotSelectedForSettlement: u64 = EBase + 35;
-    const ETaskAlreadyDeprecated: u64 = EBase + 36;
-    const EInvalidTaskRole: u64 = EBase + 37;
-    const EInvalidSecurityLevel: u64 = EBase + 38;
-    const EInvalidPricePerComputeUnit: u64 = EBase + 39;
-    const EInvalidMaxNumComputeUnits: u64 = EBase + 40;
-    const ENodeDoesNotMeetTaskRequirements: u64 = EBase + 41;
-    const EInvalidComputeUnits: u64 = EBase + 42;
-    const EInsufficientBalance: u64 = EBase + 43;
-    const EInvalidCommittedStackProof: u64 = EBase + 44;
-    const EInvalidStackMerkleLeaf: u64 = EBase + 45;
+    const ENodeNotSelectedForStack: u64 = EBase + 24;
+    const EStackInSettlementDispute: u64 = EBase + 25;
+    const ETooManyComputedUnits: u64 = EBase + 26;
+    const EStackDoesNotRequireSamplingConsensus: u64 = EBase + 27;
+    const EStackNotFound: u64 = EBase + 28;
+    const EStackNotInSettlementDispute: u64 = EBase + 29;
+    const EStackDisputePeriodOver: u64 = EBase + 30;
+    const ENodeNotSelectedForAttestation: u64 = EBase + 31;
+    const EStackInDispute: u64 = EBase + 32;
+    const EStackDisputePeriodIsNotOver: u64 = EBase + 33;
+    const ENodeNotSelectedForSettlement: u64 = EBase + 34;
+    const ETaskAlreadyDeprecated: u64 = EBase + 35;
+    const EInvalidTaskRole: u64 = EBase + 36;
+    const EInvalidSecurityLevel: u64 = EBase + 37;
+    const EInvalidPricePerComputeUnit: u64 = EBase + 38;
+    const EInvalidMaxNumComputeUnits: u64 = EBase + 39;
+    const ENodeDoesNotMeetTaskRequirements: u64 = EBase + 40;
+    const EInvalidComputeUnits: u64 = EBase + 41;
+    const EInsufficientBalance: u64 = EBase + 42;
+    const EInvalidCommittedStackProof: u64 = EBase + 43;
+    const EInvalidStackMerkleLeaf: u64 = EBase + 44;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -1433,7 +1432,7 @@ module atoma::db {
 
         let stack = self.stacks.borrow(stack_small_id);
         let node_small_id = node_badge.small_id;
-        assert!(stack.owner == ctx.sender(), ENotStackOwner);
+
         assert!(node_small_id == stack.selected_node_id, ENodeNotSelectedForStack);
         assert!(num_claimed_compute_units <= stack.num_compute_units, ETooManyComputedUnits);
         assert!(!self.stack_settlement_tickets.contains(stack_small_id), EStackInSettlementDispute);
@@ -3394,6 +3393,63 @@ module atoma::db {
             id: badge_id,
             small_id,
         }, ctx.sender());
+    }
+
+    #[test_only]
+    public fun verify_stack_badge_id(stack_badge: &StackBadge): bool {
+        // Using uid_to_inner will abort if the ID is not valid
+        let _id = object::uid_to_inner(&stack_badge.id);
+        true
+    }
+
+    #[test_only]
+    public fun get_stack_badge_small_id(stack_badge: &StackBadge): u64 {
+        stack_badge.small_id.inner
+    }
+
+    #[test_only]
+    public fun check_stack_settlement_exists(db: &AtomaDb, stack_small_id: u64): bool {
+        db.stack_settlement_tickets.contains(StackSmallId { inner: stack_small_id })
+    }
+
+    #[test_only]
+    public fun get_stack_settlement(db: &AtomaDb, stack_small_id: u64): &StackSettlementTicket {
+        db.stack_settlement_tickets.borrow(StackSmallId { inner: stack_small_id })
+    }
+
+    #[test_only]
+    public fun get_num_requested_attestation_nodes(settlement: &StackSettlementTicket): u64 {
+        vector::length(&settlement.requested_attestation_nodes)
+    }
+
+    #[test_only]
+    public fun compare_stack_and_settlement_ticket(stack_badge: &StackBadge, settlement: &StackSettlementTicket): bool {
+        stack_badge.small_id == settlement.stack_small_id
+    }
+
+    #[test_only]
+    public fun compare_requested_attestation_nodes(settlement: &StackSettlementTicket, node_small_id: u64): bool {
+        vector::contains(&settlement.requested_attestation_nodes, &NodeSmallId { inner: node_small_id })
+    }
+
+    #[test_only]
+    public fun confirm_stack_settlement_ticket_dispute_epoch(settlement: &StackSettlementTicket, epoch: u64): bool {
+        settlement.dispute_settled_at_epoch == epoch
+    }
+
+    #[test_only]
+    public fun compare_already_attested_nodes(settlement: &StackSettlementTicket, node_small_id: u64): bool {
+        vector::contains(&settlement.already_attested_nodes, &NodeSmallId { inner: node_small_id })
+    }
+
+    #[test_only]
+    public fun is_stack_settlement_ticket_disputed(settlement: &StackSettlementTicket): bool {
+        settlement.is_in_dispute
+    }
+
+    #[test_only]
+    public fun confirm_committed_stack_proof(settlement: &StackSettlementTicket, proof: vector<u8>, leaf: vector<u8>): bool {
+        settlement.committed_stack_proof == proof && settlement.stack_merkle_leaves_vector == leaf
     }
 
     #[test]
