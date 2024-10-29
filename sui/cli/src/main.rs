@@ -174,7 +174,7 @@ enum DbCmds {
         #[arg(short, long)]
         security_level: Option<u16>,
         /// Optional minimum reputation score required for this task
-        #[arg(short = 'r', long)]
+        #[arg(short = 's', long)]
         minimum_reputation_score: Option<u8>,
     },
     /// Deprecates a task in the database.
