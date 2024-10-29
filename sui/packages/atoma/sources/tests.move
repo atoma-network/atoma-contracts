@@ -1,22 +1,45 @@
 #[test_only]
 module atoma::db_tests {
     use atoma::db::{Self, AtomaDb, TaskBadge, EInvalidTaskRole, EInvalidSecurityLevel, EModelNotFound, ETaskNotFound, ETaskAlreadyDeprecated, ETaskNotDeprecated, 
-        ENotEnoughEpochsPassed, NodeBadge, ETaskDeprecated, EInvalidPricePerComputeUnit, EInvalidMaxNumComputeUnits, ENodeAlreadySubscribedToTask, ENodeNotSubscribedToTask};
+        ENotEnoughEpochsPassed, NodeBadge, ETaskDeprecated, EInvalidPricePerComputeUnit, EInvalidMaxNumComputeUnits, ENodeAlreadySubscribedToTask, ENodeNotSubscribedToTask,
+        StackBadge, EInvalidComputeUnits, EInsufficientBalance, ENoNodesSubscribedToTask, ENodeNotSelectedForStack, ETooManyComputedUnits, EStackInSettlementDispute,
+        EInvalidCommittedStackProof, EInvalidStackMerkleLeaf, ENoNodesEligibleForTask, AtomaManagerBadge
+    };
     use sui::test_scenario::{Self as test, Scenario};
     use std::ascii;
+    use sui::coin::{Self, Coin};
+    use sui::random::Random;
+    use toma::toma::TOMA;
 
+    const SYSTEM: address = @0x0;
     const ADMIN: address = @0xAD;
     const USER: address = @0xB0B;
+    const NODE: address = @0xB0C;
+    const NODE2: address = @0xB0D;
 
     const INFERENCE_ROLE: u16 = 0;
 
+    // At the top of the module, add these test-only constants for coin amounts
+    const MINT_AMOUNT: u64 = 1_000_000_000; // 1 billion tokens for testing
+
     fun setup_test(): Scenario {
-        let mut scenario = test::begin(ADMIN);
-        // Initialize the AtomaDb
+        let mut scenario = test::begin(SYSTEM);  // Start scenario with SYSTEM address
+        // Initialize the AtomaDb and Random object
         {
             db::init_for_testing(test::ctx(&mut scenario));
+            sui::random::create_for_testing(test::ctx(&mut scenario));
         };
+        
         scenario
+    }
+
+    fun mint_test_tokens(scenario: &mut Scenario, recipient: address, amount: u64) {
+        test::next_tx(scenario, ADMIN);
+        {
+            // Create test coins and transfer to recipient
+            let coin = coin::mint_for_testing<TOMA>(amount, test::ctx(scenario));
+            transfer::public_transfer(coin, recipient);
+        };
     }
 
     #[test]
@@ -1437,6 +1460,1414 @@ module atoma::db_tests {
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
         };
+        test::end(scenario);
+    }
+
+    #[test]
+    fun test_acquire_new_stack_basic_success() {
+        let mut scenario = setup_test();
+
+        // Mint tokens to USER for testing
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+
+        // First tx: Create a task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+        };
+
+        // Second tx: Register a node
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        // Third tx: Subscribe node to task
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            
+            db::subscribe_node_to_task(
+                &mut db,
+                &mut node_badge,
+                1,       // task_small_id
+                10,     // price_per_compute_unit
+                100,    // max_num_compute_units
+            );
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // Fourth tx: Create a stack
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            
+            let random = test::take_shared<Random>(&scenario);
+            
+            db::acquire_new_stack_entry(
+                &mut db,
+                &mut wallet,
+                1,          // task_small_id
+                100,        // num_compute_units
+                10,         // price
+                &random,
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+            
+        // Verify stack creation
+        test::next_tx(&mut scenario, USER);
+        {
+            let stack_badge = test::take_from_sender<StackBadge>(&scenario);
+            assert!(db::verify_stack_badge_id(&stack_badge), 0);
+            assert!(db::get_stack_badge_small_id(&stack_badge) == 1, 1);
+            
+            test::return_to_sender(&scenario, stack_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = ETaskNotFound)]
+    fun test_acquire_new_stack_nonexistent_task() {
+        let mut scenario = setup_test();
+        
+        // Mint tokens to USER for testing
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            db::acquire_new_stack_entry(
+                &mut db,
+                &mut wallet,
+                999,        // nonexistent task_small_id
+                100,        // num_compute_units
+                10,         // price
+                &random,
+                test::ctx(&mut scenario)
+            );
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = EInvalidComputeUnits)]
+    fun test_acquire_new_stack_zero_compute_units() {
+        let mut scenario = setup_test();
+        
+        // Mint tokens to USER for testing
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+
+        // First tx: Create a task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+        };
+
+        // Second tx: Register a node
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        // Third tx: Subscribe node to task
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            
+            db::subscribe_node_to_task(
+                &mut db,
+                &mut node_badge,
+                1,       // task_small_id
+                10,     // price_per_compute_unit
+                100,    // max_num_compute_units
+            );
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // Fourth tx: Try to create stack with zero compute units
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            db::acquire_new_stack_entry(
+                &mut db,
+                &mut wallet,
+                1,          // task_small_id
+                0,          // zero compute_units
+                10,         // price
+                &random,
+                test::ctx(&mut scenario)
+            );
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = EInvalidPricePerComputeUnit)]
+    fun test_acquire_new_stack_zero_price() {
+        let mut scenario = setup_test();
+        
+        // Mint tokens to USER for testing
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+
+        // First tx: Create a task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+        };
+
+        // Second tx: Register a node
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        // Third tx: Subscribe node to task
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            
+            db::subscribe_node_to_task(
+                &mut db,
+                &mut node_badge,
+                1,       // task_small_id
+                10,     // price_per_compute_unit
+                100,    // max_num_compute_units
+            );
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // Fourth tx: Try to create stack with zero price
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            db::acquire_new_stack_entry(
+                &mut db,
+                &mut wallet,
+                1,          // task_small_id
+                100,        // num_compute_units
+                0,          // zero price
+                &random,
+                test::ctx(&mut scenario)
+            );
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = EInsufficientBalance)]
+    fun test_acquire_new_stack_insufficient_balance() {
+        let mut scenario = setup_test();
+        
+        // First tx: Create a task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+        };
+
+        // Second tx: Register a node
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        // Third tx: Subscribe node to task
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            
+            db::subscribe_node_to_task(
+                &mut db,
+                &mut node_badge,
+                1,       // task_small_id
+                10,     // price_per_compute_unit
+                100,    // max_num_compute_units
+            );
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // Fourth tx: Try to create stack with insufficient balance
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut empty_wallet = coin::zero<TOMA>(test::ctx(&mut scenario));
+            let random = test::take_shared<Random>(&scenario);
+            
+            db::acquire_new_stack_entry(
+                &mut db,
+                &mut empty_wallet,
+                1,          // task_small_id
+                100,        // num_compute_units
+                1000000,    // very high price
+                &random,
+                test::ctx(&mut scenario)
+            );
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, empty_wallet);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    fun test_acquire_multiple_stacks() {
+        let mut scenario = setup_test();
+        
+        // Mint tokens to USER for testing
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+
+        // First tx: Create a task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+        };
+
+        // Second tx: Register a node
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        // Third tx: Subscribe node to task
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            
+            db::subscribe_node_to_task(
+                &mut db,
+                &mut node_badge,
+                1,       // task_small_id
+                10,     // price_per_compute_unit
+                1000,    // max_num_compute_units
+            );
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // Fourth tx: Create first stack
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            db::acquire_new_stack_entry(
+                &mut db,
+                &mut wallet,
+                1,          // task_small_id
+                100,        // num_compute_units
+                10,         // price
+                &random,
+                test::ctx(&mut scenario)
+            );
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+
+        // Verify first stack
+        test::next_tx(&mut scenario, USER);
+        {
+            let stack_badge1 = test::take_from_sender<StackBadge>(&scenario);
+            assert!(db::get_stack_badge_small_id(&stack_badge1) == 1, 0);
+            test::return_to_sender(&scenario, stack_badge1);
+        };
+
+        // Fifth tx: Create second stack
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            db::acquire_new_stack_entry(
+                &mut db,
+                &mut wallet,
+                1,          // task_small_id
+                200,        // different num_compute_units
+                20,         // different price
+                &random,
+                test::ctx(&mut scenario)
+            );
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+
+        // Verify second stack
+        test::next_tx(&mut scenario, USER);
+        {
+            let stack_badge2 = test::take_from_sender<StackBadge>(&scenario);
+            assert!(db::get_stack_badge_small_id(&stack_badge2) == 2, 1);
+            test::return_to_sender(&scenario, stack_badge2);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = ENoNodesEligibleForTask)]
+    fun test_try_settle_stack_node_price_too_high() {
+        let mut scenario = setup_test();
+        
+        // Mint tokens to USER for testing
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+        
+        // First tx: Create task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+        };
+
+        // Second tx: Register node
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        // Third tx: Subscribe node to task with high price
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            
+            // Node sets a high price of 100 per compute unit
+            db::subscribe_node_to_task(
+                &mut db,
+                &mut node_badge,
+                1,       // task_small_id
+                100,     // price_per_compute_unit (high price)
+                1000,    // max_num_compute_units
+            );
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // Fourth tx: Create a stack with lower price expectation
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            // User creates stack willing to pay only 50 per compute unit
+            db::acquire_new_stack_entry(
+                &mut db,
+                &mut wallet,
+                1,          // task_small_id
+                50,         // num_compute_units
+                50,         // price_per_compute_unit (lower than node's price)
+                &random,
+                test::ctx(&mut scenario)
+            );
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    fun test_try_settle_stack_basic_success() {
+        let mut scenario = setup_test();
+        
+        // Mint tokens to USER for testing
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+
+        // First tx: Create a task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+        };
+
+        // Second tx: Register a node
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        // Third tx: Subscribe node to task
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            
+            db::subscribe_node_to_task(
+                &mut db,
+                &mut node_badge,
+                1,       // task_small_id
+                10,     // price_per_compute_unit
+                100,    // max_num_compute_units
+            );
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // Fourth tx: Create a stack
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            db::acquire_new_stack_entry(
+                &mut db,
+                &mut wallet,
+                1,          // task_small_id
+                50,         // num_compute_units
+                10,         // price
+                &random,
+                test::ctx(&mut scenario)
+            );
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+
+        // Fifth tx: Try to settle stack
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            let proof = x"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+            let leaf = x"FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210";
+            
+            db::try_settle_stack(
+                &mut db,
+                &node_badge,
+                1,          // stack_small_id
+                50,         // num_claimed_compute_units (equal to stack units)
+                proof,      // committed_stack_proof
+                leaf,       // stack_merkle_leaf
+                &random,
+                test::ctx(&mut scenario)
+            );
+
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // Verify settlement
+        test::next_tx(&mut scenario, NODE);
+        {
+            let db = test::take_shared<AtomaDb>(&scenario);
+            assert!(db::check_stack_settlement_exists(&db, 1), 0);
+            test::return_shared(db);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = ENoNodesSubscribedToTask)]
+    fun test_try_settle_stack_wrong_selected_node() {
+        let mut scenario = setup_test();
+        
+        // Mint tokens to USER for testing
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+
+        // First tx: Create a task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+        };
+
+        // Second tx: Register a node
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        // Third tx: Create a stack
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            db::acquire_new_stack_entry(
+                &mut db,
+                &mut wallet,
+                1,          // task_small_id
+                50,         // num_compute_units
+                10,         // price
+                &random,
+                test::ctx(&mut scenario)
+            );
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            let proof = x"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+            let leaf = x"FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210";
+            
+            db::try_settle_stack(
+                &mut db,
+                &node_badge,
+                1,          // stack_small_id
+                50,         // num_claimed_compute_units
+                proof,      // committed_stack_proof
+                leaf,       // stack_merkle_leaf
+                &random,
+                test::ctx(&mut scenario)
+            );
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, node_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = ENodeNotSelectedForStack)]
+    fun test_try_settle_stack_wrong_node() {
+        let mut scenario = setup_test();
+        
+        // Mint tokens to USER for testing
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+
+        // First tx: Create a task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+        };
+
+        // Second tx: Register first node
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        // Third tx: Register second node
+        test::next_tx(&mut scenario, NODE2);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        // Fourth tx: Subscribe first node to task
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            
+            db::subscribe_node_to_task(
+                &mut db,
+                &mut node_badge,
+                1,       // task_small_id
+                10,     // price_per_compute_unit
+                100,    // max_num_compute_units
+            );
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // Fifth tx: Subscribe second node to task
+        test::next_tx(&mut scenario, NODE2);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            
+            db::subscribe_node_to_task(
+                &mut db,
+                &mut node_badge,
+                1,       // task_small_id
+                10,     // price_per_compute_unit
+                100,    // max_num_compute_units
+            );
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // Sixth tx: Create a stack (will be assigned to first node)
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            db::acquire_new_stack_entry(
+                &mut db,
+                &mut wallet,
+                1,          // task_small_id
+                50,         // num_compute_units
+                10,         // price
+                &random,
+                test::ctx(&mut scenario)
+            );
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+
+        // Seventh tx: Try to settle stack with wrong node
+        test::next_tx(&mut scenario, NODE2);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            let proof = x"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+            let leaf = x"FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210";
+            
+            db::try_settle_stack(
+                &mut db,
+                &node_badge,
+                1,          // stack_small_id
+                50,         // num_claimed_compute_units
+                proof,      // committed_stack_proof
+                leaf,       // stack_merkle_leaf
+                &random,
+                test::ctx(&mut scenario)
+            );
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, node_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = ETooManyComputedUnits)]
+    fun test_try_settle_stack_excess_units() {
+        let mut scenario = setup_test();
+        
+        // Mint tokens to USER for testing
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+
+        // First tx: Create a task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+        };
+
+        // Second tx: Register node
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        // Third tx: Subscribe node to task
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            
+            db::subscribe_node_to_task(
+                &mut db,
+                &mut node_badge,
+                1,       // task_small_id
+                10,     // price_per_compute_unit
+                100,    // max_num_compute_units
+            );
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // Fourth tx: Create a stack
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            db::acquire_new_stack_entry(
+                &mut db,
+                &mut wallet,
+                1,          // task_small_id
+                50,         // num_compute_units
+                10,         // price
+                &random,
+                test::ctx(&mut scenario)
+            );
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+
+        // Fifth tx: Try to settle stack with excess units
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            let proof = x"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+            let leaf = x"FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210";
+            
+            db::try_settle_stack(
+                &mut db,
+                &node_badge,
+                1,          // stack_small_id
+                100,        // num_claimed_compute_units (more than allocated 50)
+                proof,      // committed_stack_proof
+                leaf,       // stack_merkle_leaf
+                &random,
+                test::ctx(&mut scenario)
+            );
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, node_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = EStackInSettlementDispute)]
+    fun test_try_settle_stack_already_settled() {
+        let mut scenario = setup_test();
+        
+        // Standard setup
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+        
+        // First tx: Create task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db,
+                INFERENCE_ROLE, 
+                option::none(),
+                option::none(), 
+                option::none(),
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+        };
+
+        // Setup node and subscription
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 10, 100);
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // Create stack
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            db::acquire_new_stack_entry(&mut db, &mut wallet, 1, 50, 10, &random, test::ctx(&mut scenario));
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+
+        // First settlement attempt
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            let proof = x"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+            let leaf = x"FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210";
+            
+            db::try_settle_stack(&mut db, &node_badge, 1, 50, proof, leaf, &random, test::ctx(&mut scenario));
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // Second settlement attempt (should fail)
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            let proof = x"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+            let leaf = x"FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210";
+            
+            db::try_settle_stack(&mut db, &node_badge, 1, 50, proof, leaf, &random, test::ctx(&mut scenario));
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, node_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = EInvalidCommittedStackProof)]
+    fun test_try_settle_stack_invalid_proof() {
+        let mut scenario = setup_test();
+        
+        // Standard setup
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+        
+        // Setup task, node, and stack
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db, 
+                INFERENCE_ROLE, 
+                option::none(), 
+                option::none(), 
+                option::none(), 
+                test::ctx(&mut scenario)
+            );      
+            test::return_shared(db);
+        };
+
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 10, 100);
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            db::acquire_new_stack_entry(&mut db, &mut wallet, 1, 50, 10, &random, test::ctx(&mut scenario));
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+
+        // Try to settle with invalid proof length
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            let invalid_proof = x"0123"; // Too short
+            let leaf = x"FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210";
+            
+            db::try_settle_stack(&mut db, &node_badge, 1, 50, invalid_proof, leaf, &random, test::ctx(&mut scenario));
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, node_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = EInvalidStackMerkleLeaf)]
+    fun test_try_settle_stack_invalid_leaf() {
+        let mut scenario = setup_test();
+        
+        // Standard setup
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+        
+        // Setup task, node, and stack (similar to previous test)
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db, 
+                INFERENCE_ROLE, 
+                option::none(), 
+                option::none(), 
+                option::none(), 
+                test::ctx(&mut scenario)
+            ); 
+            test::return_shared(db);
+        };
+
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 10, 100);
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            db::acquire_new_stack_entry(&mut db, &mut wallet, 1, 50, 10, &random, test::ctx(&mut scenario));
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+
+        // Try to settle with invalid merkle leaf length
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            let proof = x"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+            let invalid_leaf = x"FEDC"; // Too short
+            
+            db::try_settle_stack(&mut db, &node_badge, 1, 50, proof, invalid_leaf, &random, test::ctx(&mut scenario));
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, node_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = ENodeNotSelectedForStack)]
+    fun test_try_settle_stack_with_sampling_consensus() {
+        let mut scenario = setup_test();
+        
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+        
+        // Create task with SamplingConsensusSecurityLevel
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+        };
+
+        // Setup multiple nodes for potential sampling
+        let nodes = vector[@0xB0C, @0xB0D, @0xB0E, @0xB0F];
+        let mut i = 0;
+        while (i < vector::length(&nodes)) {
+            test::next_tx(&mut scenario, *vector::borrow(&nodes, i));
+            {
+                let mut db = test::take_shared<AtomaDb>(&scenario);
+                db::create_test_node(&mut db, test::ctx(&mut scenario));
+                test::return_shared(db);
+            };
+
+            test::next_tx(&mut scenario, *vector::borrow(&nodes, i));
+            {
+                let mut db = test::take_shared<AtomaDb>(&scenario);
+                let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+                db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 10, 100);
+                test::return_shared(db);
+                test::return_to_sender(&scenario, node_badge);
+            };
+            i = i + 1;
+        };
+
+        // Create and settle stack
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            db::acquire_new_stack_entry(&mut db, &mut wallet, 1, 50, 10, &random, test::ctx(&mut scenario));
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+
+        test::next_tx(&mut scenario, *vector::borrow(&nodes, 0));
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            let proof = x"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+            let leaf = x"FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210";
+            
+            db::try_settle_stack(&mut db, &node_badge, 1, 50, proof, leaf, &random, test::ctx(&mut scenario));
+            
+            // Verify that attestation nodes were sampled
+            let settlement = db::get_stack_settlement(&db, 1);
+            let num_requested_attestation_nodes = db::get_num_requested_attestation_nodes(settlement);
+            assert!(num_requested_attestation_nodes > 0, 0);
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, node_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    fun test_try_settle_stack_multiple_stacks() {
+        let mut scenario = setup_test();
+        
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+        
+        // Create task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_task_entry(
+                &mut db, 
+                INFERENCE_ROLE, 
+                option::none(), 
+                option::none(), 
+                option::none(), 
+                test::ctx(&mut scenario)
+            ); 
+            test::return_shared(db);
+        };
+
+        // Setup node
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+            test::return_shared(db);
+        };
+
+        test::next_tx(&mut scenario, NODE);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 10, 200);
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // Create and settle multiple stacks
+        let num_stacks = 3;
+        let mut i = 0;
+        while (i < num_stacks) {
+            // Create stack
+            test::next_tx(&mut scenario, USER);
+            {
+                let mut db = test::take_shared<AtomaDb>(&scenario);
+                let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+                let random = test::take_shared<Random>(&scenario);
+                db::acquire_new_stack_entry(&mut db, &mut wallet, 1, 50, 10, &random, test::ctx(&mut scenario));
+                test::return_shared(db);
+                test::return_shared(random);
+                test::return_to_sender(&scenario, wallet);
+            };
+
+            // Settle stack
+            test::next_tx(&mut scenario, NODE);
+            {
+                let mut db = test::take_shared<AtomaDb>(&scenario);
+                let node_badge = test::take_from_sender<NodeBadge>(&scenario);
+                let random = test::take_shared<Random>(&scenario);
+                let proof = x"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+                let leaf = x"FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210";
+                
+                db::try_settle_stack(&mut db, &node_badge, (i as u64) + 1, 50, proof, leaf, &random, test::ctx(&mut scenario));
+                
+                test::return_shared(db);
+                test::return_shared(random);
+                test::return_to_sender(&scenario, node_badge);
+            };
+
+            // Verify settlement
+            test::next_tx(&mut scenario, NODE);
+            {
+                let db = test::take_shared<AtomaDb>(&scenario);
+                assert!(db::check_stack_settlement_exists(&db, (i as u64) + 1), i);
+                test::return_shared(db);
+            };
+            
+            i = i + 1;
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    fun test_submit_stack_settlement_attestation_success() {
+        let mut scenario = setup_test();
+        
+        mint_test_tokens(&mut scenario, USER, MINT_AMOUNT);
+        
+        // Create task with SamplingConsensusSecurityLevel
+        test::next_tx(&mut scenario, SYSTEM);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let admin_badge = test::take_from_sender<AtomaManagerBadge>(&scenario);
+            db::set_cross_validation_probability_permille(&mut db, &admin_badge, 1000);
+            db::create_task_entry(
+                &mut db,
+                INFERENCE_ROLE,
+                option::none(),
+                option::some(1), // Sampling Consensus security level
+                option::none(),
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+            test::return_to_sender(&scenario, admin_badge);
+        };
+
+        // Setup multiple nodes (1 main + 2 attestation nodes)
+        let nodes = vector[@0xB0C, @0xB0D, @0xB0E];
+        let mut i = 0;
+        while (i < vector::length(&nodes)) {
+            test::next_tx(&mut scenario, *vector::borrow(&nodes, i));
+            {
+                let mut db = test::take_shared<AtomaDb>(&scenario);
+                db::create_test_node(&mut db, test::ctx(&mut scenario));
+                test::return_shared(db);
+            };
+
+            test::next_tx(&mut scenario, *vector::borrow(&nodes, i));
+            {
+                let mut db = test::take_shared<AtomaDb>(&scenario);
+                let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+                db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 10, 100);
+                test::return_shared(db);
+                test::return_to_sender(&scenario, node_badge);
+            };
+            i = i + 1;
+        };
+
+        // Create and initiate stack settlement
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            db::acquire_new_stack_entry(&mut db, &mut wallet, 1, 50, 10, &random, test::ctx(&mut scenario));
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, wallet);
+        };
+
+        // Main node initiates settlement
+        let proof = x"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+        let leaf = x"FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210";
+
+        test::next_tx(&mut scenario, @0xB0C);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            let random = test::take_shared<Random>(&scenario);
+            
+            db::try_settle_stack(&mut db, &node_badge, 1, 50, proof, leaf, &random, test::ctx(&mut scenario));
+            
+            test::return_shared(db);
+            test::return_shared(random);
+            test::return_to_sender(&scenario, node_badge);
+        };
+
+        // First attestation node submits attestation, this is the same node as the main node
+        // as random always selects the first index for selection
+        test::next_tx(&mut scenario, @0xB0C);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            
+            db::submit_stack_settlement_attestation(
+                &mut db,
+                &node_badge,
+                1,      // stack_small_id
+                proof,  // same proof as original
+                leaf,   // same leaf as original
+                test::ctx(&mut scenario)
+            );
+
+            // Get necessary data for StackSettlementTicketEvent verification
+            let settlement = db::get_stack_settlement(&db, 1);            
+            let stack_badge = test::take_from_address<StackBadge>(&scenario, USER);
+
+            assert!(db::compare_stack_and_settlement_ticket(&stack_badge, settlement), 0);
+            assert!(db::get_num_requested_attestation_nodes(settlement) == 1, 0);
+            assert!(db::compare_requested_attestation_nodes(settlement, 1), 0);
+            assert!(db::confirm_stack_settlement_ticket_dispute_epoch(settlement, test::ctx(&mut scenario).epoch() + 2), 0);
+            assert!(db::compare_already_attested_nodes(settlement, 1), 0);
+            assert!(db::is_stack_settlement_ticket_disputed(settlement), 0);
+            assert!(db::confirm_committed_stack_proof(settlement, proof, leaf), 0);
+            
+            test::return_shared(db);
+            test::return_to_address(USER, stack_badge);
+            test::return_to_sender(&scenario, node_badge);
+        };
+        
         test::end(scenario);
     }
 }
