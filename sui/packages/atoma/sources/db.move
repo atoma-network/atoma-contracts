@@ -792,12 +792,6 @@ module atoma::db {
         // Generate new small_id
         let small_id = self.next_task_small_id;
         self.next_task_small_id.inner = self.next_task_small_id.inner + 1;
-
-        // Validate model_name if provided
-        if (option::is_some(&model_name)) {
-            let model_name_ref = option::borrow(&model_name);
-            assert!(self.models.contains(*model_name_ref), EModelNotFound);
-        };
         
         let reputation_score = minimum_reputation_score.get_with_default(0);
 
