@@ -171,7 +171,7 @@ enum DbCmds {
         #[arg(short, long)]
         model_name: Option<String>,
         /// Optional security level for this task
-        #[arg(short, long)]
+        #[arg(short = 'l', long)]
         security_level: Option<u16>,
         /// Optional minimum reputation score required for this task
         #[arg(short = 's', long)]
