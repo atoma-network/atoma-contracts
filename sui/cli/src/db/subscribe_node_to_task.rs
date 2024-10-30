@@ -26,9 +26,9 @@ pub(crate) async fn command(
             vec![
                 SuiJsonValue::from_object_id(atoma_db),
                 SuiJsonValue::from_object_id(node_badge),
-                SuiJsonValue::new(task_small_id.into())?,
-                SuiJsonValue::new(price_per_compute_unit.into())?,
-                SuiJsonValue::new(max_num_compute_units.into())?,
+                SuiJsonValue::new(task_small_id.to_string().into())?,
+                SuiJsonValue::new(price_per_compute_unit.to_string().into())?,
+                SuiJsonValue::new(max_num_compute_units.to_string().into())?,
             ],
             None,
             context.gas_budget(),
