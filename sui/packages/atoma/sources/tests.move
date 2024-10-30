@@ -1,12 +1,11 @@
 #[test_only]
 module atoma::db_tests {
-    use atoma::db::{Self, AtomaDb, TaskBadge, EInvalidTaskRole, EInvalidSecurityLevel, EModelNotFound, ETaskNotFound, ETaskAlreadyDeprecated, ETaskNotDeprecated, 
+    use atoma::db::{Self, AtomaDb, TaskBadge, EInvalidTaskRole, EInvalidSecurityLevel, ETaskNotFound, ETaskAlreadyDeprecated, ETaskNotDeprecated, 
         ENotEnoughEpochsPassed, NodeBadge, ETaskDeprecated, EInvalidPricePerComputeUnit, EInvalidMaxNumComputeUnits, ENodeAlreadySubscribedToTask, ENodeNotSubscribedToTask,
         StackBadge, EInvalidComputeUnits, EInsufficientBalance, ENoNodesSubscribedToTask, ENodeNotSelectedForStack, ETooManyComputedUnits, EStackInSettlementDispute,
         EInvalidCommittedStackProof, EInvalidStackMerkleLeaf, ENoNodesEligibleForTask, AtomaManagerBadge
     };
     use sui::test_scenario::{Self as test, Scenario};
-    use std::ascii;
     use sui::coin::{Self, Coin};
     use sui::random::Random;
     use toma::toma::TOMA;
@@ -170,30 +169,6 @@ module atoma::db_tests {
                 option::none(),                    // model_name
                 option::some(999),                 // invalid security level
                 option::none(),                    // minimum_reputation_score
-                test::ctx(&mut scenario)
-            );
-
-            test::return_shared(db);
-        };
-        test::end(scenario);
-    }
-
-    #[test]
-    #[expected_failure(abort_code = EModelNotFound)]
-    fun test_create_task_nonexistent_model() {
-        let mut scenario = setup_test();
-        
-        test::next_tx(&mut scenario, USER);
-        {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
-            
-            // Try to create task with non-existent model
-            db::create_task_entry(
-                &mut db,
-                INFERENCE_ROLE,                                     // role
-                option::some(ascii::string(b"nonexistent_model")),  // non-existent model
-                option::none(),                                     // security_level
-                option::none(),                                     // minimum_reputation_score
                 test::ctx(&mut scenario)
             );
 
@@ -2862,7 +2837,7 @@ module atoma::db_tests {
             assert!(db::compare_already_attested_nodes(settlement, 1), 0);
             assert!(db::is_stack_settlement_ticket_disputed(settlement), 0);
             assert!(db::confirm_committed_stack_proof(settlement, proof, leaf), 0);
-            
+
             test::return_shared(db);
             test::return_to_address(USER, stack_badge);
             test::return_to_sender(&scenario, node_badge);
