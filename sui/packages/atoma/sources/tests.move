@@ -1,12 +1,11 @@
 #[test_only]
 module atoma::db_tests {
-    use atoma::db::{Self, AtomaDb, TaskBadge, EInvalidTaskRole, EInvalidSecurityLevel, EModelNotFound, ETaskNotFound, ETaskAlreadyDeprecated, ETaskNotDeprecated, 
+    use atoma::db::{Self, AtomaDb, TaskBadge, EInvalidTaskRole, EInvalidSecurityLevel, ETaskNotFound, ETaskAlreadyDeprecated, ETaskNotDeprecated, 
         ENotEnoughEpochsPassed, NodeBadge, ETaskDeprecated, EInvalidPricePerComputeUnit, EInvalidMaxNumComputeUnits, ENodeAlreadySubscribedToTask, ENodeNotSubscribedToTask,
         StackBadge, EInvalidComputeUnits, EInsufficientBalance, ENoNodesSubscribedToTask, ENodeNotSelectedForStack, ETooManyComputedUnits, EStackInSettlementDispute,
         EInvalidCommittedStackProof, EInvalidStackMerkleLeaf, ENoNodesEligibleForTask, AtomaManagerBadge
     };
     use sui::test_scenario::{Self as test, Scenario};
-    use std::ascii;
     use sui::coin::{Self, Coin};
     use sui::random::Random;
     use toma::toma::TOMA;
@@ -60,15 +59,10 @@ module atoma::db_tests {
             // Create basic task with minimal parameters
             db::create_task_entry(
                 &mut db,
-                INFERENCE_ROLE,                   // role
-                option::none(),                   // model_name
-                option::none(),                   // valid_until_epoch
-                vector[],                         // optimizations
-                option::none(),                   // security_level
-                1,                                // compute_unit
-                option::none(),                   // time_unit
-                option::none(),                   // value
-                option::none(),                   // minimum_reputation_score
+                INFERENCE_ROLE, // role
+                option::none(), // model_name
+                option::none(), // security_level
+                option::none(), // minimum_reputation_score
                 test::ctx(&mut scenario)
             );
 
@@ -111,14 +105,9 @@ module atoma::db_tests {
                 &mut db,
                 INFERENCE_ROLE,                    // role
                 option::none(),                    // model_name (none since we haven't registered any models)
-                option::some(100),                 // valid_until_epoch
-                vector[1, 2, 3],                   // optimizations
-                option::some(1),                   // security_level
-                1,                                 // compute_unit
-                option::some(60),                  // time_unit: 60 seconds
-                option::some(1000),                // value: 1000 compute units per time unit
-                option::some(80),                  // minimum_reputation_score
-                test::ctx(&mut scenario)
+                option::some(1),                   // security_level    
+                option::none(),                    // minimum_reputation_score
+                test::ctx(&mut scenario)    
             );
 
             // Return the modified db to commit changes
@@ -154,12 +143,7 @@ module atoma::db_tests {
                 &mut db,
                 999,                               // invalid role
                 option::none(),                    // model_name
-                option::none(),                    // valid_until_epoch
-                vector[],                          // optimizations
                 option::none(),                    // security_level
-                1,                                 // compute_unit
-                option::none(),                    // time_unit
-                option::none(),                    // value
                 option::none(),                    // minimum_reputation_score
                 test::ctx(&mut scenario)
             );
@@ -183,42 +167,8 @@ module atoma::db_tests {
                 &mut db,
                 INFERENCE_ROLE,                    // role
                 option::none(),                    // model_name
-                option::none(),                    // valid_until_epoch
-                vector[],                          // optimizations
                 option::some(999),                 // invalid security level
-                1,                                 // compute_unit
-                option::none(),                    // time_unit
-                option::none(),                    // value
                 option::none(),                    // minimum_reputation_score
-                test::ctx(&mut scenario)
-            );
-
-            test::return_shared(db);
-        };
-        test::end(scenario);
-    }
-
-    #[test]
-    #[expected_failure(abort_code = EModelNotFound)]
-    fun test_create_task_nonexistent_model() {
-        let mut scenario = setup_test();
-        
-        test::next_tx(&mut scenario, USER);
-        {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
-            
-            // Try to create task with non-existent model
-            db::create_task_entry(
-                &mut db,
-                INFERENCE_ROLE,                                     // role
-                option::some(ascii::string(b"nonexistent_model")),  // non-existent model
-                option::none(),                                     // valid_until_epoch
-                vector[],                                           // optimizations
-                option::none(),                                     // security_level
-                1,                                                  // compute_unit
-                option::none(),                                     // time_unit
-                option::none(),                                     // value
-                option::none(),                                     // minimum_reputation_score
                 test::ctx(&mut scenario)
             );
 
@@ -247,12 +197,7 @@ module atoma::db_tests {
                 &mut db,
                 INFERENCE_ROLE,                    // role
                 option::none(),                    // model_name
-                option::none(),                    // valid_until_epoch
-                vector[],                          // optimizations
                 option::none(),                    // security_level
-                1,                                 // compute_unit
-                option::none(),                    // time_unit
-                option::none(),                    // value
                 option::none(),                    // minimum_reputation_score
                 test::ctx(&mut scenario)
             );
@@ -278,13 +223,8 @@ module atoma::db_tests {
             db::create_task_entry(
                 &mut db,
                 INFERENCE_ROLE,                    // role
-                option::none(),                    // model_name
-                option::none(),                    // valid_until_epoch
-                vector[],                          // optimizations
+                option::none(),                    // model_name    
                 option::none(),                    // security_level
-                1,                                 // compute_unit
-                option::none(),                    // time_unit
-                option::none(),                    // value
                 option::none(),                    // minimum_reputation_score
                 test::ctx(&mut scenario)
             );
@@ -322,11 +262,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -345,7 +280,6 @@ module atoma::db_tests {
             
             assert!(db::check_deprecated_task(&db, task_small_id), 0);
             assert!(db::check_task_deprecated_epoch_at(&db, task_small_id, test::ctx(&mut scenario).epoch()), 1);
-            assert!(db::check_valid_until_epoch(&db, task_small_id, test::ctx(&mut scenario).epoch()), 2);
 
             test::return_shared(db);
             test::return_to_sender(&scenario, task_badge);
@@ -389,11 +323,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -432,11 +361,6 @@ module atoma::db_tests {
                 &mut db,
                 INFERENCE_ROLE,
                 option::none(),
-                option::some(1000), // Set far future epoch
-                vector[],
-                option::none(),
-                1,
-                option::none(),
                 option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
@@ -449,14 +373,10 @@ module atoma::db_tests {
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
             let task_badge = test::take_from_sender<TaskBadge>(&scenario);
-            let task_small_id = db::get_task_badge_small_id(&task_badge);
             
             // Deprecate the task
             db::deprecate_task(&mut db, &task_badge, test::ctx(&mut scenario));
-            
-            // Verify that valid_until_epoch was updated to current epoch
-            assert!(db::check_valid_until_epoch(&db, task_small_id, test::ctx(&mut scenario).epoch()), 0);
-            
+                        
             test::return_shared(db);
             test::return_to_sender(&scenario, task_badge);
         };
@@ -474,11 +394,6 @@ module atoma::db_tests {
             db::create_task_entry(
                 &mut db,
                 INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                vector[],
-                option::none(),
-                1,
                 option::none(),
                 option::none(),
                 option::none(),
@@ -555,11 +470,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -591,11 +501,6 @@ module atoma::db_tests {
             db::create_task_entry(
                 &mut db,
                 INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                vector[],
-                option::none(),
-                1,
                 option::none(),
                 option::none(),
                 option::none(),
@@ -631,11 +536,6 @@ module atoma::db_tests {
             db::create_task_entry(
                 &mut db,
                 INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                vector[],
-                option::none(),
-                1,
                 option::none(),
                 option::none(),
                 option::none(),
@@ -726,11 +626,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -792,12 +687,7 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
-                option::none(),
+                option::none(), 
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -856,11 +746,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -910,11 +795,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -961,11 +841,6 @@ module atoma::db_tests {
             db::create_task_entry(
                 &mut db,
                 INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                vector[],
-                option::none(),
-                1,
                 option::none(),
                 option::none(),
                 option::none(),
@@ -1061,11 +936,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -1112,11 +982,6 @@ module atoma::db_tests {
             db::create_task_entry(
                 &mut db,
                 INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                vector[],
-                option::none(),
-                1,
                 option::none(),
                 option::none(),
                 option::none(),
@@ -1196,11 +1061,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -1257,12 +1117,7 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
-                option::none(),
+                option::none(), 
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -1315,11 +1170,6 @@ module atoma::db_tests {
             db::create_task_entry(
                 &mut db,
                 INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                vector[],
-                option::none(),
-                1,
                 option::none(),
                 option::none(),
                 option::none(),
@@ -1413,11 +1263,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -1462,11 +1307,6 @@ module atoma::db_tests {
             db::create_task_entry(
                 &mut db,
                 INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                vector[],
-                option::none(),
-                1,
                 option::none(),
                 option::none(),
                 option::none(),
@@ -1543,11 +1383,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -1617,11 +1452,6 @@ module atoma::db_tests {
             db::create_task_entry(
                 &mut db,
                 INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                vector[],
-                option::none(),
-                1,
                 option::none(),
                 option::none(),
                 option::none(),
@@ -1737,11 +1567,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -1814,11 +1639,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -1886,11 +1706,6 @@ module atoma::db_tests {
             db::create_task_entry(
                 &mut db,
                 INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                vector[],
-                option::none(),
-                1,
                 option::none(),
                 option::none(),
                 option::none(),
@@ -1962,11 +1777,6 @@ module atoma::db_tests {
             db::create_task_entry(
                 &mut db,
                 INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                vector[],
-                option::none(),
-                1,
                 option::none(),
                 option::none(),
                 option::none(),
@@ -2079,11 +1889,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -2155,11 +1960,6 @@ module atoma::db_tests {
             db::create_task_entry(
                 &mut db,
                 INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                vector[],
-                option::none(),
-                1,
                 option::none(),
                 option::none(),
                 option::none(),
@@ -2268,11 +2068,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -2351,11 +2146,6 @@ module atoma::db_tests {
             db::create_task_entry(
                 &mut db,
                 INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                vector[],
-                option::none(),
-                1,
                 option::none(),
                 option::none(),
                 option::none(),
@@ -2481,11 +2271,6 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                vector[],
-                option::none(),
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -2579,9 +2364,14 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            db::create_task_entry(&mut db, INFERENCE_ROLE, option::none(), option::none(), 
-                vector[], option::none(), 1, option::none(), option::none(), option::none(), 
-                test::ctx(&mut scenario));
+            db::create_task_entry(
+                &mut db,
+                INFERENCE_ROLE, 
+                option::none(),
+                option::none(), 
+                option::none(),
+                test::ctx(&mut scenario)
+            );
             test::return_shared(db);
         };
 
@@ -2660,9 +2450,14 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            db::create_task_entry(&mut db, INFERENCE_ROLE, option::none(), option::none(), 
-                vector[], option::none(), 1, option::none(), option::none(), option::none(), 
-                test::ctx(&mut scenario));
+            db::create_task_entry(
+                &mut db, 
+                INFERENCE_ROLE, 
+                option::none(), 
+                option::none(), 
+                option::none(), 
+                test::ctx(&mut scenario)
+            );      
             test::return_shared(db);
         };
 
@@ -2723,9 +2518,14 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            db::create_task_entry(&mut db, INFERENCE_ROLE, option::none(), option::none(), 
-                vector[], option::none(), 1, option::none(), option::none(), option::none(), 
-                test::ctx(&mut scenario));
+            db::create_task_entry(
+                &mut db, 
+                INFERENCE_ROLE, 
+                option::none(), 
+                option::none(), 
+                option::none(), 
+                test::ctx(&mut scenario)
+            ); 
             test::return_shared(db);
         };
 
@@ -2788,11 +2588,6 @@ module atoma::db_tests {
             db::create_task_entry(
                 &mut db,
                 INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                vector[],
-                option::some(1), // Set security level to Sampling Consensus 
-                1,
                 option::none(),
                 option::none(),
                 option::none(),
@@ -2867,9 +2662,14 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            db::create_task_entry(&mut db, INFERENCE_ROLE, option::none(), option::none(), 
-                vector[], option::none(), 1, option::none(), option::none(), option::none(), 
-                test::ctx(&mut scenario));
+            db::create_task_entry(
+                &mut db, 
+                INFERENCE_ROLE, 
+                option::none(), 
+                option::none(), 
+                option::none(), 
+                test::ctx(&mut scenario)
+            ); 
             test::return_shared(db);
         };
 
@@ -2951,12 +2751,7 @@ module atoma::db_tests {
                 &mut db,
                 INFERENCE_ROLE,
                 option::none(),
-                option::none(),
-                vector[],
                 option::some(1), // Sampling Consensus security level
-                1,
-                option::none(),
-                option::none(),
                 option::none(),
                 test::ctx(&mut scenario)
             );
@@ -3042,7 +2837,7 @@ module atoma::db_tests {
             assert!(db::compare_already_attested_nodes(settlement, 1), 0);
             assert!(db::is_stack_settlement_ticket_disputed(settlement), 0);
             assert!(db::confirm_committed_stack_proof(settlement, proof, leaf), 0);
-            
+
             test::return_shared(db);
             test::return_to_address(USER, stack_badge);
             test::return_to_sender(&scenario, node_badge);

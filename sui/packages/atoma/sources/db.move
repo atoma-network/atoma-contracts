@@ -15,15 +15,35 @@ module atoma::db {
     use toma::toma::TOMA;
 
     /// How many epochs after the stack expires during which any disputes must be resolved.
-    const VAULT_DISPUTE_SETTLEMENT_DELAY: u64 = 2;
+    const STACK_DISPUTE_SETTLEMENT_DELAY: u64 = 2;
 
     /// Number of bytes per hash commitment
     const BYTES_PER_HASH_COMMITMENT: u64 = 32;
 
-    /// constants for task roles
-    const INFERENCE_ROLE: u16 = 0;
-    const EMBEDDING_ROLE: u16 = 1;
-    const FINE_TUNING_ROLE: u16 = 2;
+    /// Module level constants defining valid task roles
+    #[allow(unused)]
+    const TaskRoleChatCompletion: u16 = 0;
+    #[allow(unused)]
+    const TaskRoleEmbedding: u16 = 1;
+    #[allow(unused)]
+    const TaskRoleVision: u16 = 2;
+    #[allow(unused)]
+    const TaskRoleImageGen: u16 = 3;
+    #[allow(unused)]
+    const TaskRoleTextToSpeech: u16 = 4;
+    #[allow(unused)]
+    const TaskRoleSpeechToText: u16 = 5;
+    #[allow(unused)]
+    const TaskRoleFineTuning: u16 = 6;
+    const TaskRoleTraining: u16 = 7;
+
+    /// Security level for a task
+    /// No security required
+    const NoSecurity: u16 = 0;
+    /// Sampling consensus, using multiple nodes
+    const SamplingConsensus: u16 = 1;
+    /// Confidential compute, using trusted hardware
+    const ConfidentialCompute: u16 = 2;
 
     /// How much collateral is required at the time of package publication.
     const InitialCollateralRequiredForRegistration: u64 = 1_000;
@@ -49,15 +69,6 @@ module atoma::db {
     const InitialCrossValidationExtraNodesCount: u64 = 1;
     /// A small increment on the sampling consensus charge permille for each extra attestation node sampled
     const InitialCrossValidationExtraAttestationNodesChargePermille: u64 = 12; // 1.2%
-    /// Security level for the task
-    const NoSecurityLevel: u16 = 0;
-    /// Sampling consensus security level is used for tasks that require a high level of security and robustness.
-    /// Verifiability is achieved by sampling a subset of nodes to attest to the correctness of the stack execution,
-    /// following our Sampling Consensus protocol, see https://github.com/atoma-network/atoma-docs/blob/main/papers/atoma_whitepaper.pdf.
-    const SamplingConsensusSecurityLevel: u16 = 1;
-    /// Tee security level is used for tasks that require a high level of security and robustness.
-    /// Verifiability is achieved by using a trusted execution environment (TEE).
-    const TeeSecurityLevel: u16 = 2;
 
     /// Additional fee charged per compute unit for the Sampling Consensus 
     /// attestation of the stack settlement ticket
@@ -65,7 +76,7 @@ module atoma::db {
 
     /// Start value for reputation scores. It is the same
     /// for every node, in the initial state.
-    const REPUTATION_SCORE_START: u8 = 100;
+    const REPUTATION_SCORE_START: u8 = 50;
 
     /// To be able to identify the errors faster in the logs, we start the
     /// counter from a number that's leet for "error_000".
@@ -99,30 +110,30 @@ module atoma::db {
     const ENodeNotSubscribedToTask: u64 = EBase + 18;
     const ENotEnoughEpochsPassed: u64 = EBase + 19;
     const ETaskNotDeprecated: u64 = EBase + 20;
-    const EModelNotFound: u64 = EBase + 21;
-    const ENoNodesSubscribedToTask: u64 = EBase + 22;
-    const ENoNodesEligibleForTask: u64 = EBase + 23;
-    const ENodeNotSelectedForStack: u64 = EBase + 24;
-    const EStackInSettlementDispute: u64 = EBase + 25;
-    const ETooManyComputedUnits: u64 = EBase + 26;
-    const EStackDoesNotRequireSamplingConsensus: u64 = EBase + 27;
-    const EStackNotFound: u64 = EBase + 28;
-    const EStackNotInSettlementDispute: u64 = EBase + 29;
-    const EStackDisputePeriodOver: u64 = EBase + 30;
-    const ENodeNotSelectedForAttestation: u64 = EBase + 31;
-    const EStackInDispute: u64 = EBase + 32;
-    const EStackDisputePeriodIsNotOver: u64 = EBase + 33;
-    const ENodeNotSelectedForSettlement: u64 = EBase + 34;
-    const ETaskAlreadyDeprecated: u64 = EBase + 35;
-    const EInvalidTaskRole: u64 = EBase + 36;
-    const EInvalidSecurityLevel: u64 = EBase + 37;
-    const EInvalidPricePerComputeUnit: u64 = EBase + 38;
-    const EInvalidMaxNumComputeUnits: u64 = EBase + 39;
-    const ENodeDoesNotMeetTaskRequirements: u64 = EBase + 40;
-    const EInvalidComputeUnits: u64 = EBase + 41;
-    const EInsufficientBalance: u64 = EBase + 42;
-    const EInvalidCommittedStackProof: u64 = EBase + 43;
-    const EInvalidStackMerkleLeaf: u64 = EBase + 44;
+    const ENoNodesSubscribedToTask: u64 = EBase + 21;
+    const ENoNodesEligibleForTask: u64 = EBase + 22;
+    const ENodeNotSelectedForStack: u64 = EBase + 23;
+    const EStackInSettlementDispute: u64 = EBase + 24;
+    const ETooManyComputedUnits: u64 = EBase + 25;
+    const EStackDoesNotRequireSamplingConsensus: u64 = EBase + 26;
+    const EStackNotFound: u64 = EBase + 27;
+    const EStackNotInSettlementDispute: u64 = EBase + 28;
+    const EStackDisputePeriodOver: u64 = EBase + 29;
+    const ENodeNotSelectedForAttestation: u64 = EBase + 30;
+    const EStackInDispute: u64 = EBase + 31;
+    const EStackDisputePeriodIsNotOver: u64 = EBase + 32;
+    const ENodeNotSelectedForSettlement: u64 = EBase + 33;
+    const ETaskAlreadyDeprecated: u64 = EBase + 34;
+    const EInvalidTaskRole: u64 = EBase + 35;
+    const EInvalidSecurityLevel: u64 = EBase + 36;
+    const EInvalidPricePerComputeUnit: u64 = EBase + 37;
+    const EInvalidMaxNumComputeUnits: u64 = EBase + 38;
+    const ENodeDoesNotMeetTaskRequirements: u64 = EBase + 39;
+    const EInvalidComputeUnits: u64 = EBase + 40;
+    const EInsufficientBalance: u64 = EBase + 41;
+    const EInvalidCommittedStackProof: u64 = EBase + 42;
+    const EInvalidStackMerkleLeaf: u64 = EBase + 43;
+    const EInvalidMinimumReputationScore: u64 = EBase + 44;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -168,10 +179,7 @@ module atoma::db {
         task_small_id: TaskSmallId,
         role: TaskRole,
         model_name: Option<ascii::String>,
-        valid_until_epoch: Option<u64>,
-        optimizations: vector<u16>,
-        security_level: u16,
-        task_metrics: TaskMetrics,
+        security_level: SecurityLevel,
         minimum_reputation_score: Option<u8>,
     }
 
@@ -393,18 +401,10 @@ module atoma::db {
         /// Indicates whether the task is deprecated and should no longer be used
         /// Deprecated tasks may be kept for historical reasons but should not be assigned to nodes
         is_deprecated: bool,
-        /// The epoch until which this task is valid (inclusive)
-        /// If Some(epoch), the task expires after this epoch. If None, the task doesn't expire
-        valid_until_epoch: Option<u64>,
         /// Deprecated at epoch
         deprecated_at_epoch: Option<u64>,
-        /// Unique set of optimizations that can be applied to the task
-        optimizations: vector<u16>,
         /// Security level for the task
-        security_level: u16,
-        /// Efficiency metrics for the task (e.g. throughput, latency, cost, energy).
-        /// Note: we might want to support multiple combined input efficiency metrics in the future.
-        task_metrics: TaskMetrics,
+        security_level: SecurityLevel,
         /// Subscribed nodes table, where key is node SmallId and value is price per compute unit
         /// for this current task.
         subscribed_nodes: Table<NodeSmallId, NodePriceData>,
@@ -412,25 +412,22 @@ module atoma::db {
         /// because we need to iterate over them to find eligible nodes for a stack.
         subscribed_nodes_small_ids: TableVec<NodeSmallId>,
         /// Minimum reputation score required for a node to subscribe to the task
-        minimum_reputation_score: Option<u8>,
-    }
-
-    /// Systems's efficiency metrics
-    public struct TaskMetrics has store, copy, drop {
-        /// The unit of compute for the efficiency metric
-        compute_unit: u16,
-        /// The time unit for which to evaluate the efficiency of the system required to complete the task.
-        time_unit: Option<u16>,
-        /// The value of the efficiency metric
-        /// For example, if compute_unit corresponds to number of tokens, and time_unit corresponds to seconds,
-        /// then the value represents the number of tokens processed per second.
-        value: Option<u64>,
+        minimum_reputation_score: ReputationScore,
     }
 
     /// Represents the role or purpose of a computational task in the Atoma network.
     /// Each role is associated with a specific type of operation or computation,
     /// according to the predefined values above.
     public struct TaskRole has store, copy, drop { 
+        inner: u16,
+    }
+
+    /// Security level for a task
+    /// 
+    /// 0 - No security
+    /// 1 - Sampling consensus
+    /// 2 - Confidential computing
+    public struct SecurityLevel has store, copy, drop { 
         inner: u16,
     }
 
@@ -733,8 +730,6 @@ module atoma::db {
     /// * `self` - A mutable reference to the AtomaDb object.
     /// * `role` - A u16 representing the task role.
     /// * `model_name` - An optional ASCII string representing the model name.
-    /// * `valid_until_epoch` - An optional u64 representing the epoch until which the task is valid.
-    /// * `optimizations` - A vector of u16 representing optimization types.
     /// * `security_level` - An optional u16 representing the security level.
     /// * `efficiency_compute_units` - A u16 representing the compute units for efficiency metrics.
     /// * `efficiency_time_units` - An optional u16 representing the time units for efficiency metrics.
@@ -753,12 +748,7 @@ module atoma::db {
         self: &mut AtomaDb,
         role: u16,
         model_name: Option<ascii::String>,
-        valid_until_epoch: Option<u64>,
-        optimizations: vector<u16>,
         security_level: Option<u16>,
-        efficiency_compute_units: u16,
-        efficiency_time_units: Option<u16>,
-        efficiency_value: Option<u64>,
         minimum_reputation_score: Option<u8>,
         ctx: &mut TxContext,
     ) {
@@ -766,14 +756,7 @@ module atoma::db {
             self,
             role,
             model_name,
-            valid_until_epoch,
-            optimizations,
-            option::get_with_default(&security_level, NoSecurityLevel),
-            TaskMetrics {
-                compute_unit: efficiency_compute_units,
-                time_unit: efficiency_time_units,
-                value: efficiency_value,
-            },
+            option::get_with_default(&security_level, NoSecurity),
             minimum_reputation_score,
             ctx,
         );
@@ -786,10 +769,7 @@ module atoma::db {
     /// * `self` - A mutable reference to the AtomaDb object.
     /// * `role` - A u16 representing the task role.
     /// * `model_name` - An optional ASCII string representing the model name.
-    /// * `valid_until_epoch` - An optional u64 representing the epoch until which the task is valid.
-    /// * `optimizations` - A vector of u16 representing optimization types.
     /// * `security_level` - An u16 representing the security level.
-    /// * `task_metrics` - A `TaskMetrics` instance representing efficiency metrics for the task.
     /// * `minimum_reputation_score` - An optional u8 representing the minimum reputation score required for a node to subscribe to the task.
     /// * `ctx` - A mutable reference to the transaction context.
     ///
@@ -799,26 +779,20 @@ module atoma::db {
         self: &mut AtomaDb,
         role: u16,
         model_name: Option<ascii::String>,
-        valid_until_epoch: Option<u64>,
-        optimizations: vector<u16>,
         security_level: u16,
-        task_metrics: TaskMetrics,
         minimum_reputation_score: Option<u8>,
         ctx: &mut TxContext,
     ): TaskBadge {
         // Validate inputs
         assert!(is_valid_task_role(role), EInvalidTaskRole);
         assert!(is_valid_security_level(security_level), EInvalidSecurityLevel);
+        assert!(is_valid_minimum_reputation_score(minimum_reputation_score), EInvalidMinimumReputationScore);
 
         // Generate new small_id
         let small_id = self.next_task_small_id;
         self.next_task_small_id.inner = self.next_task_small_id.inner + 1;
-
-        // Validate model_name if provided
-        if (option::is_some(&model_name)) {
-            let model_name_ref = option::borrow(&model_name);
-            assert!(self.models.contains(*model_name_ref), EModelNotFound);
-        };
+        
+        let reputation_score = minimum_reputation_score.get_with_default(0);
 
         // Create task object
         let task = Task {
@@ -826,14 +800,11 @@ module atoma::db {
             role: TaskRole { inner: role },
             model_name,
             is_deprecated: false,
-            valid_until_epoch,
             deprecated_at_epoch: option::none(),
-            optimizations,
-            security_level,
-            task_metrics,
+            security_level: SecurityLevel { inner: security_level },
             subscribed_nodes: table::new(ctx),
             subscribed_nodes_small_ids: table_vec::empty(ctx),
-            minimum_reputation_score: minimum_reputation_score,
+            minimum_reputation_score: ReputationScore { inner: reputation_score },
         };
 
         // Add task to AtomaDb
@@ -851,10 +822,7 @@ module atoma::db {
             task_small_id: small_id,
             role: TaskRole { inner: role },
             model_name,
-            valid_until_epoch,
-            optimizations,
-            security_level,
-            task_metrics,
+            security_level: SecurityLevel { inner: security_level },
             minimum_reputation_score,
         });
 
@@ -879,7 +847,6 @@ module atoma::db {
     /// # Effects
     /// * Sets the `is_deprecated` field of the task to `true`.
     /// * Sets the `deprecated_at_epoch` field of the task to the current epoch.
-    /// * Updates the `valid_until_epoch` field if it's not set or is later than the current epoch.
     /// * Emits a `TaskDeprecationEvent` with the task's details.
     ///
     /// # Events
@@ -906,11 +873,6 @@ module atoma::db {
         let current_epoch = tx_context::epoch(ctx);
         task.is_deprecated = true;
         task.deprecated_at_epoch = option::some(current_epoch);
-
-        // Update valid_until_epoch if it's not set or is later than the current epoch
-        if (option::is_none(&task.valid_until_epoch) || *option::borrow(&task.valid_until_epoch) > current_epoch) {
-            task.valid_until_epoch = option::some(current_epoch);
-        };
 
         sui::event::emit(TaskDeprecationEvent {
             task_id: object::uid_to_inner(&task.id),
@@ -979,11 +941,8 @@ module atoma::db {
             role: _,
             model_name: _,
             is_deprecated: _,
-            valid_until_epoch: _,
             deprecated_at_epoch: _,
-            optimizations: _,
             security_level: _,
-            task_metrics: _,
             subscribed_nodes,
             subscribed_nodes_small_ids,
             minimum_reputation_score: _,
@@ -1329,7 +1288,7 @@ module atoma::db {
             // transfer the funds for compute units to the contract
             let task = self.tasks.borrow(task_small_id);
             let security_level = task.security_level;
-            let fee_amount = if (security_level == SamplingConsensusSecurityLevel) {
+            let fee_amount = if (security_level.inner == SamplingConsensus) {
                 let sampling_consensus_charge = self.get_sampling_consensus_charge_permille();
                 let cross_validation_charge = self.get_cross_validation_extra_nodes_charge_permille();
                 (price * num_compute_units * (sampling_consensus_charge + cross_validation_charge)) / 1000
@@ -1451,7 +1410,7 @@ module atoma::db {
         let stack_price = stack.price;
 
          // Only Sampling Consensus security level needs to sample attestation nodes
-        let attestation_nodes: vector<NodeSmallId> = if (security_level == SamplingConsensusSecurityLevel) {      
+        let attestation_nodes: vector<NodeSmallId> = if (security_level.inner == SamplingConsensus) {      
             let mut rng = random.new_generator(ctx);
             let random_number = (rng.generate_u64() % 1000) + 1;
             // Sample attestation nodes if the random number is less than or equal to the cross validation probability
@@ -1488,7 +1447,7 @@ module atoma::db {
             selected_node_id: node_small_id,
             num_claimed_compute_units,
             requested_attestation_nodes: attestation_nodes,
-            dispute_settled_at_epoch: ctx.epoch() + VAULT_DISPUTE_SETTLEMENT_DELAY,
+            dispute_settled_at_epoch: ctx.epoch() + STACK_DISPUTE_SETTLEMENT_DELAY,
             committed_stack_proof,
             stack_merkle_leaves_vector,
             already_attested_nodes: vector::empty(),
@@ -1564,7 +1523,7 @@ module atoma::db {
         let stack = self.stacks.borrow(stack_small_id);
         let task_small_id = stack.task_small_id;
         let security_level = self.tasks.borrow(task_small_id).security_level;
-        assert!(security_level == SamplingConsensusSecurityLevel, EStackDoesNotRequireSamplingConsensus);
+        assert!(security_level.inner == SamplingConsensus, EStackDoesNotRequireSamplingConsensus);
 
         // Verify that the dispute challenge is ongoing
         let stack_settlement_ticket = self.stack_settlement_tickets.borrow_mut(stack_small_id);
@@ -1596,7 +1555,7 @@ module atoma::db {
         // Write the merkle leaf to the stack
         let mut i = 0;
         while (i < BYTES_PER_HASH_COMMITMENT) { 
-            let starts_at = attestation_node_index * BYTES_PER_HASH_COMMITMENT;
+            let starts_at = (attestation_node_index + 1) * BYTES_PER_HASH_COMMITMENT;
             *vector::borrow_mut(&mut stack_settlement_ticket.stack_merkle_leaves_vector, starts_at + i) = stack_merkle_leaf[i];
             i = i + 1;
         };
@@ -2046,25 +2005,13 @@ module atoma::db {
         self.tasks.borrow(task_small_id).is_deprecated
     }
 
-    public fun get_task_valid_until_epoch(self: &AtomaDb, task_small_id: TaskSmallId): Option<u64> {
-        self.tasks.borrow(task_small_id).valid_until_epoch
-    }
-
     public fun get_task_deprecated_at_epoch(self: &AtomaDb, task_small_id: TaskSmallId): Option<u64> {
         self.tasks.borrow(task_small_id).deprecated_at_epoch
     }
 
-    public fun get_task_optimizations(self: &AtomaDb, task_small_id: TaskSmallId): vector<u16> {
-        self.tasks.borrow(task_small_id).optimizations
-    }
-
-    public fun get_task_security_level(self: &AtomaDb, task_small_id: TaskSmallId): u16 {
+    public fun get_task_security_level(self: &AtomaDb, task_small_id: TaskSmallId): SecurityLevel {
         self.tasks.borrow(task_small_id).security_level
     }
-
-    public fun get_task_task_metrics(self: &AtomaDb, task_small_id: TaskSmallId): TaskMetrics {
-        self.tasks.borrow(task_small_id).task_metrics
-    }  
 
     public fun get_task_subscribed_nodes(self: &AtomaDb, task_small_id: TaskSmallId): &Table<NodeSmallId, NodePriceData> {
         &self.tasks.borrow(task_small_id).subscribed_nodes
@@ -2447,7 +2394,7 @@ module atoma::db {
         stack_small_id: StackSmallId,
         node_small_id: NodeSmallId,
         ctx: &TxContext,
-    ): (u16, u64, u64, address, NodeSmallId, u64, vector<NodeSmallId>) {
+    ): (SecurityLevel, u64, u64, address, NodeSmallId, u64, vector<NodeSmallId>) {
         let stack_settlement_ticket = self.stack_settlement_tickets.borrow(stack_small_id);
         let stack = self.stacks.borrow(stack_small_id);
         let task = self.tasks.borrow(stack.task_small_id);
@@ -2476,7 +2423,7 @@ module atoma::db {
     /// differs based on the security level of the task associated with the stack.
     ///
     /// # Arguments
-    /// * `security_level` - The security level of the task (e.g., SamplingConsensusSecurityLevel).
+    /// * `security_level` - The security level of the task (e.g., ascii::string(b"sampling-consensus")).
     /// * `stack_price` - The price per compute unit for the stack.
     /// * `num_claimed_compute_units` - The number of compute units claimed for processing.
     /// * `sampling_consensus_charge_permille` - The charge rate in permille (parts per thousand) for sampling consensus.
@@ -2495,12 +2442,12 @@ module atoma::db {
     /// # Note
     /// The division by 1000 in the SamplingConsensusSecurityLevel case converts the permille rate to a decimal fraction.
     fun calculate_stack_fee_amount(
-        security_level: u16,
+        security_level: SecurityLevel,
         stack_price: u64,
         num_claimed_compute_units: u64,
         sampling_consensus_charge_permille: u64,
     ): u64 {
-        if (security_level == SamplingConsensusSecurityLevel) {
+        if (security_level.inner == SamplingConsensus) {
             (num_claimed_compute_units * stack_price * sampling_consensus_charge_permille) / 1000
         } else {
             num_claimed_compute_units * stack_price
@@ -2666,11 +2613,8 @@ module atoma::db {
             role: _,
             model_name: _,
             is_deprecated: _,
-            valid_until_epoch: _,
             deprecated_at_epoch: _,
-            optimizations: _,
             security_level: _,
-            task_metrics: _,
             subscribed_nodes,
             subscribed_nodes_small_ids,
             minimum_reputation_score: _,
@@ -2989,11 +2933,15 @@ module atoma::db {
         let node = self.nodes.borrow(node_badge.small_id);
         
         // Check if the node's reputation score meets the task's minimum requirement
-        if (node.reputation_score.inner < option::get_with_default(&task.minimum_reputation_score, 0)) {
+        if (node.reputation_score.inner < task.minimum_reputation_score.inner) {
             return false
         };
-        // TODO: Add more checks as needed (e.g., hardware requirements, echelons, optimizations, etc.)
         true
+    }
+
+    /// Helper function to check if a task role is valid.
+    fun is_valid_task_role(role: u16): bool {
+        role <= TaskRoleTraining
     }
 
     fun get_echelon_mut(
@@ -3044,14 +2992,20 @@ module atoma::db {
         false
     }
 
-    // Helper function to validate task role
-    fun is_valid_task_role(role: u16): bool {
-        role == INFERENCE_ROLE || role == EMBEDDING_ROLE || role == FINE_TUNING_ROLE
-    }
-
     // Helper function to validate security level
     fun is_valid_security_level(security_level: u16): bool {
-        security_level == NoSecurityLevel || security_level == SamplingConsensusSecurityLevel || security_level == TeeSecurityLevel
+        security_level == NoSecurity 
+            || security_level == SamplingConsensus
+            || security_level == ConfidentialCompute
+    }
+
+    /// Helper function to validate minimum reputation score
+    fun is_valid_minimum_reputation_score(minimum_reputation_score: Option<u8>): bool {
+        if (minimum_reputation_score.is_some()) {
+            *option::borrow(&minimum_reputation_score) <= 100
+        } else {
+            true
+        }
     }
 
     fun remove_echelon(
@@ -3277,19 +3231,6 @@ module atoma::db {
     }
 
     #[test_only]
-    public fun create_task_metrics_for_testing(
-        compute_unit: u16,
-        time_unit: Option<u16>,
-        value: Option<u64>,
-    ): TaskMetrics {
-        TaskMetrics {
-            compute_unit,
-            time_unit,
-            value,
-        }
-    }
-
-    #[test_only]
     public fun get_task_badge_small_id(task_badge: &TaskBadge): u64 {
         task_badge.small_id.inner
     }
@@ -3319,12 +3260,6 @@ module atoma::db {
     public fun check_task_deprecated_epoch_at(db: &AtomaDb, task_small_id: u64, deprecated_epoch_at: u64): bool {
         let task = db.tasks.borrow(TaskSmallId { inner: task_small_id });
         task.deprecated_at_epoch == option::some(deprecated_epoch_at)
-    }
-
-    #[test_only]
-    public fun check_valid_until_epoch(db: &AtomaDb, task_small_id: u64, valid_until_epoch: u64): bool {
-        let task = db.tasks.borrow(TaskSmallId { inner: task_small_id });
-        task.valid_until_epoch == option::some(valid_until_epoch)
     }
 
     #[test_only]
@@ -3449,7 +3384,16 @@ module atoma::db {
 
     #[test_only]
     public fun confirm_committed_stack_proof(settlement: &StackSettlementTicket, proof: vector<u8>, leaf: vector<u8>): bool {
-        settlement.committed_stack_proof == proof && settlement.stack_merkle_leaves_vector == leaf
+        let mut i = 0;
+        while (i < 32) {
+            if (settlement.stack_merkle_leaves_vector[i] != leaf[i]) {
+                return false
+            };
+            i = i + 1;
+        };
+        
+        vector::length(&settlement.stack_merkle_leaves_vector) == 64
+            && proof == settlement.committed_stack_proof
     }
 
     #[test]

@@ -170,26 +170,11 @@ enum DbCmds {
         /// Optional model name for this task
         #[arg(short, long)]
         model_name: Option<String>,
-        /// Optional epoch until which this task is valid
-        #[arg(short, long)]
-        valid_until_epoch: Option<u64>,
-        /// List of optimization IDs applicable to this task
-        #[arg(short, long)]
-        optimizations: Vec<u16>,
         /// Optional security level for this task
-        #[arg(short, long)]
+        #[arg(short = 'l', long)]
         security_level: Option<u16>,
-        /// Efficiency measure in compute units
-        #[arg(short, long)]
-        efficiency_compute_units: u16,
-        /// Optional efficiency measure in time units
-        #[arg(short, long)]
-        efficiency_time_units: Option<u16>,
-        /// Optional efficiency value
-        #[arg(short, long)]
-        efficiency_value: Option<u64>,
         /// Optional minimum reputation score required for this task
-        #[arg(short, long)]
+        #[arg(short = 's', long)]
         minimum_reputation_score: Option<u8>,
     },
     /// Deprecates a task in the database.
@@ -453,24 +438,14 @@ async fn main() -> Result<()> {
             package,
             role,
             model_name,
-            valid_until_epoch,
-            optimizations,
             security_level,
-            efficiency_compute_units,
-            efficiency_time_units,
-            efficiency_value,
             minimum_reputation_score,
         })) => {
             let digest = db::create_task_entry(
                 &mut context.with_optional_atoma_package_id(package),
                 role,
                 model_name,
-                valid_until_epoch,
-                optimizations,
                 security_level,
-                efficiency_compute_units,
-                efficiency_time_units,
-                efficiency_value,
                 minimum_reputation_score,
             )
             .await?;
