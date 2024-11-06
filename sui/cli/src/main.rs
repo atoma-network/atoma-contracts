@@ -308,7 +308,7 @@ enum DbCmds {
     /// This can only be done by a selected attestation node,
     /// and should only be done when the attestation node disagrees with the committed stack proof,
     /// by the original selected node.
-    StartAttestationDispute { 
+    StartAttestationDispute {
         /// Optional package ID. If not provided, the default from the environment will be used.
         #[arg(short, long)]
         package: Option<String>,
@@ -320,7 +320,7 @@ enum DbCmds {
         /// This is typically a cryptographic proof or hash of the work performed.  
         #[arg(short, long)]
         attestation_commitment: Vec<u8>,
-    }
+    },
 }
 
 #[derive(Subcommand)]
@@ -547,7 +547,7 @@ async fn main() -> Result<()> {
                 settled_ticket_ids,
             )
             .await?;
-            
+
             println!("{digest}");
         }
         Some(Cmds::Db(DbCmds::SubmitStackSettlementAttestation {

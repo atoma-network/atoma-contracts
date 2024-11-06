@@ -28,7 +28,9 @@ pub(crate) async fn command(
                 SuiJsonValue::from_object_id(atoma_db),
                 SuiJsonValue::from_object_id(node_badge),
                 SuiJsonValue::new(stack_small_id.to_string().into())?,
-                SuiJsonValue::new(num_claimed_compute_units.to_string().into())?,
+                SuiJsonValue::new(
+                    num_claimed_compute_units.to_string().into(),
+                )?,
                 SuiJsonValue::new(committed_stack_proof.into())?,
                 SuiJsonValue::new(stack_merkle_leaf.into())?,
             ],

@@ -14,8 +14,12 @@ pub(crate) async fn command(
     let atoma_db = context.get_or_load_atoma_db().await?;
 
     let model_name = model_name.map(|v| vec![v]).unwrap_or_default();
-    let security_level = security_level.map(|v| vec![v.to_string()]).unwrap_or_default();
-    let minimum_reputation_score = minimum_reputation_score.map(|v| vec![v.to_string()]).unwrap_or_default();
+    let security_level = security_level
+        .map(|v| vec![v.to_string()])
+        .unwrap_or_default();
+    let minimum_reputation_score = minimum_reputation_score
+        .map(|v| vec![v.to_string()])
+        .unwrap_or_default();
 
     let tx = context
         .get_client()
