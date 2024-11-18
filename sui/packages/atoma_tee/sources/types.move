@@ -99,7 +99,7 @@ module atoma_tee::types {
         /// Version of the quote format
         version: u16,
         /// Type of attestation key used
-        attestation_key_type: vector<u8>,  // 2 bytes
+        attestation_key_type: u16,
         /// Type of TEE (Trusted Execution Environment)
         tee_type: vector<u8>,  // 4 bytes
         /// Quoting Enclave Security Version Number
@@ -264,6 +264,36 @@ module atoma_tee::types {
         }
     }
 
+    public fun create_enclave_report(
+        cpu_svn: vector<u8>,
+        misc_select: vector<u8>,
+        reserved1: vector<u8>,
+        attributes: vector<u8>,
+        mr_enclave: vector<u8>,
+        reserved2: vector<u8>,
+        mr_signer: vector<u8>,
+        reserved3: vector<u8>,
+        isv_prod_id: u16,
+        isv_svn: u16,
+        reserved4: vector<u8>,
+        report_data: vector<u8>,
+    ): EnclaveReport {
+        EnclaveReport {
+            cpu_svn,
+            misc_select,
+            reserved1,
+            attributes,
+            mr_enclave,
+            reserved2,
+            mr_signer,
+            reserved3,
+            isv_prod_id,
+            isv_svn,
+            reserved4,
+            report_data,
+        }
+    }
+
     /// Creates a new ECDSAQuoteV4AuthData structure with validation checks.
     /// 
     /// This function constructs the authentication data portion of a V4 TDX Quote,
@@ -294,5 +324,38 @@ module atoma_tee::types {
             ecdsa_attestation_key: attestation_key,
             qe_report_cert_data
         }
+    }
+
+    /// Returns the version of the quote header
+    /// 
+    /// # Arguments
+    /// * `header` - The quote header
+    ///
+    /// # Returns
+    /// * `u16` - The version of the quote header
+    public fun get_header_version(header: &Header): u16 {
+        header.version
+    }
+
+    /// Returns the attestation key type of the quote header
+    /// 
+    /// # Arguments
+    /// * `header` - The quote header
+    ///
+    /// # Returns
+    /// * `u16` - The attestation key type
+    public fun get_attestation_key_type(header: &Header): u16 {
+        header.attestation_key_type
+    }
+
+    /// Returns the QE vendor ID of the quote header
+    /// 
+    /// # Arguments
+    /// * `header` - The quote header
+    ///
+    /// # Returns
+    /// * `vector<u8>` - The QE vendor ID
+    public fun get_qe_vendor_id(header: &Header): vector<u8> {
+        header.qe_vendor_id
     }
 }
