@@ -1774,7 +1774,7 @@ module atoma::db {
     /// type.
     public entry fun add_node_to_model(
         self: &mut AtomaDb,
-        node_badge: &mut NodeBadge,
+        node_badge: &NodeBadge,
         model_name: ascii::String,
         echelon: u64,
     ) {
