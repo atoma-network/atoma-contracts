@@ -4,8 +4,9 @@ module atoma_tee::quote_verifier {
         Header,
         EcdsaQuoteV4AuthData,
         EnclaveReport,
-        create_enclave_report,
         TD10ReportBody,
+        V4TDXQuote,
+        create_enclave_report,
         create_td10_report_body,
         create_ecdsa_quote_v4_auth_data,
         create_qe_report_cert_data,
@@ -13,6 +14,7 @@ module atoma_tee::quote_verifier {
         create_pck_cert_tcb,
         create_qe_auth_data,
         create_certification_data,
+        create_v4_tdx_quote,
     };
     use atoma_tee::utils::{
         extract_bytes,
@@ -66,9 +68,6 @@ module atoma_tee::quote_verifier {
     /// Length of the report data
     const REPORT_DATA_LENGTH: u64 = 64;
 
-    /// SGX TEE type
-    const SGX_TEE: u8 = 0x00000000;
-
     /// TDX TEE type
     const TDX_TEE: u8 = 0x00000081;
 
@@ -93,12 +92,90 @@ module atoma_tee::quote_verifier {
     const EInvalidReportDataLength: u64 = 6;
     const EInvalidCertificationType: u64 = 7;
 
-    public fun verify_quote(header: &Header, raw_quote: vector<u8>): bool {
-        parse_v4_quote(header, raw_quote);
-        true
+    /// Verifies an intel TDX remote attestation quote by parsing and validating its components
+    /// 
+    /// NOTE: We currently only support intel TDX quote verification
+    /// 
+    /// # Arguments
+    /// * `header` - Reference to the quote header containing metadata
+    /// * `raw_quote` - Raw bytes of the complete quote
+    /// 
+    /// # Flow
+    /// 1. Parses the quote into its constituent parts (body, QE report, auth data)
+    /// 2. Extracts raw header and determines TEE type
+    /// 3. For TDX quotes:
+    ///    - Parses the TD report body
+    ///    - Creates a structured quote object
+    ///    - Performs detailed verification via verify_tdx_quote
+    /// 
+    /// # Aborts
+    /// * `EInvalidTEEType` - If the quote is not from a TDX TEE
+    /// * May also abort with other error codes from called functions
+    public fun verify_quote(header: &Header, raw_quote: vector<u8>) {
+        // Parse the quote into its body, QE report, and authentication data
+        let (raw_quote_body, raw_qe_report, auth_data) = parse_v4_quote(header, raw_quote);
+
+        // Get raw header and body on TEE type
+        let raw_header = extract_bytes(raw_quote, 0, HEADER_LENGTH);
+        let tee_type = header.get_tee_type();
+
+        if (tee_type == TDX_TEE as u32) {
+            let td_report = parse_td10_report_body(raw_quote_body);
+            let raw_body = extract_bytes(raw_quote, HEADER_LENGTH, TD_REPORT10_LENGTH);
+            let quote = create_v4_tdx_quote(header, td_report, auth_data);
+            verify_tdx_quote(quote, raw_header, raw_body, raw_qe_report);
+        }
+        else { 
+            abort EInvalidTEEType
+        }
     }
 
-    fun parse_v4_quote(header: &Header, raw_quote: vector<u8>): (vector<u8>, vector<u8>, vector<u8>) {
+    fun verify_tdx_quote(
+        quote: V4TDXQuote,
+        raw_header: vector<u8>,
+        raw_body: vector<u8>,
+        raw_qe_report: vector<u8>,
+    ) {
+        // 1. Verification steps that are required for TDX quotes (it should also work for SGX quotes, in the future)
+
+    }
+
+    // fun verify_common(
+    //     tee: u32,
+    //     raw_header: vector<u8>,
+    //     raw_body: vector<u8>,
+    //     raw_qe_report: vector<u8>,
+    //     auth_data: EcdsaQuoteV4AuthData,
+    // ) {
+
+    // }
+
+    /// Parses a v4 TDX quote into its constituent parts
+    /// 
+    /// # Arguments
+    /// * `header` - Reference to the quote header containing metadata
+    /// * `raw_quote` - Raw bytes of the complete quote
+    /// 
+    /// # Returns
+    /// * `(vector<u8>, vector<u8>, EcdsaQuoteV4AuthData)` - A tuple containing:
+    ///   - Raw quote body bytes
+    ///   - Raw QE report bytes
+    ///   - Parsed authentication data structure
+    /// 
+    /// # Data Structure
+    /// The quote consists of:
+    /// - Header (48 bytes)
+    /// - TD Report Body (584 bytes)
+    /// - Auth Data Size (4 bytes)
+    /// - Auth Data (variable length):
+    ///   - ECDSA signature
+    ///   - Attestation key
+    ///   - QE report certification data
+    /// 
+    /// # Aborts
+    /// * `EInvalidTEEType` - If quote is not from a TDX TEE
+    /// * `EInvalidQuoteLength` - If auth data size exceeds remaining quote length
+    fun parse_v4_quote(header: &Header, raw_quote: vector<u8>): (vector<u8>, vector<u8>, EcdsaQuoteV4AuthData) {
         let tee_type = header.get_tee_type();
         assert!(tee_type == TDX_TEE as u32, EInvalidTEEType);
         validate_header(header, raw_quote.length());
@@ -133,7 +210,7 @@ module atoma_tee::quote_verifier {
     /// - ECDSA Signature (64 bytes)
     /// - ECDSA Attestation Public Key (64 bytes)
     /// - QE Report Certification Data:
-    ///   - Type (2 bytes, must be 6)
+    ///   - Type (2 bytes, must be value 6)
     ///   - Size (4 bytes)
     ///   - QE Report (384 bytes)
     ///   - QE Report Signature (64 bytes)
@@ -141,7 +218,7 @@ module atoma_tee::quote_verifier {
     ///     - Size (2 bytes)
     ///     - Data (variable length)
     ///   - Certification Data:
-    ///     - Type (2 bytes, must be 5)
+    ///     - Type (2 bytes, must be value 5)
     ///     - Size (4 bytes)
     ///     - Data (variable length, contains PCK collateral)
     /// 

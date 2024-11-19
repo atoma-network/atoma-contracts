@@ -9,6 +9,7 @@ module atoma_tee::registration {
     use sui::transfer::Self;
     use sui::package::{Self, Publisher};
     use toma::toma::TOMA;
+    use atoma_tee::quote_verifier::verify_quote;
 
     /// Error code for unauthorized access
     const ENotAuthorized: u64 = 0;
@@ -269,22 +270,10 @@ module atoma_tee::registration {
     ) {
         assert!(self.valid_registered_nodes.contains(node_badge.small_id), ENodeNotRegistered);
         let node_entry = self.valid_registered_nodes.borrow_mut(node_badge.small_id);
-        verify_remote_attestation(
-            new_public_key,
-            remote_attestation_bytes,
-        );
+        // verify_quote(
+        //     new_public_key,
+        //     remote_attestation_bytes,
+        // );
 
-    }
-
-    /// Verifies the remote attestation data for a new TEE public key.
-    /// 
-    /// # Arguments
-    /// * `new_public_key` - The new TEE public key to verify
-    /// * `remote_attestation_bytes` - The remote attestation data to verify
-    public fun verify_remote_attestation(
-        new_public_key: vector<u8>,
-        remote_attestation_bytes: vector<u8>,
-    ) {
-        // TODO: Implement remote attestation verification
     }
 }

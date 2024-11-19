@@ -492,6 +492,32 @@ module atoma_tee::types {
         }
     }
 
+    /// Creates a new V4 TDX Quote structure.
+    /// 
+    /// This function constructs a V4 TDX Quote structure that represents a complete
+    /// attestation report for a Trust Domain Extensions (TDX) environment. The quote
+    /// includes a header with metadata, a report body containing measurements and
+    /// attributes, and authentication data that proves the quote's authenticity.
+    ///
+    /// # Arguments
+    /// * `header` - Reference to the quote header containing metadata about format and version
+    /// * `report_body` - The TD 1.0 report body containing measurements and attributes
+    /// * `auth_data` - The ECDSA authentication data including signature and certification
+    ///
+    /// # Returns
+    /// * `V4TDXQuote` - The constructed V4 TDX quote structure
+    public fun create_v4_tdx_quote(
+        header: &Header,
+        report_body: TD10ReportBody,
+        auth_data: EcdsaQuoteV4AuthData,
+    ): V4TDXQuote {
+        V4TDXQuote {
+            header: *header,
+            report_body,
+            auth_data,
+        }
+    }
+
     /// Returns the version of the quote header
     /// 
     /// # Arguments
