@@ -1,6 +1,35 @@
 module atoma_tee::quote_verifier {
 
-    use atoma_tee::types::{Header, EnclaveReport, create_enclave_report};
+    use atoma_tee::types::{
+        Header,
+        EcdsaQuoteV4AuthData,
+        EnclaveReport,
+        create_enclave_report,
+        TD10ReportBody,
+        create_td10_report_body,
+        create_ecdsa_quote_v4_auth_data,
+        create_qe_report_cert_data,
+        create_pck_collateral,
+        create_pck_cert_tcb,
+        create_qe_auth_data,
+        create_certification_data,
+    };
+    use atoma_tee::utils::{
+        extract_bytes,
+        le_bytes_to_u16,
+        le_bytes_to_u32,
+        le_bytes_to_u64,
+        le_bytes_to_u128,
+        le_bytes_to_u256,
+        int_to_le_bytes,
+        compare_vectors,
+    };
+    use std::hash::sha2_256;
+    use sui::ecdsa_r1;
+
+    /// Hash function name for SHA256, following the convention in
+    /// Reference: https://docs.sui.io/references/framework/sui-framework/ecdsa_r1
+    const SHA256_HASH_U8_IDENTIFIER: u8 = 1;
 
     /// Length of the enclave report
     const ENCLAVE_REPORT_LENGTH: u16 = 384;
@@ -9,7 +38,33 @@ module atoma_tee::quote_verifier {
     const SUPPORTED_ATTESTATION_KEY_TYPE: u16 = 0x0200; // ECDSA_256_WITH_P256_CURVE (LE)
 
     /// Valid QE vendor ID
-    const VALID_QE_VENDOR_ID: vector<u8> = x"939a7233f79c4ca9940a0db3957f0607";
+    const VALID_QE_VENDOR_ID: u128 = 0x939a7233f79c4ca9940a0db3957f0607;
+
+    /// Length of the QE report data
+    const QE_REPORT_DATA_LENGTH: u64 = 32;
+
+    /// Length of the quote header
+    const HEADER_LENGTH: u64 = 48;
+
+    /// Length of the TD10 report body
+    const TD_REPORT10_LENGTH: u64 = 584;
+
+    /// Expected quote version
+    /// Reference: https://download.01.org/intel-sgx/latest/dcap-latest/linux/docs/Intel_TDX_DCAP_Quoting_Library_API.pdf
+    /// 
+    /// TODO: This is currently a static value, but it should be able to be updated over time by the Atoma TEE contract admin
+    const EXPECTED_QUOTE_VERSION: u16 = 0x0004;
+
+    /// Lengths of the TD10 report body fields
+
+    /// Length of the TEE TCB SVN field
+    const TEE_TCB_SVN_LENGTH: u64 = 16;
+    /// Length of the MR fields
+    const MR_LENGTH: u64 = 48;
+    /// Length of the attributes fields
+    const ATTRIBUTES_LENGTH: u64 = 8;
+    /// Length of the report data
+    const REPORT_DATA_LENGTH: u64 = 64;
 
     /// SGX TEE type
     const SGX_TEE: u8 = 0x00000000;
@@ -30,14 +85,207 @@ module atoma_tee::quote_verifier {
 
     /// Error codes
     const EInvalidQuoteVersion: u64 = 0;
-    const EInvalidSignature: u64 = 1;
-    const EInvalidTCB: u64 = 2;
-    const EInvalidQuoteLength: u64 = 3;
-    const EInvalidTEEType: u64 = 4;
-    const EInvalidAttestationKeyType: u64 = 5;
-    const EInvalidQEVendorID: u64 = 6;
-    const EInvalidReportLength: u64 = 7;
-    const EInvalidVectorLength: u64 = 8;
+    const EInvalidQuoteLength: u64 = 1;
+    const EInvalidTEEType: u64 = 2;
+    const EInvalidAttestationKeyType: u64 = 3;
+    const EInvalidQEVendorID: u64 = 4;
+    const EInvalidReportLength: u64 = 5;
+    const EInvalidReportDataLength: u64 = 6;
+    const EInvalidCertificationType: u64 = 7;
+
+    public fun verify_quote(header: &Header, raw_quote: vector<u8>): bool {
+        parse_v4_quote(header, raw_quote);
+        true
+    }
+
+    fun parse_v4_quote(header: &Header, raw_quote: vector<u8>): (vector<u8>, vector<u8>, vector<u8>) {
+        let tee_type = header.get_tee_type();
+        assert!(tee_type == TDX_TEE as u32, EInvalidTEEType);
+        validate_header(header, raw_quote.length());
+        
+        let mut offset = HEADER_LENGTH + TD_REPORT10_LENGTH;
+        let raw_quote_body = extract_bytes(raw_quote, HEADER_LENGTH, offset);
+
+        // Check the auth data length
+        let local_auth_data_size = le_bytes_to_u32(extract_bytes(raw_quote_body, offset, 4));
+        offset = offset + 4;
+        if (raw_quote.length() - offset < local_auth_data_size as u64) {
+            abort EInvalidQuoteLength
+        };
+
+        // We have validated the quote length, so we can safely extract the auth data
+        let (auth_data, raw_qe_report) = parse_auth_data(extract_bytes(raw_quote, offset, local_auth_data_size as u64));
+        (raw_quote_body, raw_qe_report, auth_data)
+    }
+
+    /// Parses the authentication data section of a TDX quote into structured data
+    /// 
+    /// # Arguments
+    /// * `raw_auth_data` - Raw bytes containing the authentication data section of the quote
+    /// 
+    /// # Returns
+    /// * `(EcdsaQuoteV4AuthData, vector<u8>)` - A tuple containing:
+    ///   - Parsed authentication data structure
+    ///   - Raw QE report bytes (needed for signature verification)
+    /// 
+    /// # Data Structure
+    /// The authentication data section contains:
+    /// - ECDSA Signature (64 bytes)
+    /// - ECDSA Attestation Public Key (64 bytes)
+    /// - QE Report Certification Data:
+    ///   - Type (2 bytes, must be 6)
+    ///   - Size (4 bytes)
+    ///   - QE Report (384 bytes)
+    ///   - QE Report Signature (64 bytes)
+    ///   - QE Authentication Data:
+    ///     - Size (2 bytes)
+    ///     - Data (variable length)
+    ///   - Certification Data:
+    ///     - Type (2 bytes, must be 5)
+    ///     - Size (4 bytes)
+    ///     - Data (variable length, contains PCK collateral)
+    /// 
+    /// # Aborts
+    /// * `EInvalidCertificationType` - If QE report cert type != 6 or cert type != 5
+    /// * `EInvalidReportLength` - If the total parsed size doesn't match qe_report_cert_size
+    fun parse_auth_data(raw_auth_data: vector<u8>): (EcdsaQuoteV4AuthData, vector<u8>) {
+        // Extract initial fields
+        let ecdsa_signature = extract_bytes(raw_auth_data, 0, 64);
+        let ecdsa_attestation_key = extract_bytes(raw_auth_data, 64, 64);
+
+        // Verify QE report cert type (must be 6)
+        let qe_report_cert_type = le_bytes_to_u16(extract_bytes(raw_auth_data, 128, 2));
+        if (qe_report_cert_type != 6) { 
+            abort EInvalidCertificationType
+        };
+
+        // Get QE report cert size
+        let qe_report_cert_size = le_bytes_to_u32(extract_bytes(raw_auth_data, 130, 4));
+
+        // Extract QE report and signature
+        let raw_qe_report = extract_bytes(raw_auth_data, 134, 384);
+        let qe_report_signature = extract_bytes(raw_auth_data, 518, 64);
+
+        // Get QE auth data size and extract auth data
+        let qe_auth_data_size = le_bytes_to_u16(extract_bytes(raw_auth_data, 582, 2));
+        let mut offset = 584;
+        let qe_auth_data = extract_bytes(raw_auth_data, offset, qe_auth_data_size as u64);
+        offset = offset + (qe_auth_data_size as u64);
+
+        // Extract and verify cert type (must be 5)
+        let cert_type = le_bytes_to_u16(extract_bytes(raw_auth_data, offset, 2));
+        if (cert_type != 5) {
+            abort EInvalidCertificationType
+        };
+        offset = offset + 2;
+
+        // Get cert data size and extract cert data
+        let cert_data_size = le_bytes_to_u32(extract_bytes(raw_auth_data, offset, 4));
+        offset = offset + 4;
+        // NOTE: `raw_cert_data` is to be used for getting PCK collateral
+        let raw_cert_data = extract_bytes(raw_auth_data, offset, cert_data_size as u64);
+        offset = offset + (cert_data_size as u64);
+
+        // Verify total size matches qe_report_cert_size
+        assert!(offset - 134 == qe_report_cert_size as u64, EInvalidReportLength);
+
+        // Parse QE report
+        let qe_report = parse_enclave_report(raw_qe_report);
+
+        // Create QE auth data struct
+        let qe_auth_data = create_qe_auth_data(
+            qe_auth_data_size,
+            qe_auth_data
+        );
+
+        // Create certification data struct
+        let certification = create_certification_data(
+            cert_type,
+            cert_data_size,
+            // TODO: We need to implement PCK collateral parsing similar to the Solidity getPckCollateral
+            create_pck_collateral(vector::empty(), create_pck_cert_tcb(0, vector::empty(), vector::empty(), vector::empty()))
+        );
+
+        // Create QE report cert data struct
+        let qe_report_cert_data = create_qe_report_cert_data(
+            qe_report,
+            qe_report_signature,
+            qe_auth_data,
+            certification
+        );
+
+        // Create final auth data struct
+        let auth_data = create_ecdsa_quote_v4_auth_data(
+            ecdsa_signature,
+            ecdsa_attestation_key,
+            qe_report_cert_data
+        );
+
+        (auth_data, raw_qe_report)
+    }
+
+    /// Parses a raw byte array into a TD10ReportBody structure
+    /// 
+    /// # Arguments
+    /// * `report_bytes` - Raw bytes containing the TD10 report body
+    /// 
+    /// # Returns
+    /// * `TD10ReportBody` - Parsed TDX report body structure
+    /// 
+    /// # Aborts
+    /// * `EInvalidReportLength` - If input length is invalid
+    /// * `EInvalidOffset` - If any field offset is invalid
+    public fun parse_td10_report_body(report_bytes: vector<u8>): TD10ReportBody {
+        // Expected total length is 584 bytes (520 + 64)
+        let total_length = 584u64;
+        assert!(vector::length(&report_bytes) == total_length, EInvalidReportLength);
+
+        // Extract all fields
+        let tee_tcb_svn = extract_bytes(report_bytes, 0, TEE_TCB_SVN_LENGTH);
+        let mr_seam = extract_bytes(report_bytes, 16, MR_LENGTH);
+        let mrsigner_seam = extract_bytes(report_bytes, 64, MR_LENGTH);
+        
+        // Convert LE bytes to u64 for attributes
+        let seam_attributes = extract_bytes(report_bytes, 112, ATTRIBUTES_LENGTH);
+        let seam_attributes_int = le_bytes_to_u64(seam_attributes);
+        let seam_attributes = int_to_le_bytes(seam_attributes_int);
+
+        let td_attributes = extract_bytes(report_bytes, 120, ATTRIBUTES_LENGTH);
+        let td_attributes_int = le_bytes_to_u64(td_attributes);
+        let td_attributes = int_to_le_bytes(td_attributes_int);
+
+        let xfam = extract_bytes(report_bytes, 128, ATTRIBUTES_LENGTH);
+        let xfam_int = le_bytes_to_u64(xfam);
+        let xfam = int_to_le_bytes(xfam_int);
+
+        let mr_td = extract_bytes(report_bytes, 136, MR_LENGTH);
+        let mr_config_id = extract_bytes(report_bytes, 184, MR_LENGTH);
+        let mr_owner = extract_bytes(report_bytes, 232, MR_LENGTH);
+        let mr_owner_config = extract_bytes(report_bytes, 280, MR_LENGTH);
+        let rt_mr0 = extract_bytes(report_bytes, 328, MR_LENGTH);
+        let rt_mr1 = extract_bytes(report_bytes, 376, MR_LENGTH);
+        let rt_mr2 = extract_bytes(report_bytes, 424, MR_LENGTH);
+        let rt_mr3 = extract_bytes(report_bytes, 472, MR_LENGTH);
+        let report_data = extract_bytes(report_bytes, 520, REPORT_DATA_LENGTH);
+
+        create_td10_report_body(
+            tee_tcb_svn,
+            mr_seam,
+            mrsigner_seam,
+            seam_attributes,
+            td_attributes,
+            xfam,
+            mr_td,
+            mr_config_id,
+            mr_owner,
+            mr_owner_config,
+            rt_mr0,
+            rt_mr1,
+            rt_mr2,
+            rt_mr3,
+            report_data,
+        )
+    }
 
     /// Validates the header of a remote attestation quote against expected values and constraints.
     /// 
@@ -58,33 +306,28 @@ module atoma_tee::quote_verifier {
     /// * `EInvalidQEVendorID` - If QE vendor ID doesn't match the valid ID
     public fun validate_header(
         header: &Header,
-        quote_length: u16,
-        expected_quote_version: u16,
-        tee_is_valid: bool,
+        quote_length: u64,
     ) { 
         // Check minimum quote length
-        assert!(quote_length >= MINIMUM_QUOTE_LENGTH, EInvalidQuoteLength);
+        assert!(quote_length >= MINIMUM_QUOTE_LENGTH as u64, EInvalidQuoteLength);
         
         // Check quote version
-        assert!(header.get_header_version() == expected_quote_version, EInvalidQuoteVersion);
+        assert!(header.get_header_version() == EXPECTED_QUOTE_VERSION, EInvalidQuoteVersion);
 
         // Check attestation key type
         assert!(header.get_attestation_key_type() == SUPPORTED_ATTESTATION_KEY_TYPE, EInvalidAttestationKeyType);
-
-        // Check TEE type validity
-        assert!(tee_is_valid, EInvalidTEEType);
 
         // Check QE vendor ID
         assert!(header.get_qe_vendor_id() == VALID_QE_VENDOR_ID, EInvalidQEVendorID);
     }
 
-    /// Parses a raw enclave report into a structured EnclaveReport object
+    /// Parses a raw enclave report into a eport object
     /// 
     /// # Arguments
     /// * `raw_enclave_report` - Vector of bytes containing the raw enclave report
     /// 
     /// # Returns
-    /// * `EnclaveReport` - Structured enclave report data
+    /// * eport` - Structured enclave report data
     /// 
     /// # Aborts
     /// * `EInvalidReportLength` - If the input length doesn't match ENCLAVE_REPORT_LENGTH
@@ -93,16 +336,16 @@ module atoma_tee::quote_verifier {
         // Verify total length
         assert!(vector::length(&raw_enclave_report) == ENCLAVE_REPORT_LENGTH as u64, EInvalidReportLength);
 
-        let cpu_svn = extract_bytes(raw_enclave_report, 0, 16);
-        let misc_select = extract_bytes(raw_enclave_report, 16, 4);
+        let cpu_svn = le_bytes_to_u128(extract_bytes(raw_enclave_report, 0, 16));
+        let misc_select = le_bytes_to_u32(extract_bytes(raw_enclave_report, 16, 4));
         let reserved1 = extract_bytes(raw_enclave_report, 20, 28);
-        let attributes = extract_bytes(raw_enclave_report, 48, 16);
-        let mr_enclave = extract_bytes(raw_enclave_report, 64, 32);
-        let reserved2 = extract_bytes(raw_enclave_report, 96, 32);
-        let mr_signer = extract_bytes(raw_enclave_report, 128, 32);
+        let attributes = le_bytes_to_u128(extract_bytes(raw_enclave_report, 48, 16));
+        let mr_enclave = le_bytes_to_u256(extract_bytes(raw_enclave_report, 64, 32));
+        let reserved2 = le_bytes_to_u256(extract_bytes(raw_enclave_report, 96, 32));
+        let mr_signer = le_bytes_to_u256(extract_bytes(raw_enclave_report, 128, 32));
         let reserved3 = extract_bytes(raw_enclave_report, 160, 96);
-        let isv_prod_id = bytes_to_u16(extract_bytes(raw_enclave_report, 256, 2));
-        let isv_svn = bytes_to_u16(extract_bytes(raw_enclave_report, 258, 2));
+        let isv_prod_id = le_bytes_to_u16(extract_bytes(raw_enclave_report, 256, 2));
+        let isv_svn = le_bytes_to_u16(extract_bytes(raw_enclave_report, 258, 2));
         let reserved4 = extract_bytes(raw_enclave_report, 260, 60);
         let report_data = extract_bytes(raw_enclave_report, 320, 64);
 
@@ -122,49 +365,90 @@ module atoma_tee::quote_verifier {
         )
     }
 
-    /// Extracts a subset of bytes from a vector starting at a specified position
+    /// Verifies QE report data by comparing it with the hash of attestation key and QE auth data
     /// 
     /// # Arguments
-    /// * `raw_enclave_report` - Source vector of bytes to extract from
-    /// * `start` - Starting index position in the source vector
-    /// * `len` - Number of bytes to extract
+    /// * `qe_report_data` - Expected hash value from the QE report (32 bytes)
+    /// * `attestation_key` - Attestation key bytes to be included in hash preimage
+    /// * `qe_auth_data` - QE authentication data to be included in hash preimage
     /// 
     /// # Returns
-    /// * `vector<u8>` - New vector containing the extracted bytes
-    /// 
-    /// # Example
-    /// ```
-    /// let data = vector[1, 2, 3, 4, 5];
-    /// let subset = extract_bytes(data, 1, 2); // Returns vector[2, 3]
-    /// ```
-    fun extract_bytes(raw_enclave_report: vector<u8>, start: u64, len: u64): vector<u8> { 
-        let mut result = vector::empty<u8>();
-        let mut i = 0;
-        while (i < len) { 
-            vector::push_back(&mut result, *vector::borrow(&raw_enclave_report, start + i));
-            i = i + 1;
-        };
-        result
-    }
-
-    /// Converts a 2-byte vector into a u16 value using little-endian byte order
-    /// 
-    /// # Arguments
-    /// * `bytes` - Vector containing exactly 2 bytes in little-endian order
-    /// 
-    /// # Returns
-    /// * `u16` - The converted 16-bit unsigned integer
+    /// * `bool` - True if verification succeeds, false otherwise
     /// 
     /// # Aborts
-    /// * `EInvalidVectorLength` - If the input vector does not contain exactly 2 bytes
+    /// * `EInvalidReportDataLength` - If qe_report_data is not 32 bytes
+    public fun verify_qe_report_data(
+        qe_report_data: vector<u8>,
+        attestation_key: vector<u8>,
+        qe_auth_data: vector<u8>
+    ): bool {
+        // Verify qe_report_data length is 32 bytes (256 bits)
+        assert!(
+            vector::length(&qe_report_data) == QE_REPORT_DATA_LENGTH, 
+            EInvalidReportDataLength
+        );
+
+        // Create preimage by concatenating attestation_key and qe_auth_data
+        let mut preimage = vector::empty<u8>();
+        vector::append(&mut preimage, attestation_key);
+        vector::append(&mut preimage, qe_auth_data);
+
+        // Compute SHA256 hash
+        let computed_hash = sha2_256(preimage);
+
+        // Compare computed hash with expected hash (qe_report_data)
+        compare_vectors(&computed_hash, &qe_report_data)
+    }
+
+    /// Verifies both QE report and attestation signatures using ECDSA with P256 curve
     /// 
-    /// # Example
-    /// ```
-    /// let bytes = vector[0x34, 0x12];  // 0x1234 in little-endian
-    /// let value = bytes_to_u16(bytes); // Returns 0x1234 (4660 in decimal)
-    /// ```
-    fun bytes_to_u16(bytes: vector<u8>): u16 { 
-        assert!(vector::length(&bytes) == 2, EInvalidVectorLength);
-        (((*vector::borrow(&bytes, 1) as u16) << 8) | (*vector::borrow(&bytes, 0) as u16))
+    /// # Arguments
+    /// * `raw_qe_report` - Raw QE report bytes to verify
+    /// * `qe_signature` - Signature of the QE report
+    /// * `pck_pubkey` - Public key for QE report verification
+    /// * `signed_attestation_data` - Attestation data to verify
+    /// * `attestation_signature` - Signature of the attestation data
+    /// * `attestation_key` - Public key for attestation verification
+    /// 
+    /// # Returns
+    /// * `bool` - True if both verifications succeed, false otherwise
+    /// 
+    /// # Aborts
+    /// * `EInvalidSignatureLength` - If signature length is invalid
+    /// * `EInvalidKeyLength` - If public key length is invalid
+    public fun attestation_verification(
+        raw_qe_report: vector<u8>,
+        qe_signature: vector<u8>,
+        pck_pubkey: vector<u8>,
+        signed_attestation_data: vector<u8>,
+        attestation_signature: vector<u8>,
+        attestation_key: vector<u8>
+    ): bool {
+        // First verify QE report
+        let qe_report_hash = sha2_256(raw_qe_report);
+        
+        let qe_report_verified = ecdsa_r1::secp256r1_verify(
+            &qe_signature,
+            &pck_pubkey,
+            &qe_report_hash,
+            SHA256_HASH_U8_IDENTIFIER,
+        );
+
+        // Early return if QE report verification fails
+        if (!qe_report_verified) {
+            return false
+        };
+
+        // Then verify attestation data
+        let attestation_hash = sha2_256(signed_attestation_data);
+        
+        let attestation_verified = ecdsa_r1::secp256r1_verify(
+            &attestation_signature,
+            &attestation_key,
+            &attestation_hash,
+            SHA256_HASH_U8_IDENTIFIER,
+        );
+
+        attestation_verified
     }
 }
