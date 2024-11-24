@@ -23,11 +23,11 @@ module atoma_tee::registration {
         epoch: u64, 
     }
 
-    /// Event emitted when a new node is successfully registered in the contract,
-    /// after a new key rotation event is emitted.
+    /// Event emitted when a new node successfully registers its new public key
+    /// in the contract, after a new key rotation event is emitted.
     /// This event contains all the essential information about the registered node
     /// including its identification, epoch, and verification data
-    public struct NodeRegistrationEvent has copy, drop { 
+    public struct NodeKeyRotationEvent has copy, drop { 
         /// The epoch number when the node registration occurred
         epoch: u64,
         /// The unique identifier of the node's badge
@@ -249,12 +249,13 @@ module atoma_tee::registration {
         self.nodes.add(small_id, node_entry);
 
         let badge_id = object::new(ctx);
-        sui::event::emit(NodeRegistrationEvent {
+        sui::event::emit(NodeKeyRotationEvent {
             epoch: self.current_epoch,
             badge_id: object::uid_to_inner(&badge_id),
             node_small_id: small_id,
             node_public_key: public_key,
             remote_attestation_bytes,
+            
         });
         NodeBadge {
             id: badge_id,

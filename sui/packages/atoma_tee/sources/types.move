@@ -169,7 +169,7 @@ module atoma_tee::types {
         pck: PCKCollateral
     }
 
-    // ============================== CUSTOM TYPES ==============================
+    // ============================== Custom Types ==============================
 
     /// Represents PCK Collateral information
     public struct PCKCollateral has store, copy, drop {
@@ -190,6 +190,8 @@ module atoma_tee::types {
         /// PCE ID bytes
         pceid_bytes: vector<u8>
     }
+
+    // ============================== Factory Functions ==============================
 
     /// Creates a new TD10ReportBody structure with validation checks.
     /// 
@@ -518,6 +520,8 @@ module atoma_tee::types {
         }
     }
 
+    // ============================== Getter Functions ==============================
+
     /// Returns the version of the quote header
     /// 
     /// # Arguments
@@ -551,7 +555,7 @@ module atoma_tee::types {
         header.qe_vendor_id
     }
 
-    /// Returns the TEE type of the quote header
+    /// Returns the TEE type of the header
     /// 
     /// # Arguments
     /// * `header` - The quote header
@@ -561,4 +565,125 @@ module atoma_tee::types {
     public fun get_tee_type(header: &Header): u32 {
         header.tee_type
     }
-}
+
+    /// Returns the TEE type of the quote header
+    /// 
+    /// # Arguments
+    /// * `quote` - The quote
+    ///
+    /// # Returns
+    /// * `vector<u8>` - The TEE type
+    public fun get_quote_tee_type(quote: &V4TDXQuote): u32 { 
+        quote.header.tee_type
+    }
+
+    /// Returns the authentication data from the quote
+    /// 
+    /// # Arguments
+    /// * `quote` - The quote
+    ///
+    /// # Returns
+    /// * `EcdsaQuoteV4AuthData` - The quote authentatication data
+    public fun get_quote_auth_data(quote: &V4TDXQuote): EcdsaQuoteV4AuthData {
+        quote.auth_data
+    }
+
+    /// Returns the report data within the authentication data of the quote
+    /// 
+    /// # Arguments
+    /// * `auth` -  The authentication data
+    /// 
+    /// # Returns
+    /// `vector<u8>` - The report data as a buffer of bytes
+    public fun get_qe_data_from_auth(auth: &EcdsaQuoteV4AuthData): vector<u8> { 
+        auth.qe_report_cert_data.qe_report.report_data
+    }
+
+    /// Returns the attestation key from the authentication data of the quote
+    /// 
+    /// # Arguments
+    /// * `auth` - The authentication data
+    /// 
+    /// # Returns
+    /// `vector<u8>` - The attestation key as a buffer of bytes
+    public fun get_attestation_key_from_auth(auth: &EcdsaQuoteV4AuthData): vector<u8> { 
+        auth.ecdsa_attestation_key
+    }
+
+    /// Returns the QE authentication data from the quote authentication data
+    /// 
+    /// # Arguments
+    /// * `auth` - The quote authentication data
+    /// 
+    /// # Returns 
+    /// `vector<u8>` - The report certification QE data
+    public fun get_qe_auth_data(auth: &EcdsaQuoteV4AuthData): vector<u8> { 
+        auth.qe_report_cert_data.qe_auth_data.data
+    }
+
+    /// Returns the TCB SVN from the quote report body
+    /// 
+    /// # Arguments
+    /// * `quote` - The quote
+    /// 
+    /// # Returns
+    /// `vector<u8>` - The TCB SVN as a buffer of bytes
+    public fun get_quote_report_body_tee_tcb_svn(quote: &V4TDXQuote): vector<u8> { 
+        quote.report_body.tee_tcb_svn
+    }
+
+    /// Returns the MRSIGNER SEAM from the quote report body
+    /// 
+    /// # Arguments
+    /// * `quote` - The quote
+    /// 
+    /// # Returns
+    /// `vector<u8>` - The MRSIGNER SEAM as a buffer of bytes
+    public fun get_quote_report_body_mrsigner_seam(quote: &V4TDXQuote): vector<u8> { 
+        quote.report_body.mrsigner_seam
+    }
+
+    /// Returns the SEAM attributes from the quote report body
+    /// 
+    /// # Arguments
+    /// * `quote` - The quote
+    /// 
+    /// # Returns
+    /// `vector<u8>` - The SEAM attributes as a buffer of bytes
+    public fun get_quote_report_body_seam_attributes(quote: &V4TDXQuote): vector<u8> { 
+        quote.report_body.seam_attributes
+    }
+
+    /// Returns the PCK chain from the quote authentication data
+    /// 
+    /// # Arguments
+    /// * `auth` - The quote authentication data
+    /// 
+    /// # Returns
+    /// `vector<vector<u8>>` - The PCK chain
+    public fun get_pck_chain(auth: &EcdsaQuoteV4AuthData): vector<vector<u8>> { 
+        auth.qe_report_cert_data.certification.pck.pck_chain
+    }
+
+    /// Returns the PCK TCB from the quote authentication data
+    /// 
+    /// # Arguments
+    /// * `auth` - The quote authentication data
+    /// 
+    /// # Returns
+    /// `&PCKCertTCB` - The PCK TCB
+    public fun get_pck_extension(auth: &EcdsaQuoteV4AuthData): &PCKCertTCB { 
+        &auth.qe_report_cert_data.certification.pck.pck_extension
+    }
+
+    /// Returns the QE report from the quote authentication data
+    /// 
+    /// # Arguments
+    /// * `auth` - The quote authentication data
+    /// 
+    /// # Returns
+    /// `&EnclaveReport` - The QE report
+    public fun get_qe_report(auth: &EcdsaQuoteV4AuthData): &EnclaveReport { 
+        &auth.qe_report_cert_data.qe_report
+    }
+}   

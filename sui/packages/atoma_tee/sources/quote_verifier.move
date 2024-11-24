@@ -15,6 +15,17 @@ module atoma_tee::quote_verifier {
         create_qe_auth_data,
         create_certification_data,
         create_v4_tdx_quote,
+        get_quote_auth_data,
+        get_quote_tee_type,
+        get_qe_data_from_auth,
+        get_attestation_key_from_auth,
+        get_qe_auth_data,
+        get_quote_report_body_tee_tcb_svn,
+        get_quote_report_body_mrsigner_seam,
+        get_quote_report_body_seam_attributes,
+        get_pck_chain,
+        get_pck_extension,
+        get_qe_report,
     };
     use atoma_tee::utils::{
         extract_bytes,
@@ -91,6 +102,8 @@ module atoma_tee::quote_verifier {
     const EInvalidReportLength: u64 = 5;
     const EInvalidReportDataLength: u64 = 6;
     const EInvalidCertificationType: u64 = 7;
+    const EInvalidQETcbStatus: u64 = 8;
+    const ETcbNotFoundOrExpired: u64 = 9;
 
     /// Verifies an intel TDX remote attestation quote by parsing and validating its components
     /// 
@@ -123,7 +136,7 @@ module atoma_tee::quote_verifier {
             let td_report = parse_td10_report_body(raw_quote_body);
             let raw_body = extract_bytes(raw_quote, HEADER_LENGTH, TD_REPORT10_LENGTH);
             let quote = create_v4_tdx_quote(header, td_report, auth_data);
-            verify_tdx_quote(quote, raw_header, raw_body, raw_qe_report);
+            verify_tdx_quote(&quote, raw_header, raw_body, raw_qe_report);
         }
         else { 
             abort EInvalidTEEType
@@ -131,24 +144,91 @@ module atoma_tee::quote_verifier {
     }
 
     fun verify_tdx_quote(
-        quote: V4TDXQuote,
+        quote: &V4TDXQuote,
         raw_header: vector<u8>,
         raw_body: vector<u8>,
         raw_qe_report: vector<u8>,
     ) {
         // 1. Verification steps that are required for TDX quotes (it should also work for SGX quotes, in the future)
+        verify_common(
+            get_quote_tee_type(quote), 
+            raw_header, 
+            raw_body, 
+            &get_quote_auth_data(quote)
+        );
 
+        // // 2. Get the TCB Status from the TDXComponent of the matching TCBLevel
+        // get_tdx_tcb_status();
+
+        // // 3. Fetch TDXModule TCB Status
+        // let (
+        //     tdx_module_version, 
+        //     expected_mr_signer_seam, 
+        //     expected_seam_attributes
+        // ) = check_tdx_module_tcb_status(
+        //     get_quote_report_body_tee_tcb_svn(quote), 
+        //     // TODO: add ret tdx module identities 
+        // );
+
+        // // 4. Check TDX modules
+        // check_tdx_module(
+        //     get_quote_report_body_mrsigner_seam(quote),
+        //     get_quote_report_body_seam_attributes(quote),
+        //     expected_seam_attributes,
+        // );
     }
 
-    // fun verify_common(
-    //     tee: u32,
-    //     raw_header: vector<u8>,
-    //     raw_body: vector<u8>,
-    //     raw_qe_report: vector<u8>,
-    //     auth_data: EcdsaQuoteV4AuthData,
-    // ) {
+    fun verify_common(
+        tee_type: u32,
+        raw_header: vector<u8>,
+        raw_body: vector<u8>,
+        auth_data: &EcdsaQuoteV4AuthData
+    ) {
+        // Step 0: Verify QE report data
+        verify_qe_report_data(
+            get_qe_data_from_auth(auth_data), 
+            get_attestation_key_from_auth(auth_data), 
+            get_qe_auth_data(auth_data)
+        );
 
-    // }
+        // // Step 1: Fetch QE Identity and validate TCB of the QE
+        // let qe_report = get_qe_report(auth_data);
+        // fetch_qe_identity_and_check_qe_report(tee_type, qe_report);
+        // assert!(qe_tcb_status != EnclaveIdTcbStatus::SGX_ENCLAVE_REPORT_ISVSVN_REVOKED, EInvalidQETcbStatus);
+
+
+        // // Step 2: Fetch FMSPC TCB
+        // let pck_chain = get_pck_chain(auth_data);
+        // let pck_tcb = get_pck_extension(auth_data);
+        // let (tcb_levels, tdx_module, tdx_module_identities) = get_fmspc_tcb_v3(
+        //     tee_type,
+        //     pck_tcb.fmspc_bytes
+        // );
+        // assert!(!vector::is_empty(&tcb_levels), ETcbNotFoundOrExpired);
+
+        // // Step 3: Verify certificate chain
+        // let cert_chain_verified = verify_cert_chain(pck_chain);
+        // assert!(cert_chain_verified, EFailedCertChainVerification);
+
+        // // Step 4: Verify signatures
+        // // Concatenate raw_header and raw_body for local attestation data
+        // let mut local_attestation_data = vector::empty<u8>();
+        // vector::append(&mut local_attestation_data, raw_header);
+        // vector::append(&mut local_attestation_data, raw_body);
+
+        // // Get PCK public key from first certificate in chain
+        // let pck_pubkey = get_subject_public_key(&vector::borrow(pck_chain, 0));
+
+        // let signatures_verified = attestation_verification(
+        //     auth_data.qe_report_cert_data.qe_report,
+        //     auth_data.qe_report_cert_data.qe_report_signature,
+        //     pck_pubkey,
+        //     local_attestation_data,
+        //     auth_data.ecdsa_signature,
+        //     auth_data.ecdsa_attestation_key
+        // );
+        // assert!(signatures_verified, EFailedSignatureVerification);
+    }
 
     /// Parses a v4 TDX quote into its constituent parts
     /// 
