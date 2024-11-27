@@ -202,14 +202,14 @@ enum DbCmds {
     /// Command to subscribe a node to a specific task in the Atoma network.
     SubscribeNodeToTask {
         /// Optional package ID. If not provided, the default from the environment will be used.
-        #[arg(short, long)]
+        #[arg(short = 'a', long)]
         package: Option<String>,
         /// The small ID of the task to subscribe to. This is a unique identifier for the task.
         #[arg(short, long)]
         task_small_id: u64,
         /// The price per compute unit that the node is willing to charge for this task.
         /// This value is in the smallest unit of the network's native currency.
-        #[arg(short, long)]
+        #[arg(short = 'p', long)]
         price_per_compute_unit: u64,
         /// The maximum number of compute units that the node is willing to provide for this task.
         /// This limits the node's commitment to the task.
