@@ -1,6 +1,6 @@
 use fastcrypto::hash::{Blake2b256, HashFunction};
 use sui_sdk::{
-    rpc_types::SuiData,
+    rpc_types::{SuiData, SuiTransactionBlockResponseOptions},
     types::{dynamic_field::DynamicFieldName, SUI_RANDOMNESS_STATE_OBJECT_ID},
 };
 
@@ -54,6 +54,20 @@ pub(crate) async fn command(
 
     let output_tokens_count = prompt_output.len();
     let input_tokens_count = {
+        let events = context
+            .get_client()
+            .await?
+            .read_api()
+            .get_transaction_with_options(digest, SuiTransactionBlockResponseOptions { show_events: true, ..Default::default() })
+            .await?
+            .events;
+        events.iter().find_map(|event| {
+            if event.data.type_ == "Event.TicketParams" {
+                Some(event)
+            } else {
+                None
+            }
+        });
         let object_content = context
             .get_client()
             .await?
