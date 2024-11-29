@@ -1,4 +1,4 @@
 {
-  "rust-analyzer.linkedProjects": ["sui/cli/Cargo.toml"],
-  "cSpell.words": ["atoma"]
+    "rust-analyzer.linkedProjects": ["sui/cli/Cargo.toml", "solana/Cargo.toml"],
+    "cSpell.words": ["atoma"]
 }
