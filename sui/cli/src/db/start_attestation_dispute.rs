@@ -25,7 +25,7 @@ pub(crate) async fn command(
             vec![
                 SuiJsonValue::from_object_id(atoma_db),
                 SuiJsonValue::from_object_id(node_badge),
-                SuiJsonValue::new(stack_small_id.into())?,
+                SuiJsonValue::new(stack_small_id.to_string().into())?,
                 SuiJsonValue::new(attestation_commitment.into())?,
             ],
             None,
