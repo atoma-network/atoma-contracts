@@ -28,9 +28,9 @@ pub(crate) async fn command(
             vec![
                 SuiJsonValue::from_object_id(atoma_db),
                 SuiJsonValue::from_object_id(toma_wallet),
-                SuiJsonValue::new(task_small_id.into())?,
-                SuiJsonValue::new(num_compute_units.into())?,
-                SuiJsonValue::new(price.into())?,
+                SuiJsonValue::new(task_small_id.to_string().into())?,
+                SuiJsonValue::new(num_compute_units.to_string().into())?,
+                SuiJsonValue::new(price.to_string().into())?,
                 SuiJsonValue::from_object_id(SUI_RANDOMNESS_STATE_OBJECT_ID),
             ],
             None,
