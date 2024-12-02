@@ -18,7 +18,8 @@ use crate::{
     SETTLEMENT_TICKET_TYPE_NAME, TOMA_COIN_MODULE_NAME,
 };
 
-const ATOMA_DB_OBJECT_ID: &str = "0x7b8f40e38698deb650519a51f9c1a725bf8cfdc074d1552a4dc85976c2b414be";
+const ATOMA_DB_OBJECT_ID: &str =
+    "0x7b8f40e38698deb650519a51f9c1a725bf8cfdc074d1552a4dc85976c2b414be";
 pub(crate) const ATOMA_DB_ID: &str = "ATOMA_DB_ID";
 pub(crate) const ATOMA_PACKAGE_ID: &str = "ATOMA_PACKAGE_ID";
 pub(crate) const FAUCET_ID: &str = "FAUCET_ID";

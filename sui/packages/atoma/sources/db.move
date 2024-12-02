@@ -134,6 +134,7 @@ module atoma::db {
     const EInvalidCommittedStackProof: u64 = EBase + 42;
     const EInvalidStackMerkleLeaf: u64 = EBase + 43;
     const EInvalidMinimumReputationScore: u64 = EBase + 44;
+    const EInvalidConfidentialCompute: u64 = EBase + 45;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -146,6 +147,17 @@ module atoma::db {
         /// ID of the NodeBadge object
         badge_id: ID,
         node_small_id: NodeSmallId,
+    }
+
+    public struct NewKeyRotationEvent has copy, drop {
+        epoch: u64,
+    }
+
+    public struct NodePublicKeyCommittmentEvent has copy, drop {
+        epoch: u64,
+        node_id: NodeSmallId,
+        new_public_key: vector<u8>,
+        tee_remote_attestation_bytes: vector<u8>,
     }
 
     public struct NodeSubscribedToModelEvent has copy, drop {
@@ -547,6 +559,11 @@ module atoma::db {
         /// Additional charge for the Cross Validation feature
         cross_validation_extra_nodes_charge_permille: u64,
 
+        // Confidential compute
+
+        /// Registered nodes that support confidential compute
+        confidential_compute_registered_nodes_small_ids: TableVec<NodeSmallId>,
+
         // Configuration
 
         /// If set to true, no new nodes can be registered.
@@ -575,16 +592,21 @@ module atoma::db {
         /// It must also wait for a certain number of epochs before it can be
         /// deleted and collateral reclaimed.
         was_disabled_in_epoch: Option<u64>,
+
         /// It can get slashed if node is not responding or if it submitted
         /// results that do not match the oracle's results.
         collateral: Balance<TOMA>,
+
         /// What's the epoch number of the last fee settlement.
         last_fee_epoch: u64,
+
         /// These fees have been deposited in epoch `last_fee_epoch`.
         /// They won't be available for withdrawal until the next epoch.
         last_fee_epoch_amount: u64,
+
         /// These fees are unlocked for the node to collect.
         available_fee_amount: u64,
+
         /// The relative performance of the node.
         ///
         /// We start from 100 and increase the reputation by 1,
@@ -594,6 +616,17 @@ module atoma::db {
         /// will have their reputation score decreased, by 1 or more points.
         /// To a minimum of 0, in which case the node is slashed from the network.
         reputation_score: ReputationScore,
+
+        // Confidential compute
+
+        /// Last epoch in which the node updated its confidential compute public key commitment
+        confidential_compute_last_updated_epoch: Option<u64>,
+
+        /// Public key commitment for the node
+        confidential_compute_public_key_commitment: Option<vector<u8>>,
+
+        /// Tee remote attestation bytes for the node
+        confidential_compute_tee_remote_attestation_bytes: Option<vector<u8>>,
     }
 
     /// Object field of AtomaDb.
@@ -695,6 +728,7 @@ module atoma::db {
                 InitialSamplingConsensusChargePermille,
             cross_validation_extra_nodes_charge_permille:
                 InitialCrossValidationExtraAttestationNodesChargePermille,
+            confidential_compute_registered_nodes_small_ids: table_vec::empty(ctx),
         };
 
         // Create a manager badge for the package owner for convenience.
@@ -717,12 +751,19 @@ module atoma::db {
     public entry fun register_node_entry(
         self: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
+        confidential_compute_public_key_commitment: Option<vector<u8>>,
+        confidential_compute_tee_remote_attestation_bytes: Option<vector<u8>>,
         ctx: &mut TxContext,
     ) {
-        let badge = register_node(self, wallet.balance_mut(), ctx);
+        let badge = register_node(
+            self,
+            wallet.balance_mut(),
+            confidential_compute_public_key_commitment,
+            confidential_compute_tee_remote_attestation_bytes,
+            ctx,
+        );
         transfer::transfer(badge, ctx.sender());
     }
-
 
     /// Creates a new task in the Atoma network and transfers the resulting TaskBadge to the sender.
     ///
@@ -962,15 +1003,44 @@ module atoma::db {
         task_id.delete();
     }
 
-    /// Splits the collateral from the sender's wallet and registers a new node.
-    /// Returns a node badge.
-    /// The node badge is intended to be owned by the node as a proof of
-    /// registration.
-    /// It can be used later to add or remove available models, delete account,
-    /// subscribe to new tasks, unsubscribe from previous tasks, etc.
+    /// Registers a new node in the Atoma network and returns a NodeBadge.
+    ///
+    /// This function handles the registration of a new node by splitting the required collateral
+    /// from the sender's wallet and creating a NodeBadge as proof of registration. The NodeBadge
+    /// can be used for various operations such as adding or removing models, managing tasks, and
+    /// handling account-related actions.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `wallet` - A mutable reference to the sender's Balance<TOMA> object, from which collateral is deducted.
+    /// * `confidential_compute_public_key_commitment` - An optional vector<u8> representing the node's public key commitment for confidential compute.
+    /// * `confidential_compute_tee_remote_attestation_bytes` - An optional vector<u8> representing the TEE remote attestation bytes for confidential compute.
+    /// * `ctx` - A mutable reference to the transaction context.
+    ///
+    /// # Returns
+    /// A NodeBadge object representing the registered node.
+    ///
+    /// # Effects
+    /// - Deducts the required collateral from the sender's wallet.
+    /// - Assigns a new SmallId to the node and increments the counter.
+    /// - Adds the node to the AtomaDb's nodes table.
+    /// - Emits a NodeRegisteredEvent with the node's details.
+    /// - If confidential compute details are provided, validates and registers the node for confidential compute,
+    ///   and emits a NodePublicKeyCommittmentEvent.
+    ///
+    /// # Errors
+    /// * `ENodeRegDisabled` - If node registration is currently disabled.
+    /// * `EInvalidConfidentialCompute` - If confidential compute details are incomplete or invalid.
+    ///
+    /// # Notes
+    /// - The function ensures that node registration is enabled before proceeding.
+    /// - Confidential compute registration is optional and requires both public key commitment and TEE attestation bytes.
+    /// - The function is designed to be flexible, allowing for future extensions and additional features.
     public fun register_node(
         self: &mut AtomaDb,
         wallet: &mut Balance<TOMA>,
+        mut confidential_compute_public_key_commitment: Option<vector<u8>>,
+        mut confidential_compute_tee_remote_attestation_bytes: Option<vector<u8>>,
         ctx: &mut TxContext,
     ): NodeBadge {
         assert!(!self.is_registration_disabled, ENodeRegDisabled);
@@ -981,6 +1051,12 @@ module atoma::db {
         let small_id = self.next_node_small_id;
         self.next_node_small_id.inner = self.next_node_small_id.inner + 1;
 
+        let confidential_compute_last_updated_epoch = if (confidential_compute_public_key_commitment.is_some()) {
+            option::some(ctx.epoch())
+        } else {
+            option::none()
+        };
+
         let node_entry = NodeEntry {
             collateral,
             was_disabled_in_epoch: option::none(),
@@ -988,6 +1064,9 @@ module atoma::db {
             last_fee_epoch_amount: 0,
             available_fee_amount: 0,
             reputation_score: ReputationScore { inner: REPUTATION_SCORE_START },
+            confidential_compute_public_key_commitment: confidential_compute_public_key_commitment,
+            confidential_compute_tee_remote_attestation_bytes: confidential_compute_tee_remote_attestation_bytes,
+            confidential_compute_last_updated_epoch: confidential_compute_last_updated_epoch,
         };
         self.nodes.add(small_id, node_entry);
 
@@ -996,10 +1075,92 @@ module atoma::db {
             badge_id: object::uid_to_inner(&badge_id),
             node_small_id: small_id,
         });
+
+        if (confidential_compute_public_key_commitment.is_some()) {
+            assert!(confidential_compute_tee_remote_attestation_bytes.is_some(), EInvalidConfidentialCompute);
+            let confidential_compute_public_key_commitment = confidential_compute_public_key_commitment.extract();
+            let confidential_compute_tee_remote_attestation_bytes = confidential_compute_tee_remote_attestation_bytes.extract();
+            table_vec::push_back(&mut self.confidential_compute_registered_nodes_small_ids, small_id);
+            sui::event::emit(NodePublicKeyCommittmentEvent {
+                node_id: small_id,
+                epoch: ctx.epoch(),
+                new_public_key: confidential_compute_public_key_commitment,
+                tee_remote_attestation_bytes: confidential_compute_tee_remote_attestation_bytes,
+            });
+        };
+
         NodeBadge {
             id: badge_id,
             small_id,
         }
+    }
+
+    /// Rotates a node's confidential compute public key commitment and TEE remote attestation bytes.
+    ///
+    /// This function allows a node operator to update their node's cryptographic credentials used for
+    /// confidential computing. The rotation can only occur once per epoch to prevent potential
+    /// security issues from rapid key changes.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object
+    /// * `node_badge` - A mutable reference to the NodeBadge of the node updating its keys
+    /// * `confidential_compute_public_key_commitment` - The new public key commitment for confidential compute
+    /// * `confidential_compute_tee_remote_attestation_bytes` - The new TEE remote attestation bytes
+    /// * `ctx` - A mutable reference to the transaction context
+    ///
+    /// # Errors
+    /// * `ENotEnoughEpochsPassed` - If attempting to rotate keys in the same epoch as the previous rotation
+    ///
+    /// # Effects
+    /// - Updates the node's confidential compute public key commitment
+    /// - Updates the node's TEE remote attestation bytes
+    /// - Updates the last updated epoch timestamp
+    /// - Emits a `NodePublicKeyCommittmentEvent`
+    ///
+    /// # Events
+    /// Emits a `NodePublicKeyCommittmentEvent` containing:
+    /// * `node_id` - The SmallId of the node
+    /// * `epoch` - The epoch when the key rotation occurred
+    /// * `new_public_key` - The new public key commitment
+    /// * `tee_remote_attestation_bytes` - The new TEE remote attestation bytes
+    ///
+    /// # Security Considerations
+    /// - Key rotation is limited to once per epoch to prevent potential attacks
+    /// - Both the public key commitment and TEE attestation must be provided together
+    /// - The function preserves the node's ability to participate in confidential compute tasks
+    ///
+    /// # Example
+    /// ```move
+    /// // Rotate a node's confidential compute keys
+    /// atoma_db.rotate_node_public_key(
+    ///     &mut node_badge,
+    ///     new_public_key_commitment,
+    ///     new_tee_attestation_bytes,
+    ///     ctx
+    /// );
+    /// ```
+    public entry fun rotate_node_public_key(
+        self: &mut AtomaDb,
+        node_badge: &mut NodeBadge,
+        confidential_compute_public_key_commitment: vector<u8>,
+        confidential_compute_tee_remote_attestation_bytes: vector<u8>,
+        ctx: &mut TxContext,
+    ) {
+        let node_small_id = node_badge.small_id;
+        let node = self.nodes.borrow_mut(node_small_id);
+        let previous_committed_epoch = option::get_with_default(&node.confidential_compute_last_updated_epoch, 0);
+        assert!(ctx.epoch() > previous_committed_epoch, ENotEnoughEpochsPassed);
+
+        node.confidential_compute_public_key_commitment = option::some(confidential_compute_public_key_commitment);
+        node.confidential_compute_tee_remote_attestation_bytes = option::some(confidential_compute_tee_remote_attestation_bytes);
+        node.confidential_compute_last_updated_epoch = option::some(ctx.epoch());
+
+        sui::event::emit(NodePublicKeyCommittmentEvent {
+            node_id: node_small_id,
+            epoch: ctx.epoch(),
+            new_public_key: confidential_compute_public_key_commitment,
+            tee_remote_attestation_bytes: confidential_compute_tee_remote_attestation_bytes,
+        });
     }
 
     /// Subscribes a node to a specific task.
@@ -1875,6 +2036,9 @@ module atoma::db {
             last_fee_epoch_amount: _,
             available_fee_amount: _,
             reputation_score: _,
+            confidential_compute_public_key_commitment: _,
+            confidential_compute_tee_remote_attestation_bytes: _,
+            confidential_compute_last_updated_epoch: _,
         } = self.nodes.remove(node_badge.small_id);
 
         let was_disabled_in_epoch = was_disabled_in_epoch.extract();
@@ -2568,6 +2732,27 @@ module atoma::db {
     //                          Admin functions
     // =========================================================================
 
+    /// Creates and transfers a new AtomaManagerBadge to the transaction sender.
+    /// 
+    /// The AtomaManagerBadge is a capability object that grants administrative privileges 
+    /// over the Atoma protocol. Only the original package publisher can create this badge.
+    ///
+    /// # Arguments
+    /// * `pub` - A reference to the Publisher object, used to verify the caller is the package publisher
+    /// * `ctx` - Mutable reference to the transaction context
+    ///
+    /// # Permissions
+    /// * Only the original package publisher can successfully call this function
+    /// * The badge is transferred to `ctx.sender()`
+    ///
+    /// # Aborts
+    /// * `ENotAuthorized` - If the caller is not the original package publisher
+    ///
+    /// # Example
+    /// ```
+    /// let publisher = package::claim(ATOMA, ctx);
+    /// create_manager_badge_entry(&publisher, ctx);
+    /// ```
     public entry fun create_manager_badge_entry(
         pub: &Publisher, ctx: &mut TxContext,
     ) {
@@ -2575,11 +2760,70 @@ module atoma::db {
         transfer::transfer(badge, ctx.sender());
     }
 
+    /// Creates a new AtomaManagerBadge.
+    ///
+    /// This function is responsible for creating a new `AtomaManagerBadge`, which is a capability object
+    /// that grants administrative privileges over the Atoma protocol. The badge is created only if the
+    /// caller is authorized, i.e., the caller must be the original package publisher.
+    ///
+    /// # Arguments
+    /// * `pub` - A reference to the `Publisher` object, used to verify the caller's authorization.
+    /// * `ctx` - A mutable reference to the transaction context, used to create the new badge object.
+    ///
+    /// # Returns
+    /// * `AtomaManagerBadge` - The newly created manager badge.
+    ///
+    /// # Aborts
+    /// * `ENotAuthorized` - If the caller is not the original package publisher.
+    ///
+    /// # Example
+    /// ```
+    /// let publisher = package::claim(ATOMA, ctx);
+    /// let manager_badge = create_manager_badge(&publisher, ctx);
+    /// ```
+    ///
+    /// # Important Notes
+    /// - This function should only be called by the original package publisher.
+    /// - The `AtomaManagerBadge` grants significant control over the Atoma protocol, so it should be handled securely.
     public fun create_manager_badge(
         pub: &Publisher, ctx: &mut TxContext,
     ): AtomaManagerBadge {
         assert!(package::from_module<ATOMA>(pub), ENotAuthorized);
         AtomaManagerBadge { id: object::new(ctx) }
+    }
+
+    /// Triggers a network-wide rotation of node public keys by emitting a key rotation event.
+    ///
+    /// This function allows the Atoma network administrator to initiate a coordinated rotation
+    /// of cryptographic keys across all participating nodes. When called, it emits a
+    /// `NewKeyRotationEvent` that signals nodes to generate and transition to new key pairs.
+    ///
+    /// # Arguments
+    /// * `_` - A mutable reference to the AtomaDb object (unused but required for access control).
+    /// * `_` - A reference to the AtomaManagerBadge to verify admin privileges.
+    /// * `ctx` - A mutable reference to the transaction context, used to get the current epoch.
+    ///
+    /// # Events
+    /// Emits a `NewKeyRotationEvent` containing:
+    /// - `epoch`: The current epoch number when the rotation was initiated.
+    ///
+    /// # Security Considerations
+    /// - Only callable by the holder of the AtomaManagerBadge.
+    /// - Key rotation is a critical security operation that should be performed periodically.
+    /// - Nodes should monitor for this event and perform their key rotation promptly.
+    ///
+    /// # Important Notes
+    /// - The actual key rotation is performed off-chain by the nodes.
+    /// - Nodes should maintain both old and new keys during the transition period.
+    /// - The rotation event marks the beginning of the transition period.
+    public entry fun rotate_node_public_keys(
+        _: &mut AtomaDb,
+        _: &AtomaManagerBadge,
+        ctx: &mut TxContext,
+    ) {
+        sui::event::emit(NewKeyRotationEvent {
+            epoch: ctx.epoch(),
+        });
     }
 
     /// Removes a deprecated task from the task table.
@@ -3310,6 +3554,9 @@ module atoma::db {
             last_fee_epoch_amount: 0,
             available_fee_amount: 0,
             reputation_score: ReputationScore { inner: REPUTATION_SCORE_START },
+            confidential_compute_public_key_commitment: option::none(),
+            confidential_compute_tee_remote_attestation_bytes: option::none(),
+            confidential_compute_last_updated_epoch: option::none(),
         };
 
         // Add node to DB
@@ -3413,6 +3660,9 @@ module atoma::db {
                 last_fee_epoch_amount: 0,
                 available_fee_amount: 0,
                 reputation_score: ReputationScore { inner: 100 },
+                confidential_compute_public_key_commitment: option::none(),
+                confidential_compute_tee_remote_attestation_bytes: option::none(),
+                confidential_compute_last_updated_epoch: option::none(),
             });
             echelon_nodes.push_back(node_id);
         };
