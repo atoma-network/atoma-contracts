@@ -19,7 +19,7 @@ use crate::{
 };
 
 const ATOMA_DB_OBJECT_ID: &str =
-    "0x7b8f40e38698deb650519a51f9c1a725bf8cfdc074d1552a4dc85976c2b414be";
+    "0xe2acd64851e51fbb00989fb8358455765eb69a0d16192c32e383607e7a656969";
 pub(crate) const ATOMA_DB_ID: &str = "ATOMA_DB_ID";
 pub(crate) const ATOMA_PACKAGE_ID: &str = "ATOMA_PACKAGE_ID";
 pub(crate) const FAUCET_ID: &str = "FAUCET_ID";
@@ -299,24 +299,25 @@ impl Context {
     }
 
     pub(crate) async fn get_or_load_toma_wallet(&mut self) -> Result<ObjectID> {
-        if let Some(toma_wallet_id) = self.conf.toma_wallet_id {
-            Ok(toma_wallet_id)
-        } else {
-            let toma_package_id = self.get_or_load_toma_package_id().await?;
-            let active_address = self.wallet.active_address()?;
-            let toma_wallet = find_toma_token_wallet(
-                &self.get_client().await?,
-                toma_package_id,
-                active_address,
-            )
-            .await;
-            if let Ok(toma_wallet) = toma_wallet {
-                self.conf.toma_wallet_id = Some(toma_wallet);
-                Ok(toma_wallet)
-            } else {
-                anyhow::bail!("No TOMA wallet found")
-            }
-        }
+        // if let Some(toma_wallet_id) = self.conf.toma_wallet_id {
+        //     Ok(toma_wallet_id)
+        // } else {
+        //     let toma_package_id = self.get_or_load_toma_package_id().await?;
+        //     let active_address = self.wallet.active_address()?;
+        //     let toma_wallet = find_toma_token_wallet(
+        //         &self.get_client().await?,
+        //         toma_package_id,
+        //         active_address,
+        //     )
+        //     .await;
+        //     if let Ok(toma_wallet) = toma_wallet {
+        //         self.conf.toma_wallet_id = Some(toma_wallet);
+        //         Ok(toma_wallet)
+        //     } else {
+        //         anyhow::bail!("No TOMA wallet found")
+        //     }
+        // }
+        Ok(ObjectID::from_str("0x2092a1d324f2ffa4e6c7fa2443cff36b9e62e48f3b774e7279b07ac2d64a3412").unwrap())
     }
 
     pub(crate) async fn ticket_package_and_fields(

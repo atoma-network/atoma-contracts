@@ -122,3 +122,275 @@ cat "${env_file_path}"
 
 # leave the caller where they started
 cd $entrance_dir
+
+# {
+#   "digest": "ARCQbEAhUiP7KVTDNxxVbREbEG5APckKstkT9hFK3qa7",
+#   "transaction": {
+#     "data": {
+#       "messageVersion": "v1",
+#       "transaction": {
+#         "kind": "ProgrammableTransaction",
+#         "inputs": [
+#           {
+#             "type": "pure",
+#             "valueType": "address",
+#             "value": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040"
+#           }
+#         ],
+#         "transactions": [
+#           {
+#             "Publish": [
+#               "0x0000000000000000000000000000000000000000000000000000000000000001",
+#               "0x0000000000000000000000000000000000000000000000000000000000000002",
+#               "0xd38db2b743ce982e01de318eb98e2bae24fed09b8dca5ae267bdbbd38e56f746"
+#             ]
+#           },
+#           {
+#             "TransferObjects": [
+#               [
+#                 {
+#                   "Result": 0
+#                 }
+#               ],
+#               {
+#                 "Input": 0
+#               }
+#             ]
+#           }
+#         ]
+#       },
+#       "sender": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040",
+#       "gasData": {
+#         "payment": [
+#           {
+#             "objectId": "0x4cc4e4e4dcdf754b05fa0369bd43bd4c7f9612ef4619e9a53d873098908860d5",
+#             "version": 206232432,
+#             "digest": "7kv2oMXitKuEpf7JD3Z8hqXPS26JmERQzdJr7Nhzv5jV"
+#           }
+#         ],
+#         "owner": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040",
+#         "price": "1000",
+#         "budget": "258888800"
+#       }
+#     },
+#     "txSignatures": [
+#       "APnpM8kpntIzdorqcItoAhy3OokAUQxh+yqWOrKEwWSAMcvfkySCj8ynqeCwFwKonkYocNtDe5q8tsrflEKolgbL6s68ZZ1kiWiQ5EEIsCo4wwuV/MN62Pdm/uoKGD43ug=="
+#     ]
+#   },
+#   "effects": {
+#     "messageVersion": "v1",
+#     "status": {
+#       "status": "success"
+#     },
+#     "executedEpoch": "571",
+#     "gasUsed": {
+#       "computationCost": "3000000",
+#       "storageCost": "254888800",
+#       "storageRebate": "978120",
+#       "nonRefundableStorageFee": "9880"
+#     },
+#     "modifiedAtVersions": [
+#       {
+#         "objectId": "0x4cc4e4e4dcdf754b05fa0369bd43bd4c7f9612ef4619e9a53d873098908860d5",
+#         "sequenceNumber": "206232432"
+#       }
+#     ],
+#     "transactionDigest": "ARCQbEAhUiP7KVTDNxxVbREbEG5APckKstkT9hFK3qa7",
+#     "created": [
+#       {
+#         "owner": {
+#           "AddressOwner": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040"
+#         },
+#         "reference": {
+#           "objectId": "0x1dd69461e3ab9cbec55ee9a9c555899685a0d1416193ae76340800be32fe8c35",
+#           "version": 206232433,
+#           "digest": "HWBcAfm5sgHCg5ezupLv9a3So5nnKDGvuDiiaFte4Dj7"
+#         }
+#       },
+#       {
+#         "owner": {
+#           "AddressOwner": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040"
+#         },
+#         "reference": {
+#           "objectId": "0x66aa11d0150d7977a8d3498517652f1a7ce90bb88c46ce8db061bcce01fc9a20",
+#           "version": 206232433,
+#           "digest": "d5sKH8ndjA6nV1Xm32R8Vjtubcruz2NEVE4HiuFSYYg"
+#         }
+#       },
+#       {
+#         "owner": "Immutable",
+#         "reference": {
+#           "objectId": "0x69fad02d755ae214e8f8a46d5897ff55302070ebd5dfcc17ec8dcbf3874024fa",
+#           "version": 1,
+#           "digest": "FHybry264Hrr6m1F9fAJ6NjBSKyi5hJWKaHM5QSbXxUL"
+#         }
+#       },
+#       {
+#         "owner": {
+#           "AddressOwner": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040"
+#         },
+#         "reference": {
+#           "objectId": "0xc8891740b31f0b072bd322f81b9a1f7dbb15c23b4b53f0532a32c4a23081a8ad",
+#           "version": 206232433,
+#           "digest": "Ckn8ewqyFHzSutDAaXw8YjJENF8mLHV7AVYHrEMeKQXK"
+#         }
+#       },
+#       {
+#         "owner": {
+#           "Shared": {
+#             "initial_shared_version": 206232433
+#           }
+#         },
+#         "reference": {
+#           "objectId": "0xe2acd64851e51fbb00989fb8358455765eb69a0d16192c32e383607e7a656969",
+#           "version": 206232433,
+#           "digest": "F6ArxhGWEPCpYnDz3BehyqsP9tsPqMPiwXPAbvMfAkHN"
+#         }
+#       }
+#     ],
+#     "mutated": [
+#       {
+#         "owner": {
+#           "AddressOwner": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040"
+#         },
+#         "reference": {
+#           "objectId": "0x4cc4e4e4dcdf754b05fa0369bd43bd4c7f9612ef4619e9a53d873098908860d5",
+#           "version": 206232433,
+#           "digest": "7iKP84uzHEnezkWkx5qLMQRTQeWUEWCtQm12862CtKKB"
+#         }
+#       }
+#     ],
+#     "gasObject": {
+#       "owner": {
+#         "AddressOwner": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040"
+#       },
+#       "reference": {
+#         "objectId": "0x4cc4e4e4dcdf754b05fa0369bd43bd4c7f9612ef4619e9a53d873098908860d5",
+#         "version": 206232433,
+#         "digest": "7iKP84uzHEnezkWkx5qLMQRTQeWUEWCtQm12862CtKKB"
+#       }
+#     },
+#     "eventsDigest": "E1HZg1VUyFXjtZVMXBMJZ9iryBXv52ryrLbq8TPnmD2t",
+#     "dependencies": [
+#       "3LrJNCyNTRudZX1ukMdUosqmdK27kyFB4HVCfasW6yyD",
+#       "5bUzP2LVb4x57S5UmteDko9WqX7cC8egPvQxYswPa23W",
+#       "GMBJA2gEEvtwv1wGGT7ZEDkQdrmUTKaE4TeinNGQ2feC"
+#     ]
+#   },
+#   "events": [
+#     {
+#       "id": {
+#         "txDigest": "ARCQbEAhUiP7KVTDNxxVbREbEG5APckKstkT9hFK3qa7",
+#         "eventSeq": "0"
+#       },
+#       "packageId": "0x69fad02d755ae214e8f8a46d5897ff55302070ebd5dfcc17ec8dcbf3874024fa",
+#       "transactionModule": "db",
+#       "sender": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040",
+#       "type": "0x69fad02d755ae214e8f8a46d5897ff55302070ebd5dfcc17ec8dcbf3874024fa::db::PublishedEvent",
+#       "parsedJson": {
+#         "db": "0xe2acd64851e51fbb00989fb8358455765eb69a0d16192c32e383607e7a656969",
+#         "manager_badge": "0x1dd69461e3ab9cbec55ee9a9c555899685a0d1416193ae76340800be32fe8c35"
+#       },
+#       "bcs": "5XrXCohG9ENQCYCxCRyW3aRLReJmD1SwBuocF26rwGjZ5kQ3kf4L2jhT6xA28i2FZJZCAAs6YKGRQ9U4sfaXv5dv"
+#     }
+#   ],
+#   "objectChanges": [
+#     {
+#       "type": "mutated",
+#       "sender": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040",
+#       "owner": {
+#         "AddressOwner": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040"
+#       },
+#       "objectType": "0x2::coin::Coin<0x2::sui::SUI>",
+#       "objectId": "0x4cc4e4e4dcdf754b05fa0369bd43bd4c7f9612ef4619e9a53d873098908860d5",
+#       "version": "206232433",
+#       "previousVersion": "206232432",
+#       "digest": "7iKP84uzHEnezkWkx5qLMQRTQeWUEWCtQm12862CtKKB"
+#     },
+#     {
+#       "type": "created",
+#       "sender": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040",
+#       "owner": {
+#         "AddressOwner": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040"
+#       },
+#       "objectType": "0x69fad02d755ae214e8f8a46d5897ff55302070ebd5dfcc17ec8dcbf3874024fa::db::AtomaManagerBadge",
+#       "objectId": "0x1dd69461e3ab9cbec55ee9a9c555899685a0d1416193ae76340800be32fe8c35",
+#       "version": "206232433",
+#       "digest": "HWBcAfm5sgHCg5ezupLv9a3So5nnKDGvuDiiaFte4Dj7"
+#     },
+#     {
+#       "type": "created",
+#       "sender": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040",
+#       "owner": {
+#         "AddressOwner": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040"
+#       },
+#       "objectType": "0x2::package::UpgradeCap",
+#       "objectId": "0x66aa11d0150d7977a8d3498517652f1a7ce90bb88c46ce8db061bcce01fc9a20",
+#       "version": "206232433",
+#       "digest": "d5sKH8ndjA6nV1Xm32R8Vjtubcruz2NEVE4HiuFSYYg"
+#     },
+#     {
+#       "type": "published",
+#       "packageId": "0x69fad02d755ae214e8f8a46d5897ff55302070ebd5dfcc17ec8dcbf3874024fa",
+#       "version": "1",
+#       "digest": "FHybry264Hrr6m1F9fAJ6NjBSKyi5hJWKaHM5QSbXxUL",
+#       "modules": [
+#         "atoma",
+#         "db",
+#         "gate",
+#         "prompts",
+#         "settlement",
+#         "vaults"
+#       ]
+#     },
+#     {
+#       "type": "created",
+#       "sender": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040",
+#       "owner": {
+#         "AddressOwner": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040"
+#       },
+#       "objectType": "0x2::package::Publisher",
+#       "objectId": "0xc8891740b31f0b072bd322f81b9a1f7dbb15c23b4b53f0532a32c4a23081a8ad",
+#       "version": "206232433",
+#       "digest": "Ckn8ewqyFHzSutDAaXw8YjJENF8mLHV7AVYHrEMeKQXK"
+#     },
+#     {
+#       "type": "created",
+#       "sender": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040",
+#       "owner": {
+#         "Shared": {
+#           "initial_shared_version": 206232433
+#         }
+#       },
+#       "objectType": "0x69fad02d755ae214e8f8a46d5897ff55302070ebd5dfcc17ec8dcbf3874024fa::db::AtomaDb",
+#       "objectId": "0xe2acd64851e51fbb00989fb8358455765eb69a0d16192c32e383607e7a656969",
+#       "version": "206232433",
+#       "digest": "F6ArxhGWEPCpYnDz3BehyqsP9tsPqMPiwXPAbvMfAkHN"
+#     }
+#   ],
+#   "balanceChanges": [
+#     {
+#       "owner": {
+#         "AddressOwner": "0x738146acb89851fc7e98a8148753b141155ef6a12aa2c32405aca8952c775040"
+#       },
+#       "coinType": "0x2::sui::SUI",
+#       "amount": "-256910680"
+#     }
+#   ],
+#   "timestampMs": "1733161476581",
+#   "confirmedLocalExecution": true,
+#   "checkpoint": "137482478"
+# }
+
+./dev/cli db create-task-entry \
+  --package "0x69fad02d755ae214e8f8a46d5897ff55302070ebd5dfcc17ec8dcbf3874024fa" \
+  --role 0 \
+  --model-name "meta-llama/Llama-3.2-1B-Instruct" \
+  --security-level 1 \
+  --minimum-reputation-score 50 
+
+./dev/cli db subscribe-node-to-task \
+  --package "0x69fad02d755ae214e8f8a46d5897ff55302070ebd5dfcc17ec8dcbf3874024fa" \
+  --task-small-id 1 \
+  --price-per-compute-unit 100 \
+  --max-num-compute-units 10000000

@@ -751,15 +751,13 @@ module atoma::db {
     public entry fun register_node_entry(
         self: &mut AtomaDb,
         wallet: &mut Coin<TOMA>,
-        confidential_compute_public_key_commitment: Option<vector<u8>>,
-        confidential_compute_tee_remote_attestation_bytes: Option<vector<u8>>,
         ctx: &mut TxContext,
     ) {
         let badge = register_node(
             self,
             wallet.balance_mut(),
-            confidential_compute_public_key_commitment,
-            confidential_compute_tee_remote_attestation_bytes,
+            option::none(),
+            option::none(),
             ctx,
         );
         transfer::transfer(badge, ctx.sender());

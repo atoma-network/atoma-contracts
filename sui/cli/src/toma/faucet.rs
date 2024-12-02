@@ -4,7 +4,7 @@ use crate::{prelude::*, TOMA_COIN_MODULE_NAME};
 
 const ENDPOINT_NAME: &str = "faucet";
 const FAUCET_OBJECT_ID: &str =
-    "0xfdddd6fb95509ea36f44f06d0d0a2f5868dac2bda1423d204bdc9f458115ff75";
+    "0xdf5d63bec6bf5cce118ab06ee53e51594301d319b56da3dfed49216657430d87";
 
 /// If Toma package ID is not provided, we use the env vars.
 pub(crate) async fn command(

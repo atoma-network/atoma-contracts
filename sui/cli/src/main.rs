@@ -231,7 +231,7 @@ enum DbCmds {
     /// a unit of work to be performed for a given task.
     AcquireNewStackEntry {
         /// Optional package ID. If not provided, the default from the environment will be used.
-        #[arg(short, long)]
+        #[arg(short = 'a', long)]
         package: Option<String>,
         /// The small ID of the task for which to acquire a new stack entry.
         /// This ID uniquely identifies the task within the Atoma network.
