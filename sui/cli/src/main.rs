@@ -321,6 +321,21 @@ enum DbCmds {
         #[arg(short, long)]
         attestation_commitment: Vec<u8>,
     },
+    NewNetworkKeyRotation {
+        #[arg(short, long)]
+        package: Option<String>,
+    },
+    /// Rotates the node's public key commitment and tee attestation bytes.
+    RotateNodePublicKey {
+        #[arg(short, long)]
+        package: Option<String>,
+        /// The new public key commitment.
+        #[arg(short, long)]
+        public_key_commitment: Vec<u8>,
+        /// The new tee attestation bytes.
+        #[arg(short, long)]
+        tee_attestation_bytes: Vec<u8>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -575,6 +590,28 @@ async fn main() -> Result<()> {
                 &mut context.with_optional_atoma_package_id(package),
                 stack_small_id,
                 attestation_commitment,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::RotateNodePublicKey {
+            package,
+            public_key_commitment,
+            tee_attestation_bytes,
+        })) => {
+            let digest = db::rotate_node_public_key(
+                &mut context.with_optional_atoma_package_id(package),
+                public_key_commitment,
+                tee_attestation_bytes,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::NewNetworkKeyRotation { package })) => {
+            let digest = db::new_network_key_rotation(
+                &mut context.with_optional_atoma_package_id(package),
             )
             .await?;
 
