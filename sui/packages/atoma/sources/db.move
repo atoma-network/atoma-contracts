@@ -2816,7 +2816,7 @@ module atoma::db {
     /// - The actual key rotation is performed off-chain by the nodes.
     /// - Nodes should maintain both old and new keys during the transition period.
     /// - The rotation event marks the beginning of the transition period.
-    public entry fun rotate_node_public_keys(
+    public entry fun new_network_key_rotation(
         _: &mut AtomaDb,
         _: &AtomaManagerBadge,
         ctx: &mut TxContext,
