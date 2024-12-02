@@ -274,6 +274,10 @@ impl Context {
         }
     }
 
+    /// Returns the ID of the task badge and the small ID of the task.  
+    /// 
+    /// The task badge is a badge that is owned by the task.
+    #[allow(dead_code)]
     pub(crate) async fn get_or_load_task_badge(
         &mut self,
     ) -> Result<(ObjectID, u64)> {
@@ -454,6 +458,10 @@ async fn get_node_badge(
         })
 }
 
+/// Returns the ID of the task badge and the small ID of the task.  
+/// 
+/// The task badge is a badge that is owned by the task.
+#[allow(dead_code)]
 async fn get_task_badge(
     client: &SuiClient,
     package: ObjectID,
@@ -541,8 +549,8 @@ async fn find_toma_token_wallet(
 }
 
 async fn get_atoma_db(
-    client: &SuiClient,
-    package: ObjectID,
+    _client: &SuiClient,
+    _package: ObjectID,
 ) -> Result<ObjectID> {
     // get_publish_tx_created_object(client, package, DB_MODULE_NAME, DB_TYPE_NAME)
     //     .await
