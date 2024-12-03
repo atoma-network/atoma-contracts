@@ -23,6 +23,7 @@ pub(crate) async fn command(
             vec![
                 SuiJsonValue::from_object_id(atoma_db),
                 SuiJsonValue::from_object_id(toma_wallet),
+                
             ],
             None,
             context.gas_budget(),
