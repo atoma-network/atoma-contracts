@@ -13,6 +13,10 @@ module secret_guessing::contract {
     const InitialFeeRateIncreasePerGuessPerMille: u64 = 100;
     /// The percentage of the treasury pool that will be given to the winner
     const WinnerPercentageOfTreasuryPoolPerMille: u64 = 70;
+    /// The initial fee for the first guess
+    const StartingFee: u64 = 1000;
+    /// The number of guesses after which the fee will be updated
+    const UpdateFeeEveryNGuesses: u64 = 100;
 
     /// The address of the developer of the contract
     const ATOMA_DEV_ADDRESS: address = @0x0;
@@ -94,6 +98,9 @@ module secret_guessing::contract {
 
         /// The address of the developer of the contract
         dev_address: address,
+
+        /// The number of guesses after which the fee will be updated
+        update_fee_every_n_guesses: u64,
     }        
 
     /// Initializes the secret guessing game by creating and sharing the main database object
@@ -118,12 +125,13 @@ module secret_guessing::contract {
             id: object::new(ctx),
             treasury_pool: balance::zero(),
             guess_count: 0,
-            next_fee: 0,
+            next_fee: StartingFee,
             is_active: true,
             fee_rate_increase_per_guess_per_mille: InitialFeeRateIncreasePerGuessPerMille,
             percentage_treasury_to_winner_per_mille: WinnerPercentageOfTreasuryPoolPerMille,
             dev_address: ATOMA_DEV_ADDRESS,
             agent_address: AI_AGENT_ADDRESS,
+            update_fee_every_n_guesses: UpdateFeeEveryNGuesses,
         };
 
         let secret_guessing_db_badge = AtomaSecretGuessingManagerBadge { 
@@ -217,8 +225,10 @@ module secret_guessing::contract {
         // 3. Deposit the fee to the treasury pool
         deposit_fee_to_treasury_pool(db, wallet);
 
-        // 4. Update the next fee
-        db.next_fee = db.next_fee + db.fee_rate_increase_per_guess_per_mille;
+        // 4. Update the next fee, if there have been N guesses for the current fee
+        if (db.guess_count % db.update_fee_every_n_guesses == 0) {
+            db.next_fee = db.next_fee + (db.fee_rate_increase_per_guess_per_mille * db.next_fee / 1000);
+        };
         
         // 5. Emit the new guess event
         sui::event::emit(NewGuessEvent { 
@@ -358,6 +368,43 @@ module secret_guessing::contract {
         db.agent_address = new_agent_address;
     }
 
+    /// Sets the starting fee for the first guess.
+    /// 
+    /// # Arguments
+    /// * `db` - Mutable reference to the AtomaSecretGuessingDb object
+    /// * `_` - Reference to the manager badge for access control
+    /// * `new_starting_fee` - The new starting fee for the first guess
+    ///
+    /// # Effects
+    /// * Updates the `next_fee` field in the database
+    ///
+    /// # Access Control
+    /// * Only callable by the holder of the AtomaSecretGuessingManagerBadge
+    public fun set_starting_fee(
+        db: &mut AtomaSecretGuessingDb,
+        _: &AtomaSecretGuessingManagerBadge,
+        new_starting_fee: u64,
+    ) {
+        db.next_fee = new_starting_fee;
+    }
+
+    /// Sets the number of guesses after which the fee will be updated.
+    /// 
+    /// # Arguments
+    /// * `db` - Mutable reference to the AtomaSecretGuessingDb object
+    /// * `_` - Reference to the manager badge for access control
+    /// * `new_update_fee_every_n_guesses` - The new number of guesses after which the fee will be updated
+    ///
+    /// # Access Control
+    /// * Only callable by the holder of the AtomaSecretGuessingManagerBadge
+    public fun set_update_fee_every_n_guesses(
+        db: &mut AtomaSecretGuessingDb,
+        _: &AtomaSecretGuessingManagerBadge,
+        new_update_fee_every_n_guesses: u64,
+    ) {
+        db.update_fee_every_n_guesses = new_update_fee_every_n_guesses;
+    }
+
     // ||================================||
     // ||          Utility functions     ||
     // ||================================||
@@ -380,7 +427,20 @@ module secret_guessing::contract {
         db: &mut AtomaSecretGuessingDb, 
         wallet: &mut Balance<SUI>,
     ) {
-        let fee = wallet.split(db.fee_rate_increase_per_guess_per_mille);
+        let fee = wallet.split(db.next_fee);
         db.treasury_pool.join(fee);
+    }
+
+    // Test-only functions
+
+    #[test_only]
+    public fun init_for_testing(ctx: &mut TxContext) {
+        init(ctx);
+    }
+
+    #[test_only]
+    public fun verify_guess_badge_id(guess_badge: &GuessBadge): bool {
+        let _id = object::uid_to_inner(&guess_badge.id);
+        true
     }
 }
