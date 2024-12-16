@@ -21,8 +21,24 @@ When upgrading, the version needs to be changed in
 
 ## Events
 
+## Events
+
 - `db::NodeRegisteredEvent` is emitted when a new node puts up collateral to register.
 - `db::NodeSubscribedToModelEvent` is emitted when a node subscribes to a model echelon and is ready to receive prompts.
+- `db::NewKeyRotationEvent` is emitted when there's a new key rotation epoch.
+- `db::NodePublicKeyCommittmentEvent` is emitted when a node commits its public key.
+- `db::NodeSubscribedToTaskEvent` is emitted when a node subscribes to a task.
+- `db::NodeSubscriptionUpdatedEvent` is emitted when a node updates its task subscription.
+- `db::NodeUnsubscribedFromTaskEvent` is emitted when a node unsubscribes from a task.
+- `db::TaskRegisteredEvent` is emitted when a new task is registered.
+- `db::TaskDeprecationEvent` is emitted when a task is deprecated.
+- `db::TaskRemovedEvent` is emitted when a task is removed.
+- `db::StackCreatedEvent` is emitted when a new stack is created.
+- `db::StackTrySettleEvent` is emitted when a stack attempts to settle.
+- `db::NewStackSettlementAttestationEvent` is emitted when a new attestation is submitted for stack settlement.
+- `db::StackSettlementTicketEvent` is emitted when a stack settlement is completed.
+- `db::StackSettlementTicketClaimedEvent` is emitted when a stack settlement ticket is claimed.
+- `db::StackAttestationDisputeEvent` is emitted when there's a dispute in stack attestation.
 - `gate::Text2TextPromptEvent` is emitted when a user submits a text to text prompt.
 - `gate::Text2ImagePromptEvent` is emitted when a user submits a text to image prompt.
 - `settlement::FirstSubmissionEvent` is emitted when a node submits the _first_ response to a prompt.
