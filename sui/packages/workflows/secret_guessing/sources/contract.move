@@ -7,6 +7,7 @@ module secret_guessing::contract {
     use std::ascii::String;
     use sui::balance::{Self, Balance};
     use sui::coin::{Self, Coin};
+    use sui::random::Random;
     use sui::sui::SUI;
 
     /// The initial fee rate increase per guess
@@ -23,6 +24,9 @@ module secret_guessing::contract {
     /// The address of the AI agent that will be used to guess the secret
     const AI_AGENT_ADDRESS: address = @0x0;
 
+    /// The number of bytes in the challenge nonce
+    const NUM_NONCE_CHALLENGE_BYTES: u16 = 32;
+
     /// Base error code
     const EBase: u64 = 312012_000;
     /// The total permille must be less than 1000
@@ -31,6 +35,8 @@ module secret_guessing::contract {
     const EInsufficientBalance: u64 = EBase + 2;
     /// Only the AI agent can withdraw funds from the treasury pool
     const EOnlyAgentCanWithdrawFunds: u64 = EBase + 3;
+    /// Only the AI agent can resubmit the TDX attestation
+    const EOnlyAgentCanResubmitRemoteAttestation: u64 = EBase + 4;
 
     /// Event emitted when the contract is initialized
     public struct PublishEvent has copy, drop { 
@@ -54,6 +60,24 @@ module secret_guessing::contract {
 
         /// The balance of the treasury pool
         treasury_pool_balance: u64,
+    }
+
+    /// Event emitted when the TDX quote is rotated by the AI agent
+    public struct RotateTdxQuoteEvent has copy, drop {
+        /// The epoch at which the TDX quote was rotated
+        epoch: u64,
+
+        /// The challenge nonce, that is randomly generated on-chain
+        challenge_nonce: vector<u8>,
+    }
+
+    /// Event emitted when the TDX quote is resubmitted by the AI agent
+    public struct TDXQuoteResubmittedEvent has copy, drop {
+        /// The epoch at which the TDX quote was resubmitted
+        epoch: u64,
+
+        /// The TDX quote V4
+        tdx_quote_v4: vector<u8>,
     }
 
     /// A badge that represents the manager of the AtomaSecretGuessingDb object
@@ -178,6 +202,34 @@ module secret_guessing::contract {
     ) {
         let badge = guess(db, wallet.balance_mut(), guess, ctx);
         transfer::transfer(badge, ctx.sender());
+    }
+
+    /// Allows the AI agent to resubmit their TDX attestation quote.
+    /// This function is used to maintain an up-to-date on-chain TDX quote for the AI agent.
+    /// 
+    /// # Arguments
+    /// * `db` - Mutable reference to the AtomaSecretGuessingDb object
+    /// * `tdx_quote_v4` - The new TDX quote in V4 format as a byte vector
+    /// * `ctx` - The transaction context used to access the sender and epoch
+    ///
+    /// # Effects
+    /// * Emits a `TDXQuoteResubmittedEvent` with the current epoch and new TDX quote
+    ///
+    /// # Aborts
+    /// * If the transaction sender is not the registered AI agent (EOnlyAgentCanResubmitRemoteAttestation)
+    ///
+    /// # Access Control
+    /// * Only callable by the registered AI agent address stored in `db.agent_address`
+    public entry fun resubmit_tdx_attestation(
+        db: &mut AtomaSecretGuessingDb,
+        tdx_quote_v4: vector<u8>,
+        ctx: &mut TxContext,
+    ) {
+        assert!(ctx.sender() == db.agent_address, EOnlyAgentCanResubmitRemoteAttestation);
+        sui::event::emit(TDXQuoteResubmittedEvent { 
+            epoch: ctx.epoch(),
+            tdx_quote_v4: tdx_quote_v4,
+        });
     }
 
     /// Makes a guess in the secret guessing game and returns a badge representing the guess.
@@ -340,7 +392,7 @@ module secret_guessing::contract {
     ///
     /// # Access Control
     /// * Only callable by the holder of the AtomaSecretGuessingManagerBadge
-    public fun set_dev_address(
+    public entry fun set_dev_address(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
         new_dev_address: address,
@@ -360,12 +412,39 @@ module secret_guessing::contract {
     ///
     /// # Access Control
     /// * Only callable by the holder of the AtomaSecretGuessingManagerBadge
-    public fun set_agent_address(
+    public entry fun set_agent_address(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
         new_agent_address: address,
     ) {
         db.agent_address = new_agent_address;
+    }
+
+    /// Rotates the TDX quote by generating a new challenge nonce and emitting an event.
+    /// 
+    /// # Arguments
+    /// * `_` - Mutable reference to the AtomaSecretGuessingDb object
+    /// * `_` - Reference to the manager badge for access control
+    /// * `random` - Reference to the random number generator
+    /// * `ctx` - The transaction context used to access the sender and epoch
+    ///
+    /// # Effects
+    /// * Emits a `RotateTdxQuoteEvent` with the current epoch and new challenge nonce
+    ///
+    /// # Access Control
+    /// * Only callable by the holder of the AtomaSecretGuessingManagerBadge
+    entry fun rotate_tdx_quote(
+        _: &mut AtomaSecretGuessingDb,
+        _: &AtomaSecretGuessingManagerBadge,
+        random: &Random,
+        ctx: &mut TxContext,
+    ) {
+        let mut rng = random.new_generator(ctx);
+        let challenge_nonce = rng.generate_bytes(NUM_NONCE_CHALLENGE_BYTES);
+        sui::event::emit(RotateTdxQuoteEvent { 
+            epoch: ctx.epoch(),
+            challenge_nonce,
+        });
     }
 
     /// Sets the starting fee for the first guess.
