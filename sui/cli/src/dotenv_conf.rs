@@ -275,7 +275,7 @@ impl Context {
     }
 
     /// Returns the ID of the task badge and the small ID of the task.  
-    /// 
+    ///
     /// The task badge is a badge that is owned by the task.
     #[allow(dead_code)]
     pub(crate) async fn get_or_load_task_badge(
@@ -459,7 +459,7 @@ async fn get_node_badge(
 }
 
 /// Returns the ID of the task badge and the small ID of the task.  
-/// 
+///
 /// The task badge is a badge that is owned by the task.
 #[allow(dead_code)]
 async fn get_task_badge(
