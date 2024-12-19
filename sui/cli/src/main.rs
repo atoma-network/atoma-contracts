@@ -210,10 +210,10 @@ enum DbCmds {
         /// The price per compute unit that the node is willing to charge for this task.
         /// This value is in the smallest unit of the network's native currency.
         #[arg(short = 'p', long)]
-        price_per_compute_unit: u64,
+        price_per_one_million_compute_units: u64,
     },
     /// Update the price per one million compute units for a node's subscription to a task.
-    UpdateNodeSubscription { 
+    UpdateNodeSubscription {
         /// Optional package ID. If not provided, the default from the environment will be used.
         #[arg(short = 'a', long)]
         package: Option<String>,
@@ -222,7 +222,7 @@ enum DbCmds {
         task_small_id: u64,
         /// The new price per one million compute units for the node.
         #[arg(short, long)]
-        price_per_compute_unit: u64,
+        price_per_one_million_compute_units: u64,
     },
     /// Unsubscribe a node from a specific task in the Atoma network.
     /// This command removes a node's subscription to a task, preventing it from receiving further work for that task.
@@ -502,12 +502,12 @@ async fn main() -> Result<()> {
         Some(Cmds::Db(DbCmds::SubscribeNodeToTask {
             package,
             task_small_id,
-            price_per_compute_unit,
+            price_per_one_million_compute_units,
         })) => {
             let digest = db::subscribe_node_to_task(
                 &mut context.with_optional_atoma_package_id(package),
                 task_small_id,
-                price_per_compute_unit,
+                price_per_one_million_compute_units,
             )
             .await?;
 
@@ -516,12 +516,12 @@ async fn main() -> Result<()> {
         Some(Cmds::Db(DbCmds::UpdateNodeSubscription {
             package,
             task_small_id,
-            price_per_compute_unit,
+            price_per_one_million_compute_units,
         })) => {
             let digest = db::update_node_subscription(
                 &mut context.with_optional_atoma_package_id(package),
                 task_small_id,
-                price_per_compute_unit,
+                price_per_one_million_compute_units,
             )
             .await?;
 

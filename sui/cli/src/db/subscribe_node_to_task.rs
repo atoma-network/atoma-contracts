@@ -5,7 +5,7 @@ const ENDPOINT_NAME: &str = "subscribe_node_to_task";
 pub(crate) async fn command(
     context: &mut Context,
     task_small_id: u64,
-    price_per_compute_unit: u64,
+    price_per_one_million_compute_units: u64,
 ) -> Result<TransactionDigest> {
     let active_address = context.wallet.active_address()?;
     let atoma_package = context.unwrap_atoma_package_id();
@@ -26,7 +26,9 @@ pub(crate) async fn command(
                 SuiJsonValue::from_object_id(atoma_db),
                 SuiJsonValue::from_object_id(node_badge),
                 SuiJsonValue::new(task_small_id.to_string().into())?,
-                SuiJsonValue::new(price_per_compute_unit.to_string().into())?,
+                SuiJsonValue::new(
+                    price_per_one_million_compute_units.to_string().into(),
+                )?,
             ],
             None,
             context.gas_budget(),

@@ -607,7 +607,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id   
-                1000,    // price_per_compute_unit
+                1000,    // price_per_one_million_compute_units
             );
             
             // Verify subscription
@@ -645,7 +645,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 999, // nonexistent task_small_id
-                1000 // price_per_compute_unit
+                1000 // price_per_one_million_compute_units
             );
             
             test::return_shared(db);
@@ -709,7 +709,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                1000     // price_per_compute_unit
+                1000     // price_per_one_million_compute_units
             );
             
             test::return_shared(db);
@@ -762,7 +762,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                1000     // price_per_compute_unit
+                1000     // price_per_one_million_compute_units
             );
             
             // Try to subscribe again
@@ -871,7 +871,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                1000     // price_per_compute_unit
+                1000     // price_per_one_million_compute_units
             );
             
             // Update subscription
@@ -1095,7 +1095,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                1000     // price_per_compute_unit
+                1000     // price_per_one_million_compute_units
             );
             
             // Try to update with zero price
@@ -1447,7 +1447,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                1000     // price_per_compute_unit
+                1000     // price_per_one_million_compute_units
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -1563,7 +1563,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                1000     // price_per_compute_unit
+                1000     // price_per_one_million_compute_units
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -1638,7 +1638,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                1000     // price_per_compute_unit
+                1000     // price_per_one_million_compute_units
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -1710,7 +1710,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                10,     // price_per_compute_unit             
+                10,     // price_per_one_million_compute_units             
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -1784,7 +1784,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                1000     // price_per_compute_unit
+                1000     // price_per_one_million_compute_units
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -1898,7 +1898,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                1000     // price_per_compute_unit (high price)
+                1000     // price_per_one_million_compute_units (high price)
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -1917,7 +1917,7 @@ module atoma::db_tests {
                 &mut wallet,
                 1,          // task_small_id
                 50,         // num_compute_units
-                50,         // price_per_compute_unit (lower than node's price)
+                50,         // price_per_one_million_compute_units (lower than node's price)
                 &random,
                 test::ctx(&mut scenario)
             );
@@ -1973,7 +1973,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                1000     // price_per_compute_unit
+                1000     // price_per_one_million_compute_units
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -2174,7 +2174,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                100     // price_per_compute_unit
+                100     // price_per_one_million_compute_units
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -2190,7 +2190,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                1000     // price_per_compute_unit
+                1000     // price_per_one_million_compute_units
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -2291,7 +2291,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                1000     // price_per_compute_unit
+                1000     // price_per_one_million_compute_units
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
