@@ -1,5 +1,3 @@
-use serde_json::json;
-
 use crate::{prelude::*, DB_MODULE_NAME};
 
 const ENDPOINT_NAME: &str = "register_node_entry";
@@ -25,8 +23,6 @@ pub(crate) async fn command(
             vec![
                 SuiJsonValue::from_object_id(atoma_db),
                 SuiJsonValue::from_object_id(toma_wallet),
-                SuiJsonValue::new(json!([])).unwrap(),
-                SuiJsonValue::new(json!([])).unwrap(),
             ],
             None,
             context.gas_budget(),
