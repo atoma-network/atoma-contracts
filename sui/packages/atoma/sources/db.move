@@ -1013,8 +1013,6 @@ module atoma::db {
     /// # Arguments
     /// * `self` - A mutable reference to the AtomaDb object.
     /// * `wallet` - A mutable reference to the sender's Balance<TOMA> object, from which collateral is deducted.
-    /// * `confidential_compute_public_key_commitment` - An optional vector<u8> representing the node's public key commitment for confidential compute.
-    /// * `confidential_compute_tee_remote_attestation_bytes` - An optional vector<u8> representing the TEE remote attestation bytes for confidential compute.
     /// * `ctx` - A mutable reference to the transaction context.
     ///
     /// # Returns
