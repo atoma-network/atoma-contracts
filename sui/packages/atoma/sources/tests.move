@@ -1,9 +1,11 @@
 #[test_only]
 module atoma::db_tests {
-    use atoma::db::{Self, AtomaDb, TaskBadge, EInvalidTaskRole, EInvalidSecurityLevel, ETaskNotFound, ETaskAlreadyDeprecated, ETaskNotDeprecated, 
-        ENotEnoughEpochsPassed, NodeBadge, ETaskDeprecated, EInvalidPricePerComputeUnit, EInvalidMaxNumComputeUnits, ENodeAlreadySubscribedToTask, ENodeNotSubscribedToTask,
-        StackBadge, EInvalidComputeUnits, EInsufficientBalance, ENoNodesSubscribedToTask, ENodeNotSelectedForStack, ETooManyComputedUnits, EStackInSettlementDispute,
-        EInvalidCommittedStackProof, EInvalidStackMerkleLeaf, ENoNodesEligibleForTask, AtomaManagerBadge
+    use atoma::db::{Self, AtomaDb, TaskBadge, EInvalidTaskRole, EInvalidSecurityLevel, ETaskNotFound, 
+        ETaskAlreadyDeprecated, ETaskNotDeprecated, ENotEnoughEpochsPassed, NodeBadge, ETaskDeprecated, 
+        EInvalidPricePerComputeUnit, ENodeAlreadySubscribedToTask, ENodeNotSubscribedToTask,
+        StackBadge, EInvalidComputeUnits, EInsufficientBalance, ENoNodesSubscribedToTask, ENodeNotSelectedForStack, 
+        ETooManyComputedUnits, EStackInSettlementDispute, EInvalidCommittedStackProof, EInvalidStackMerkleLeaf, 
+        ENoNodesEligibleForTask, AtomaManagerBadge
     };
     use sui::test_scenario::{Self as test, Scenario};
     use sui::coin::{Self, Coin};
@@ -604,15 +606,14 @@ module atoma::db_tests {
             db::subscribe_node_to_task(
                 &mut db,
                 &mut node_badge,
-                1,       // task_small_id
-                100,     // price_per_compute_unit
-                1000,    // max_num_compute_units
+                1,       // task_small_id   
+                1000,    // price_per_compute_unit
             );
             
             // Verify subscription
             assert!(db::is_node_subscribed_to_task(&db, &node_badge, 1), 0);
-            assert!(db::get_node_subscription_price(&db, 1, db::get_node_badge_small_id(&node_badge)) == 100, 1);
-            assert!(db::get_node_subscription_max_units(&db, 1, db::get_node_badge_small_id(&node_badge)) == 1000, 2);
+            assert!(db::get_node_subscription_price(&db, 1, db::get_node_badge_small_id(&node_badge)) == 1000, 1);
+            assert!(db::get_node_subscription_max_units(&db, 1, db::get_node_badge_small_id(&node_badge)) == 2_560_000, 2);
             
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);  
@@ -644,8 +645,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 999, // nonexistent task_small_id
-                100, // price_per_compute_unit
-                1000 // max_num_compute_units
+                1000 // price_per_compute_unit
             );
             
             test::return_shared(db);
@@ -709,8 +709,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                100,     // price_per_compute_unit
-                1000     // max_num_compute_units
+                1000     // price_per_compute_unit
             );
             
             test::return_shared(db);
@@ -763,8 +762,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                100,     // price_per_compute_unit
-                1000     // max_num_compute_units
+                1000     // price_per_compute_unit
             );
             
             // Try to subscribe again
@@ -773,7 +771,6 @@ module atoma::db_tests {
                 &mut node_badge,
                 1,       // same task_small_id
                 200,     // different price
-                2000     // different max units
             );
             
             test::return_shared(db);
@@ -826,60 +823,6 @@ module atoma::db_tests {
                 &mut node_badge,
                 1,       // task_small_id
                 0,       // zero price
-                1000     // max_num_compute_units
-            );
-            
-            test::return_shared(db);
-            test::return_to_sender(&scenario, node_badge);
-        };
-        test::end(scenario);
-    }
-
-    #[test]
-    #[expected_failure(abort_code = EInvalidMaxNumComputeUnits)]
-    fun test_subscribe_with_zero_compute_units() {
-        let mut scenario = setup_test();
-        
-        // First tx: Create a task
-        test::next_tx(&mut scenario, USER);
-        {
-            let mut db = test::take_shared<AtomaDb>(&scenario); 
-            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
-
-            db::create_task_entry(
-                &mut db,
-                &manager_badge,
-                INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                option::none(),
-                test::ctx(&mut scenario)
-            );
-            test::return_shared(db);
-            test::return_to_address(SYSTEM, manager_badge);
-        };
-
-        // Second tx: Register a node
-        test::next_tx(&mut scenario, USER);
-        {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
-            db::create_test_node(&mut db, test::ctx(&mut scenario));
-            
-            test::return_shared(db);
-        };
-
-        // Third tx: Try to subscribe with zero compute units
-        test::next_tx(&mut scenario, USER);
-        {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
-            
-            db::subscribe_node_to_task(
-                &mut db,
-                &mut node_badge,
-                1,       // task_small_id
-                100,     // price_per_compute_unit
-                0        // zero compute units
             );
             
             test::return_shared(db);
@@ -928,8 +871,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                100,     // initial price
-                1000     // initial max units
+                1000     // price_per_compute_unit
             );
             
             // Update subscription
@@ -937,13 +879,12 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                200,     // new price
-                2000     // new max units
+                2000     // new price
             );
             
             // Verify the update
-            assert!(db::get_node_subscription_price(&db, 1, db::get_node_badge_small_id(&node_badge)) == 200, 0);
-            assert!(db::get_node_subscription_max_units(&db, 1, db::get_node_badge_small_id(&node_badge)) == 2000, 1);
+            assert!(db::get_node_subscription_price(&db, 1, db::get_node_badge_small_id(&node_badge)) == 2000, 0);
+            assert!(db::get_node_subscription_max_units(&db, 1, db::get_node_badge_small_id(&node_badge)) == 2_560_000, 1);
             
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -975,7 +916,6 @@ module atoma::db_tests {
                 &mut node_badge,
                 999,     // nonexistent task_small_id
                 200,     // price
-                2000     // max units
             );
             
             test::return_shared(db);
@@ -1026,8 +966,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                200,     // price
-                2000     // max units
+                2000     // price
             );
             
             test::return_shared(db);
@@ -1077,8 +1016,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                100,     // price
-                1000     // max units
+                1000     // price
             );
             
             test::return_shared(db);
@@ -1107,8 +1045,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                200,     // new price
-                2000     // new max units
+                2000     // new price
             );
             
             test::return_shared(db);
@@ -1158,8 +1095,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                100,     // initial price
-                1000     // initial max units
+                1000     // price_per_compute_unit
             );
             
             // Try to update with zero price
@@ -1168,67 +1104,6 @@ module atoma::db_tests {
                 &mut node_badge,
                 1,       // task_small_id
                 0,       // zero price
-                2000     // max units
-            );
-            
-            test::return_shared(db);
-            test::return_to_sender(&scenario, node_badge);
-        };
-        test::end(scenario);
-    }
-
-    #[test]
-    #[expected_failure(abort_code = EInvalidMaxNumComputeUnits)]
-    fun test_update_subscription_zero_compute_units() {
-        let mut scenario = setup_test();
-        
-        // First tx: Create a task
-        test::next_tx(&mut scenario, USER);
-        {
-            let mut db = test::take_shared<AtomaDb>(&scenario); 
-            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
-
-            db::create_task_entry(
-                &mut db,
-                &manager_badge,
-                INFERENCE_ROLE,
-                option::none(),
-                option::none(),
-                option::none(), 
-                test::ctx(&mut scenario)
-            );
-            test::return_shared(db);
-            test::return_to_address(SYSTEM, manager_badge);
-        };
-
-        // Second tx: Register a node and subscribe
-        test::next_tx(&mut scenario, USER);
-        {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
-            db::create_test_node(&mut db, test::ctx(&mut scenario));
-            test::return_shared(db);
-        };
-
-        test::next_tx(&mut scenario, USER);
-        {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
-            
-            db::subscribe_node_to_task(
-                &mut db,
-                &mut node_badge,
-                1,       // task_small_id
-                100,     // initial price
-                1000     // initial max units
-            );
-            
-            // Try to update with zero compute units
-            db::update_node_subscription(
-                &mut db,
-                &mut node_badge,
-                1,       // task_small_id
-                200,     // price
-                0        // zero compute units
             );
             
             test::return_shared(db);
@@ -1277,8 +1152,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                100,     // price
-                1000     // max units
+                1000     // price
             );
             
             // Verify subscription before unsubscribing
@@ -1422,8 +1296,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                100,     // price
-                1000     // max units
+                1000     // price
             );
             
             test::return_shared(db);
@@ -1501,8 +1374,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                100,     // price
-                1000     // max units
+                1000     // price
             );
             
             // Unsubscribe
@@ -1517,14 +1389,13 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                200,     // new price
-                2000     // new max units
+                2000     // new price
             );
             
             // Verify new subscription parameters
             assert!(db::is_node_subscribed_to_task(&db, &node_badge, 1), 0);
-            assert!(db::get_node_subscription_price(&db, 1, db::get_node_badge_small_id(&node_badge)) == 200, 1);
-            assert!(db::get_node_subscription_max_units(&db, 1, db::get_node_badge_small_id(&node_badge)) == 2000, 2);
+            assert!(db::get_node_subscription_price(&db, 1, db::get_node_badge_small_id(&node_badge)) == 2000, 1);
+            assert!(db::get_node_subscription_max_units(&db, 1, db::get_node_badge_small_id(&node_badge)) == 2_560_000, 2);
             
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -1576,8 +1447,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                10,     // price_per_compute_unit
-                100,    // max_num_compute_units
+                1000     // price_per_compute_unit
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -1596,7 +1466,7 @@ module atoma::db_tests {
                 &mut wallet,
                 1,          // task_small_id
                 100,        // num_compute_units
-                10,         // price
+                1000,         // price
                 &random,
                 test::ctx(&mut scenario)
             );
@@ -1693,8 +1563,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                10,     // price_per_compute_unit
-                100,    // max_num_compute_units
+                1000     // price_per_compute_unit
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -1712,7 +1581,7 @@ module atoma::db_tests {
                 &mut wallet,
                 1,          // task_small_id
                 0,          // zero compute_units
-                10,         // price
+                1000,         // price
                 &random,
                 test::ctx(&mut scenario)
             );
@@ -1769,8 +1638,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                10,     // price_per_compute_unit
-                100,    // max_num_compute_units
+                1000     // price_per_compute_unit
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -1842,8 +1710,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                10,     // price_per_compute_unit
-                100,    // max_num_compute_units
+                10,     // price_per_compute_unit             
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -1917,8 +1784,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                10,     // price_per_compute_unit
-                1000,    // max_num_compute_units
+                1000     // price_per_compute_unit
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -1936,7 +1802,7 @@ module atoma::db_tests {
                 &mut wallet,
                 1,          // task_small_id
                 100,        // num_compute_units
-                10,         // price
+                1000,         // price
                 &random,
                 test::ctx(&mut scenario)
             );
@@ -1966,7 +1832,7 @@ module atoma::db_tests {
                 &mut wallet,
                 1,          // task_small_id
                 200,        // different num_compute_units
-                20,         // different price
+                2000,         // different price
                 &random,
                 test::ctx(&mut scenario)
             );
@@ -2032,8 +1898,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                100,     // price_per_compute_unit (high price)
-                1000,    // max_num_compute_units
+                1000     // price_per_compute_unit (high price)
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -2108,8 +1973,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                10,     // price_per_compute_unit
-                100,    // max_num_compute_units
+                1000     // price_per_compute_unit
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -2127,7 +1991,7 @@ module atoma::db_tests {
                 &mut wallet,
                 1,          // task_small_id
                 50,         // num_compute_units
-                10,         // price
+                1000,         // price
                 &random,
                 test::ctx(&mut scenario)
             );
@@ -2310,8 +2174,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                10,     // price_per_compute_unit
-                100,    // max_num_compute_units
+                100     // price_per_compute_unit
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -2327,8 +2190,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                10,     // price_per_compute_unit
-                100,    // max_num_compute_units
+                1000     // price_per_compute_unit
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -2346,7 +2208,7 @@ module atoma::db_tests {
                 &mut wallet,
                 1,          // task_small_id
                 50,         // num_compute_units
-                10,         // price
+                100,         // price
                 &random,
                 test::ctx(&mut scenario)
             );
@@ -2429,8 +2291,7 @@ module atoma::db_tests {
                 &mut db,
                 &mut node_badge,
                 1,       // task_small_id
-                10,     // price_per_compute_unit
-                100,    // max_num_compute_units
+                1000     // price_per_compute_unit
             );
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -2448,7 +2309,7 @@ module atoma::db_tests {
                 &mut wallet,
                 1,          // task_small_id
                 50,         // num_compute_units
-                10,         // price
+                1000,         // price
                 &random,
                 test::ctx(&mut scenario)
             );
@@ -2525,7 +2386,7 @@ module atoma::db_tests {
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
             let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
-            db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 10, 100);
+            db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 1000);
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
         };
@@ -2536,7 +2397,15 @@ module atoma::db_tests {
             let mut db = test::take_shared<AtomaDb>(&scenario);
             let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
-            db::acquire_new_stack_entry(&mut db, &mut wallet, 1, 50, 10, &random, test::ctx(&mut scenario));
+            db::acquire_new_stack_entry(
+                &mut db, 
+                &mut wallet, 
+                1, 
+                50, 
+                1000, 
+                &random, 
+                test::ctx(&mut scenario)
+            );
             test::return_shared(db);
             test::return_shared(random);
             test::return_to_sender(&scenario, wallet);
@@ -2614,7 +2483,7 @@ module atoma::db_tests {
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
             let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
-            db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 10, 100);
+            db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 1000);
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
         };
@@ -2624,7 +2493,15 @@ module atoma::db_tests {
             let mut db = test::take_shared<AtomaDb>(&scenario);
             let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
-            db::acquire_new_stack_entry(&mut db, &mut wallet, 1, 50, 10, &random, test::ctx(&mut scenario));
+            db::acquire_new_stack_entry(
+                &mut db, 
+                &mut wallet, 
+                1, 
+                50, 
+                1000, 
+                &random, 
+                test::ctx(&mut scenario)
+            );
             test::return_shared(db);
             test::return_shared(random);
             test::return_to_sender(&scenario, wallet);
@@ -2686,7 +2563,7 @@ module atoma::db_tests {
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
             let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
-            db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 10, 100);
+            db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 1000);
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
         };
@@ -2696,7 +2573,15 @@ module atoma::db_tests {
             let mut db = test::take_shared<AtomaDb>(&scenario);
             let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
-            db::acquire_new_stack_entry(&mut db, &mut wallet, 1, 50, 10, &random, test::ctx(&mut scenario));
+            db::acquire_new_stack_entry(
+                &mut db, 
+                &mut wallet, 
+                1, 
+                50, 
+                1000, 
+                &random, 
+                test::ctx(&mut scenario)
+            );
             test::return_shared(db);
             test::return_shared(random);
             test::return_to_sender(&scenario, wallet);
@@ -2761,7 +2646,7 @@ module atoma::db_tests {
             {
                 let mut db = test::take_shared<AtomaDb>(&scenario);
                 let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
-                db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 10, 100);
+                db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 10);
                 test::return_shared(db);
                 test::return_to_sender(&scenario, node_badge);
             };
@@ -2774,7 +2659,15 @@ module atoma::db_tests {
             let mut db = test::take_shared<AtomaDb>(&scenario);
             let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
-            db::acquire_new_stack_entry(&mut db, &mut wallet, 1, 50, 10, &random, test::ctx(&mut scenario));
+            db::acquire_new_stack_entry(
+                &mut db, 
+                &mut wallet, 
+                1, 
+                50, 
+                1000, 
+                &random, 
+                test::ctx(&mut scenario)
+            );
             test::return_shared(db);
             test::return_shared(random);
             test::return_to_sender(&scenario, wallet);
@@ -2839,7 +2732,7 @@ module atoma::db_tests {
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
             let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
-            db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 10, 200);
+            db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 1000);
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
         };
@@ -2854,7 +2747,15 @@ module atoma::db_tests {
                 let mut db = test::take_shared<AtomaDb>(&scenario);
                 let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
                 let random = test::take_shared<Random>(&scenario);
-                db::acquire_new_stack_entry(&mut db, &mut wallet, 1, 50, 10, &random, test::ctx(&mut scenario));
+                db::acquire_new_stack_entry(
+                    &mut db, 
+                    &mut wallet, 
+                    1, 
+                    50, 
+                    1000, 
+                    &random, 
+                    test::ctx(&mut scenario)
+                );
                 test::return_shared(db);
                 test::return_shared(random);
                 test::return_to_sender(&scenario, wallet);
@@ -2929,7 +2830,7 @@ module atoma::db_tests {
             {
                 let mut db = test::take_shared<AtomaDb>(&scenario);
                 let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
-                db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 10, 100);
+                db::subscribe_node_to_task(&mut db, &mut node_badge, 1, 1000);
                 test::return_shared(db);
                 test::return_to_sender(&scenario, node_badge);
             };
@@ -2942,7 +2843,15 @@ module atoma::db_tests {
             let mut db = test::take_shared<AtomaDb>(&scenario);
             let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
-            db::acquire_new_stack_entry(&mut db, &mut wallet, 1, 50, 10, &random, test::ctx(&mut scenario));
+            db::acquire_new_stack_entry(
+                &mut db, 
+                &mut wallet, 
+                1, 
+                50, 
+                1000, 
+                &random, 
+                test::ctx(&mut scenario)
+            );
             test::return_shared(db);
             test::return_shared(random);
             test::return_to_sender(&scenario, wallet);

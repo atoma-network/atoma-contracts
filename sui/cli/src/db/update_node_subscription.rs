@@ -1,6 +1,6 @@
 use crate::{prelude::*, DB_MODULE_NAME};
 
-const ENDPOINT_NAME: &str = "subscribe_node_to_task";
+const ENDPOINT_NAME: &str = "update_node_subscription";
 
 pub(crate) async fn command(
     context: &mut Context,

@@ -20,6 +20,9 @@ module atoma::db {
     /// Number of bytes per hash commitment
     const BYTES_PER_HASH_COMMITMENT: u64 = 32;
 
+    /// Compute units per stack
+    const COMPUTE_UNITS_PER_STACK: u64 = 2_560_000;
+
     /// Module level constants defining valid task roles
     #[allow(unused)]
     const TaskRoleChatCompletion: u16 = 0;
@@ -127,13 +130,12 @@ module atoma::db {
     const EInvalidTaskRole: u64 = EBase + 35;
     const EInvalidSecurityLevel: u64 = EBase + 36;
     const EInvalidPricePerComputeUnit: u64 = EBase + 37;
-    const EInvalidMaxNumComputeUnits: u64 = EBase + 38;
-    const ENodeDoesNotMeetTaskRequirements: u64 = EBase + 39;
-    const EInvalidComputeUnits: u64 = EBase + 40;
-    const EInsufficientBalance: u64 = EBase + 41;
-    const EInvalidCommittedStackProof: u64 = EBase + 42;
-    const EInvalidStackMerkleLeaf: u64 = EBase + 43;
-    const EInvalidMinimumReputationScore: u64 = EBase + 44;
+    const ENodeDoesNotMeetTaskRequirements: u64 = EBase + 38;
+    const EInvalidComputeUnits: u64 = EBase + 39;
+    const EInsufficientBalance: u64 = EBase + 40;
+    const EInvalidCommittedStackProof: u64 = EBase + 41;
+    const EInvalidStackMerkleLeaf: u64 = EBase + 42;
+    const EInvalidMinimumReputationScore: u64 = EBase + 43;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -170,14 +172,14 @@ module atoma::db {
     public struct NodeSubscribedToTaskEvent has copy, drop {
         task_small_id: TaskSmallId,
         node_small_id: NodeSmallId,
-        price_per_compute_unit: u64,
+        price_per_one_million_compute_units: u64,
         max_num_compute_units: u64,
     }
 
     public struct NodeSubscriptionUpdatedEvent has copy, drop {
         node_small_id: NodeSmallId,
         task_small_id: TaskSmallId,
-        price_per_compute_unit: u64,
+        price_per_one_million_compute_units: u64,
         max_num_compute_units: u64,
     }
 
@@ -229,7 +231,7 @@ module atoma::db {
         /// The number of compute units allocated to this stack
         num_compute_units: u64,
         /// The price per compute unit in TOMA tokens
-        price: u64,
+        price_per_one_million_compute_units: u64,
     }
 
     public struct StackTrySettleEvent has copy, drop {
@@ -453,7 +455,7 @@ module atoma::db {
     public struct NodePriceData has store, copy, drop {
         node_id: NodeSmallId,
         /// Price per compute unit in TOMA for the current task
-        price_per_compute_unit: u64,
+        price_per_one_million_compute_units: u64,
         /// The maximum number of compute units that the node is willing to process for the current task
         max_num_compute_units: u64,
     }
@@ -462,8 +464,8 @@ module atoma::db {
     public struct Stack has store {
         /// Address of the owner of the stack
         owner: address,
-        /// Price per compute unit in TOMA
-        price: u64,
+        /// Price per one million compute units in TOMA
+        price_per_one_million_compute_units: u64,
         /// Number of compute units remaining in the stack
         num_compute_units: u64,
         /// Node selected to process the requests in the stack
@@ -1166,8 +1168,7 @@ module atoma::db {
         self: &mut AtomaDb,
         node_badge: &mut NodeBadge,
         task_small_id: u64,
-        price_per_compute_unit: u64,
-        max_num_compute_units: u64,
+        price_per_one_million_compute_units: u64,
     ) {
         let task_small_id = TaskSmallId { inner: task_small_id };
 
@@ -1189,15 +1190,14 @@ module atoma::db {
             ENodeAlreadySubscribedToTask,
         );
         
-        // Validate price_per_compute_unit and max_num_compute_units
-        assert!(price_per_compute_unit > 0, EInvalidPricePerComputeUnit);
-        assert!(max_num_compute_units > 0, EInvalidMaxNumComputeUnits);
+        // Validate price_per_one_million_compute_units and max_num_compute_units
+        assert!(price_per_one_million_compute_units > 0, EInvalidPricePerComputeUnit);
 
         // Add the node to the task's subscribed_nodes list
         let node_price_data = NodePriceData {
             node_id: node_badge.small_id,
-            price_per_compute_unit,
-            max_num_compute_units,
+            price_per_one_million_compute_units,
+            max_num_compute_units: COMPUTE_UNITS_PER_STACK,
         };
         table::add(&mut task.subscribed_nodes, node_badge.small_id, node_price_data);
         table_vec::push_back(&mut task.subscribed_nodes_small_ids, node_badge.small_id);
@@ -1208,8 +1208,8 @@ module atoma::db {
         sui::event::emit(NodeSubscribedToTaskEvent {
             node_small_id: node_badge.small_id,
             task_small_id,
-            price_per_compute_unit,
-            max_num_compute_units,
+            price_per_one_million_compute_units,
+            max_num_compute_units: COMPUTE_UNITS_PER_STACK,
         });
     }
 
@@ -1223,7 +1223,7 @@ module atoma::db {
     /// * `self` - A mutable reference to the AtomaDb object.
     /// * `node_badge` - A mutable reference to the NodeBadge of the node updating its subscription.
     /// * `task_small_id` - The SmallId of the task for which the subscription is being updated.
-    /// * `price_per_compute_unit` - The new price per compute unit in TOMA tokens.
+    /// * `price_per_one_million_compute_units` - The new price per compute unit in TOMA tokens.
     /// * `max_num_compute_units` - The new maximum number of compute units the node is willing to process.
     ///
     /// # Errors
@@ -1238,7 +1238,7 @@ module atoma::db {
     /// Emits a `NodeSubscriptionUpdatedEvent` containing:
     /// - `node_small_id`: The SmallId of the node updating its subscription.
     /// - `task_small_id`: The SmallId of the task being updated.
-    /// - `price_per_compute_unit`: The new price per compute unit.
+    /// - `price_per_one_million_compute_units`: The new price per compute unit.
     /// - `max_num_compute_units`: The new maximum number of compute units.
     ///
     /// # Usage
@@ -1256,12 +1256,10 @@ module atoma::db {
         self: &mut AtomaDb,
         node_badge: &mut NodeBadge,
         task_small_id: u64,
-        price_per_compute_unit: u64,
-        max_num_compute_units: u64,
+        price_per_one_million_compute_units: u64,
     ) { 
-        // Validate price_per_compute_unit and max_num_compute_units
-        assert!(price_per_compute_unit > 0, EInvalidPricePerComputeUnit);
-        assert!(max_num_compute_units > 0, EInvalidMaxNumComputeUnits);
+        // Validate price_per_one_million_compute_units and max_num_compute_units
+        assert!(price_per_one_million_compute_units > 0, EInvalidPricePerComputeUnit);
 
         let task_small_id = TaskSmallId { inner: task_small_id };
 
@@ -1276,15 +1274,16 @@ module atoma::db {
 
         let node_price_data = task.subscribed_nodes.borrow_mut(node_badge.small_id);
 
-        node_price_data.price_per_compute_unit = price_per_compute_unit;
-        node_price_data.max_num_compute_units = max_num_compute_units;
+        node_price_data.price_per_one_million_compute_units = price_per_one_million_compute_units;
+        // NOTE: we do not update max_num_compute_units here, as it is set to a constant value
+        // in the subscribe_node_to_task function.
 
         // Emit a NodeSubscriptionUpdatedEvent
         sui::event::emit(NodeSubscriptionUpdatedEvent {
             node_small_id: node_badge.small_id,
             task_small_id,
-            price_per_compute_unit,
-            max_num_compute_units,
+            price_per_one_million_compute_units,
+            max_num_compute_units: COMPUTE_UNITS_PER_STACK,
         });
     }
 
@@ -1395,7 +1394,7 @@ module atoma::db {
     /// * `task_small_id` - The SmallId of the task associated with this stack.
     /// * `num_compute_units` - The number of compute units allocated to this stack.
     /// * `expiration_epoch` - An optional expiration epoch for the stack.
-    /// * `price` - The price per compute unit in TOMA tokens.
+    /// * `price_per_one_million_compute_units` - The price per one million compute units in TOMA tokens.
     /// * `rng` - A mutable reference to a RandomGenerator for node selection.
     /// * `ctx` - A mutable reference to the transaction context.
     ///
@@ -1417,13 +1416,13 @@ module atoma::db {
         wallet: &mut Balance<TOMA>,
         task_small_id: u64,
         num_compute_units: u64,
-        price: u64,
+        price_per_one_million_compute_units: u64,
         rng: &mut sui::random::RandomGenerator,
         ctx: &mut TxContext,
     ): StackBadge {
         // Input validation
         assert!(num_compute_units > 0, EInvalidComputeUnits);
-        assert!(price > 0, EInvalidPricePerComputeUnit);
+        assert!(price_per_one_million_compute_units > 0, EInvalidPricePerComputeUnit);
 
         let task_small_id = TaskSmallId { inner: task_small_id };
         assert!(self.tasks.contains(task_small_id), ETaskNotFound);
@@ -1434,9 +1433,9 @@ module atoma::db {
             let fee_amount = if (security_level.inner == SamplingConsensus) {
                 let sampling_consensus_charge = self.get_sampling_consensus_charge_permille();
                 let cross_validation_charge = self.get_cross_validation_extra_nodes_charge_permille();
-                (price * num_compute_units * (sampling_consensus_charge + cross_validation_charge)) / 1000
+                (price_per_one_million_compute_units * num_compute_units * (sampling_consensus_charge + cross_validation_charge)) / 1000
             } else {
-                (price * num_compute_units)
+                (price_per_one_million_compute_units * num_compute_units)
             };
             // Check if the wallet has enough balance to pay for the compute units
             assert!(balance::value(wallet) >= fee_amount, EInsufficientBalance);
@@ -1447,14 +1446,19 @@ module atoma::db {
 
         // Sample a node and create the stack
         let owner = ctx.sender();
-        let selected_node_id = self.sample_node_for_stack(task_small_id, price, num_compute_units, rng);
+        let selected_node_id = self.sample_node_for_stack(
+            task_small_id, 
+            price_per_one_million_compute_units, 
+            num_compute_units, 
+            rng
+        );
 
         let stack = Stack { 
             owner,
             task_small_id,
             num_compute_units,
             selected_node_id,
-            price,
+            price_per_one_million_compute_units,
         };
 
         // Assign a new SmallId to the stack and add it to the stacks table
@@ -1473,7 +1477,7 @@ module atoma::db {
             task_small_id,
             selected_node_id,
             num_compute_units,
-            price,
+            price_per_one_million_compute_units,
         });
 
         // Return the StackBadge
@@ -1550,7 +1554,7 @@ module atoma::db {
         let task_small_id = stack.task_small_id;
         let task = self.tasks.borrow(task_small_id);
         let security_level = task.security_level;
-        let stack_price = stack.price;
+        let stack_price_per_one_million_compute_units = stack.price_per_one_million_compute_units;
 
          // Only Sampling Consensus security level needs to sample attestation nodes
         let attestation_nodes: vector<NodeSmallId> = if (security_level.inner == SamplingConsensus) {      
@@ -1559,7 +1563,12 @@ module atoma::db {
             // Sample attestation nodes if the random number is less than or equal to the cross validation probability
             // that is, the contract samples attestation nodes with a probability of cross_validation_probability_permille / 1000
             if (random_number <= cross_validation_probability_permille) {
-                self.sample_attestation_nodes(task_small_id, stack_price, stack.num_compute_units, &mut rng)
+                self.sample_attestation_nodes(
+                    task_small_id, 
+                    stack_price_per_one_million_compute_units, 
+                    stack.num_compute_units, 
+                    &mut rng
+                )
             } else {
                 vector::empty()
             }
@@ -1812,12 +1821,25 @@ module atoma::db {
         while (index < num_settled_tickets) {
             let stack_small_id = StackSmallId { inner: *vector::borrow(&settled_ticket_ids, index) };
             // Fetch relevant data
-            let (security_level, stack_price, num_compute_units, owner, selected_node_id, num_claimed_compute_units, attestation_nodes) = 
+            let (
+                security_level, 
+                stack_price_per_one_million_compute_units, 
+                num_compute_units, 
+                owner, 
+                selected_node_id, 
+                num_claimed_compute_units, 
+                attestation_nodes
+            ) = 
                 fetch_stack_settlement_ticket_data(self, stack_small_id, node_badge.small_id, ctx);
 
             // Compute the funds accrued by the node, by processing the current stack
             let node_fee_amount = 
-                calculate_stack_fee_amount(security_level, stack_price, num_claimed_compute_units, sampling_consensus_charge_permille);
+                calculate_stack_fee_amount(
+                    security_level, 
+                    stack_price_per_one_million_compute_units, 
+                    num_claimed_compute_units, 
+                    sampling_consensus_charge_permille
+                );
             
             // Update the total node fee
             total_node_fee = total_node_fee + node_fee_amount;
@@ -1825,7 +1847,12 @@ module atoma::db {
             // Check if there are remaining funds to be sent back to the user
             let remaining_compute_units = num_compute_units - num_claimed_compute_units;
             let user_refund_amount = 
-                calculate_stack_fee_amount(security_level, stack_price, remaining_compute_units, sampling_consensus_charge_permille);
+                calculate_stack_fee_amount(
+                    security_level, 
+                    stack_price_per_one_million_compute_units, 
+                    remaining_compute_units, 
+                    sampling_consensus_charge_permille
+                );
 
             // Handle attestation nodes rewards and slashing
             self.handle_attestation_nodes_rewards_and_slashing(
@@ -2339,7 +2366,7 @@ module atoma::db {
     /// # Arguments
     /// * `self` - A mutable reference to the AtomaDb object.
     /// * `task_small_id` - The SmallId of the task for which a node is being sampled.
-    /// * `price_cap` - The maximum price per compute unit that a node can charge to be considered eligible.
+    /// * `price_per_one_million_compute_units_cap` - The maximum price per one million compute units that a node can charge to be considered eligible.
     /// * `num_compute_units` - The minimum number of compute units a node must offer to be eligible.
     /// * `rng` - A mutable reference to a RandomGenerator for node selection.
     ///
@@ -2364,7 +2391,7 @@ module atoma::db {
     public(package) fun sample_node_for_stack(
         self: &mut AtomaDb,
         task_small_id: TaskSmallId,
-        price_cap: u64,
+        price_per_one_million_compute_units_cap: u64,
         num_compute_units: u64,
         rng: &mut sui::random::RandomGenerator,
     ): NodeSmallId {
@@ -2388,10 +2415,10 @@ module atoma::db {
             };
             let node_price_data = task.subscribed_nodes.borrow(node_id);
             
-            let node_price = node_price_data.price_per_compute_unit;
+            let node_price_per_one_million_compute_units = node_price_data.price_per_one_million_compute_units;
             let node_max_num_compute_units = node_price_data.max_num_compute_units;
             
-            if (node_price <= price_cap 
+            if (node_price_per_one_million_compute_units <= price_per_one_million_compute_units_cap 
                 && node_max_num_compute_units >= num_compute_units 
                 && self.nodes.contains(node_id)) 
             {
@@ -2419,7 +2446,7 @@ module atoma::db {
     /// # Arguments
     /// * `self` - A reference to the AtomaDb object.
     /// * `task_small_id` - The SmallId of the task for which attestation nodes are being sampled.
-    /// * `price_cap` - The maximum price per compute unit that a node can charge to be considered eligible.
+    /// * `price_per_one_million_compute_units_cap` - The maximum price per one million compute units that a node can charge to be considered eligible.
     /// * `num_compute_units` - The minimum number of compute units a node must offer to be eligible.
     /// * `rng` - A mutable reference to a RandomGenerator for node selection.
     ///
@@ -2428,14 +2455,14 @@ module atoma::db {
     ///
     /// # Behavior
     /// 1. Retrieves the task and its subscribed nodes.
-    /// 2. Filters nodes based on price cap, compute capacity, collateral, and active status.
+    /// 2. Filters nodes based on price per one million compute units cap, compute capacity, collateral, and active status.
     /// 3. If there are fewer eligible nodes than the required attestation count, returns all eligible nodes.
     /// 4. Otherwise, randomly selects the required number of attestation nodes from the eligible set.
     ///
     /// # Notes
     /// - The number of attestation nodes is determined by `get_cross_validation_extra_nodes_count()`.
     /// - Nodes are considered eligible if:
-    ///   a. Their price per compute unit is less than or equal to the price cap.
+    ///   a. Their price per one million compute units is less than or equal to the price cap.
     ///   b. They offer at least the required number of compute units.
     ///   c. They have positive collateral.
     ///   d. They are not disabled.
@@ -2448,7 +2475,7 @@ module atoma::db {
     public(package) fun sample_attestation_nodes(
         self: &AtomaDb,
         task_small_id: TaskSmallId,
-        price_cap: u64,
+        price_per_one_million_compute_units_cap: u64,
         num_compute_units: u64,
         rng: &mut sui::random::RandomGenerator,
     ): vector<NodeSmallId> {
@@ -2459,15 +2486,15 @@ module atoma::db {
 
         let attestation_nodes_count = self.get_cross_validation_extra_nodes_count();
 
-        // Collect all eligible nodes (i.e., whose price per compute unit is less than the price cap).
+        // Collect all eligible nodes (i.e., whose price per one million compute units is less than the price cap).
         let mut eligible_nodes = vector::empty();
         let mut i = 0;
         while (i < nodes_count) {
             let node_id = *table_vec::borrow(subscribed_nodes_small_ids, i);
             let node_price_data = subscribed_nodes.borrow(node_id);
-            let node_price = node_price_data.price_per_compute_unit;
+            let node_price_per_one_million_compute_units = node_price_data.price_per_one_million_compute_units;
             let node_max_num_compute_units = node_price_data.max_num_compute_units; 
-            if (node_price <= price_cap 
+            if (node_price_per_one_million_compute_units <= price_per_one_million_compute_units_cap 
                 && node_max_num_compute_units >= num_compute_units 
                 && self.nodes.contains(node_id)) 
             {
@@ -2555,7 +2582,7 @@ module atoma::db {
         
         (
             task.security_level,
-            stack.price,
+            stack.price_per_one_million_compute_units,
             stack.num_compute_units,
             stack.owner,
             stack_settlement_ticket.selected_node_id,
@@ -2706,7 +2733,7 @@ module atoma::db {
                 task_small_id: _,
                 selected_node_id: _,
                 owner: _,
-                price: _,
+                price_per_one_million_compute_units: _,
                 num_compute_units: _,
             } = table::remove(&mut self.stacks, stack_small_id);
     }
@@ -3506,7 +3533,7 @@ module atoma::db {
     public fun get_node_subscription_price(db: &AtomaDb, task_small_id: u64, node_small_id: u64): u64 {
         let task = db.tasks.borrow(TaskSmallId { inner: task_small_id });
         let node_subscription = task.subscribed_nodes.borrow(NodeSmallId { inner: node_small_id });
-        node_subscription.price_per_compute_unit
+        node_subscription.price_per_one_million_compute_units
     }
 
     #[test_only]
