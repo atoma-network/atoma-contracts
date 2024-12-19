@@ -13,7 +13,10 @@ module atoma::db {
     use sui::table::{Self, Table};
     use sui::vec_set::{Self, VecSet};
     use toma::toma::TOMA;
+    use usdc::usdc::USDC;
 
+    // THIS NEEDS TO BE OUR ADDRESS WHERE THE MONEY
+    const OUR_ADDRESS: address = @0xd5f66ef59f66b4d90e2620077b23ad7cd7425e8425a626630f4a1c742933e4e1;
     /// How many epochs after the stack expires during which any disputes must be resolved.
     const STACK_DISPUTE_SETTLEMENT_DELAY: u64 = 2;
 
@@ -1360,7 +1363,7 @@ module atoma::db {
     /// Emits a StackCreatedEvent containing details about the newly created stack.
     entry fun acquire_new_stack_entry(
         self: &mut AtomaDb,
-        wallet: &mut Coin<TOMA>,
+        wallet: &mut Coin<USDC>,
         task_small_id: u64,
         num_compute_units: u64,
         price: u64,
@@ -1409,7 +1412,7 @@ module atoma::db {
     /// - A new SmallId is assigned to the stack, incrementing the `next_stack_small_id` counter.
     fun acquire_new_stack(
         self: &mut AtomaDb,
-        wallet: &mut Balance<TOMA>,
+        wallet: &mut Balance<USDC>,
         task_small_id: u64,
         num_compute_units: u64,
         price: u64,
@@ -1437,7 +1440,9 @@ module atoma::db {
             assert!(balance::value(wallet) >= fee_amount, EInsufficientBalance);
             // Transfer the funds to the contract
             let funds = wallet.split(fee_amount);
-            self.deposit_to_fee_treasury(funds);
+            let wallet = coin::from_balance(funds, ctx);
+            transfer::public_transfer(wallet, OUR_ADDRESS);
+            // self.deposit_to_fee_treasury(funds);
         };
 
         // Sample a node and create the stack
