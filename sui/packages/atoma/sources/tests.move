@@ -55,10 +55,12 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             // Create basic task with minimal parameters
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE, // role
                 option::none(), // model_name
                 option::none(), // security_level
@@ -81,6 +83,8 @@ module atoma::db_tests {
                 
                 test::return_to_sender(&scenario, task_badge);
             };
+
+            test::return_to_address(SYSTEM, manager_badge);
         };
         test::end(scenario);
     }
@@ -99,10 +103,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
             // Create task with all optional parameters
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,                    // role
                 option::none(),                    // model_name (none since we haven't registered any models)
                 option::some(1),                   // security_level    
@@ -125,6 +130,8 @@ module atoma::db_tests {
                 
                 test::return_to_sender(&scenario, task_badge);
             };
+
+            test::return_to_address(SYSTEM, manager_badge);
         };
         test::end(scenario);
     }
@@ -137,10 +144,12 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
             
             // Try to create task with invalid role
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 999,                               // invalid role
                 option::none(),                    // model_name
                 option::none(),                    // security_level
@@ -149,6 +158,7 @@ module atoma::db_tests {
             );
 
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
         test::end(scenario);
     }
@@ -161,10 +171,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
             // Try to create task with invalid security level
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,                    // role
                 option::none(),                    // model_name
                 option::some(999),                 // invalid security level
@@ -173,6 +184,7 @@ module atoma::db_tests {
             );
 
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
         test::end(scenario);
     }
@@ -191,10 +203,12 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
             
             // Create first task
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,                    // role
                 option::none(),                    // model_name
                 option::none(),                    // security_level
@@ -202,6 +216,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         test::next_tx(&mut scenario, USER);
@@ -219,9 +234,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
             // Create second task
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,                    // role
                 option::none(),                    // model_name    
                 option::none(),                    // security_level
@@ -230,6 +247,7 @@ module atoma::db_tests {
             );
 
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Verify task creation in a new transaction
@@ -255,10 +273,12 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
             
             // Create basic task
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -266,6 +286,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Deprecate the task
@@ -316,10 +337,12 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
             
             // Create basic task
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -327,6 +350,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Deprecate the task first time
@@ -355,10 +379,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
             // Create task with future valid_until_epoch
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -366,6 +391,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Deprecate the task
@@ -391,8 +417,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -400,6 +429,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Deprecate the task
@@ -465,8 +495,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -474,6 +507,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Try to remove the non-deprecated task
@@ -498,8 +532,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -507,6 +544,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Deprecate the task
@@ -533,8 +571,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -542,6 +583,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node
@@ -620,9 +662,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -630,6 +675,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Deprecate the task
@@ -681,9 +727,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -691,6 +740,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node
@@ -740,9 +790,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -750,6 +803,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node
@@ -789,9 +843,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -799,6 +856,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node
@@ -837,9 +895,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -847,6 +908,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node and subscribe to task
@@ -930,9 +992,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -940,6 +1005,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node but don't subscribe
@@ -978,9 +1044,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -988,6 +1057,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node and subscribe
@@ -1055,9 +1125,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -1065,6 +1138,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node and subscribe
@@ -1111,9 +1185,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -1121,6 +1198,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node and subscribe
@@ -1166,9 +1244,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -1176,6 +1257,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node and subscribe to task
@@ -1257,9 +1339,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+    
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -1267,6 +1352,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node but don't subscribe
@@ -1303,9 +1389,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -1313,6 +1402,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node and subscribe
@@ -1377,9 +1467,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -1387,6 +1480,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node and subscribe
@@ -1448,9 +1542,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -1458,6 +1555,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node
@@ -1561,9 +1659,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -1571,6 +1672,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node
@@ -1633,9 +1735,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -1643,6 +1748,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node
@@ -1702,9 +1808,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -1712,6 +1821,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node
@@ -1773,9 +1883,12 @@ module atoma::db_tests {
         // First tx: Create a task
         test::next_tx(&mut scenario, USER);
         {
-            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut db = test::take_shared<AtomaDb>(&scenario); 
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -1783,6 +1896,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node
@@ -1884,8 +1998,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -1893,6 +2010,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register node
@@ -1957,8 +2075,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -1966,6 +2087,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node
@@ -2063,8 +2185,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -2072,6 +2197,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register a node
@@ -2143,8 +2269,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -2152,6 +2281,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register first node
@@ -2266,8 +2396,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -2275,6 +2408,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Second tx: Register node
@@ -2364,8 +2498,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE, 
                 option::none(),
                 option::none(), 
@@ -2373,6 +2510,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Setup node and subscription
@@ -2450,8 +2588,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db, 
+                &manager_badge,
                 INFERENCE_ROLE, 
                 option::none(), 
                 option::none(), 
@@ -2459,6 +2600,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );      
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         test::next_tx(&mut scenario, NODE);
@@ -2518,8 +2660,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db, 
+                &manager_badge,
                 INFERENCE_ROLE, 
                 option::none(), 
                 option::none(), 
@@ -2527,6 +2672,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             ); 
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         test::next_tx(&mut scenario, NODE);
@@ -2585,8 +2731,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db,
+                &manager_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
@@ -2594,6 +2743,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Setup multiple nodes for potential sampling
@@ -2662,8 +2812,11 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
             db::create_task_entry(
                 &mut db, 
+                &manager_badge,
                 INFERENCE_ROLE, 
                 option::none(), 
                 option::none(), 
@@ -2671,6 +2824,7 @@ module atoma::db_tests {
                 test::ctx(&mut scenario)
             ); 
             test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
 
         // Setup node
@@ -2749,6 +2903,7 @@ module atoma::db_tests {
             db::set_cross_validation_probability_permille(&mut db, &admin_badge, 1000);
             db::create_task_entry(
                 &mut db,
+                &admin_badge,
                 INFERENCE_ROLE,
                 option::none(),
                 option::some(1), // Sampling Consensus security level

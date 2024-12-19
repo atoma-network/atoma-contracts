@@ -769,6 +769,7 @@ module atoma::db {
     ///
     /// # Arguments
     /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `_` - A immutable reference to the `AtomaManagerBadge` object, so that this method can be called by the current smart contract manager only.
     /// * `role` - A u16 representing the task role.
     /// * `model_name` - An optional ASCII string representing the model name.
     /// * `security_level` - An optional u16 representing the security level.
@@ -787,6 +788,7 @@ module atoma::db {
     /// Emits a TaskRegisteredEvent containing details about the newly created task.
     public entry fun create_task_entry(
         self: &mut AtomaDb,
+        badge: &AtomaManagerBadge,
         role: u16,
         model_name: Option<ascii::String>,
         security_level: Option<u16>,
@@ -795,6 +797,7 @@ module atoma::db {
     ) {
         let badge = create_task(
             self,
+            badge,
             role,
             model_name,
             option::get_with_default(&security_level, NoSecurity),
@@ -808,6 +811,7 @@ module atoma::db {
     ///
     /// # Arguments
     /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `_`- A immmutable reference to the `AtomaManagerBadge` object, so that this method can be called by the current smart contract manager only.
     /// * `role` - A u16 representing the task role.
     /// * `model_name` - An optional ASCII string representing the model name.
     /// * `security_level` - An u16 representing the security level.
@@ -818,6 +822,7 @@ module atoma::db {
     /// A TaskBadge object representing the created task.
     public fun create_task(
         self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
         role: u16,
         model_name: Option<ascii::String>,
         security_level: u16,
