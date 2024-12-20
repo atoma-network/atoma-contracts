@@ -139,6 +139,7 @@ module atoma::db {
     const EInvalidCommittedStackProof: u64 = EBase + 41;
     const EInvalidStackMerkleLeaf: u64 = EBase + 42;
     const EInvalidMinimumReputationScore: u64 = EBase + 43;
+    const ETaskIsNotPublic: u64 = EBase + 44;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -431,6 +432,8 @@ module atoma::db {
         subscribed_nodes_small_ids: TableVec<NodeSmallId>,
         /// Minimum reputation score required for a node to subscribe to the task
         minimum_reputation_score: ReputationScore,
+        /// Some tasks might be administrated by the package owner, in which case only selected nodes can subscribe to the task
+        is_public: bool,
     }
 
     /// Represents the role or purpose of a computational task in the Atoma network.
@@ -796,6 +799,7 @@ module atoma::db {
         model_name: Option<ascii::String>,
         security_level: Option<u16>,
         minimum_reputation_score: Option<u8>,
+        is_public: bool,
         ctx: &mut TxContext,
     ) {
         let badge = create_task(
@@ -805,6 +809,7 @@ module atoma::db {
             model_name,
             option::get_with_default(&security_level, NoSecurity),
             minimum_reputation_score,
+            is_public,
             ctx,
         );
         transfer::transfer(badge, ctx.sender());
@@ -830,6 +835,7 @@ module atoma::db {
         model_name: Option<ascii::String>,
         security_level: u16,
         minimum_reputation_score: Option<u8>,
+        is_public: bool,
         ctx: &mut TxContext,
     ): TaskBadge {
         // Validate inputs
@@ -854,6 +860,7 @@ module atoma::db {
             subscribed_nodes: table::new(ctx),
             subscribed_nodes_small_ids: table_vec::empty(ctx),
             minimum_reputation_score: ReputationScore { inner: reputation_score },
+            is_public,
         };
 
         // Add task to AtomaDb
@@ -995,6 +1002,7 @@ module atoma::db {
             subscribed_nodes,
             subscribed_nodes_small_ids,
             minimum_reputation_score: _,
+            is_public: _,
         } = task;
 
         task_badge_id.delete();
@@ -1177,8 +1185,10 @@ module atoma::db {
             assert!(node_meets_task_requirements(self, node_badge, task), ENodeDoesNotMeetTaskRequirements);
         };
 
-        // Check if the task is not deprecated
+        // Check if the task is public
         let task = self.tasks.borrow_mut(task_small_id);
+        assert!(task.is_public, ETaskIsNotPublic);
+        // Check if the task is not deprecated
         assert!(!task.is_deprecated, ETaskDeprecated);
 
         // Check if the node is already subscribed to the task
@@ -1264,6 +1274,7 @@ module atoma::db {
         assert!(self.tasks.contains(task_small_id), ETaskNotFound);
 
         // Check if the node is subscribed to the task
+        // NOTE: we do not check if the task is public here, as if it is not, then the node could not have subscribed to it in the first place
         assert!(dynamic_field::exists_(&node_badge.id, task_small_id), ENodeNotSubscribedToTask);
         
         let task = self.tasks.borrow_mut(task_small_id);
@@ -2872,6 +2883,7 @@ module atoma::db {
             subscribed_nodes,
             subscribed_nodes_small_ids,
             minimum_reputation_score: _,
+            is_public: _,
         } = task;
 
         task_id.delete();
