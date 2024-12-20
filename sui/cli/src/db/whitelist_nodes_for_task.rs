@@ -1,27 +1,16 @@
 use crate::{prelude::*, DB_MODULE_NAME};
 
-const ENDPOINT_NAME: &str = "create_task_entry";
+const ENDPOINT_NAME: &str = "whitelist_nodes_for_task";
 
 pub(crate) async fn command(
     context: &mut Context,
-    role: u16,
-    model_name: Option<String>,
-    security_level: Option<u16>,
-    minimum_reputation_score: Option<u8>,
-    is_public: bool,
+    task_small_id: u64,
+    nodes_small_ids: Vec<u64>,
 ) -> Result<TransactionDigest> {
     let active_address = context.wallet.active_address()?;
     let atoma_package = context.unwrap_atoma_package_id();
     let atoma_db = context.get_or_load_atoma_db().await?;
     let manager_badge = context.get_or_load_db_manager_badge().await?;
-
-    let model_name = model_name.map(|v| vec![v]).unwrap_or_default();
-    let security_level = security_level
-        .map(|v| vec![v.to_string()])
-        .unwrap_or_default();
-    let minimum_reputation_score = minimum_reputation_score
-        .map(|v| vec![v.to_string()])
-        .unwrap_or_default();
 
     let tx = context
         .get_client()
@@ -36,11 +25,8 @@ pub(crate) async fn command(
             vec![
                 SuiJsonValue::from_object_id(atoma_db),
                 SuiJsonValue::from_object_id(manager_badge),
-                SuiJsonValue::new(role.to_string().into())?,
-                SuiJsonValue::new(model_name.into())?,
-                SuiJsonValue::new(security_level.into())?,
-                SuiJsonValue::new(minimum_reputation_score.into())?,
-                SuiJsonValue::new(is_public.to_string().into())?,
+                SuiJsonValue::new(task_small_id.to_string().into())?,
+                SuiJsonValue::new(nodes_small_ids.into())?,
             ],
             None,
             context.gas_budget(),

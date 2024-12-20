@@ -5,7 +5,7 @@ module atoma::db_tests {
         EInvalidPricePerComputeUnit, ENodeAlreadySubscribedToTask, ENodeNotSubscribedToTask,
         StackBadge, EInvalidComputeUnits, EInsufficientBalance, ENoNodesSubscribedToTask, ENodeNotSelectedForStack, 
         ETooManyComputedUnits, EStackInSettlementDispute, EInvalidCommittedStackProof, EInvalidStackMerkleLeaf, 
-        ENoNodesEligibleForTask, AtomaManagerBadge
+        ENoNodesEligibleForTask, ETaskIsPublic, ENodeNotWhitelistedForTask, AtomaManagerBadge,
     };
     use sui::test_scenario::{Self as test, Scenario};
     use sui::coin::{Self, Coin};
@@ -67,7 +67,9 @@ module atoma::db_tests {
                 option::none(), // model_name
                 option::none(), // security_level
                 option::none(), // minimum_reputation_score
+                true, // is_public
                 test::ctx(&mut scenario)
+
             );
 
             // Return the modified db to commit changes
@@ -114,6 +116,7 @@ module atoma::db_tests {
                 option::none(),                    // model_name (none since we haven't registered any models)
                 option::some(1),                   // security_level    
                 option::none(),                    // minimum_reputation_score
+                true, // is_public
                 test::ctx(&mut scenario)    
             );
 
@@ -156,6 +159,7 @@ module atoma::db_tests {
                 option::none(),                    // model_name
                 option::none(),                    // security_level
                 option::none(),                    // minimum_reputation_score
+                true, // is_public
                 test::ctx(&mut scenario)
             );
 
@@ -182,6 +186,7 @@ module atoma::db_tests {
                 option::none(),                    // model_name
                 option::some(999),                 // invalid security level
                 option::none(),                    // minimum_reputation_score
+                true, // is_public
                 test::ctx(&mut scenario)
             );
 
@@ -215,6 +220,7 @@ module atoma::db_tests {
                 option::none(),                    // model_name
                 option::none(),                    // security_level
                 option::none(),                    // minimum_reputation_score
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -245,6 +251,7 @@ module atoma::db_tests {
                 option::none(),                    // model_name    
                 option::none(),                    // security_level
                 option::none(),                    // minimum_reputation_score
+                true, // is_public
                 test::ctx(&mut scenario)
             );
 
@@ -285,6 +292,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -349,6 +357,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -390,6 +399,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -428,6 +438,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -506,6 +517,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -521,6 +533,157 @@ module atoma::db_tests {
             db::remove_deprecated_task(&mut db, task_badge, test::ctx(&mut scenario));
             
             test::return_shared(db);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    fun test_whitelist_nodes_for_task_success() {
+        let mut scenario = setup_test();
+        
+        // First tx: Create a task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
+            db::create_task_entry(
+                &mut db,
+                &manager_badge,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                false, // is_public
+                test::ctx(&mut scenario)
+            );
+
+            // Create nodes vector and whitelist them
+            let mut nodes = vector::empty<u64>();
+            vector::push_back(&mut nodes, 1);
+            vector::push_back(&mut nodes, 2);
+            vector::push_back(&mut nodes, 3);
+
+            db::whitelist_nodes_for_task(
+                &mut db,
+                &manager_badge,
+                1, // task_small_id
+                nodes
+            );
+
+            // Verify nodes are whitelisted
+            assert!(db::is_node_whitelisted_for_task(&db, 1, 1), 0);
+            assert!(db::is_node_whitelisted_for_task(&db, 1, 2), 1);
+            assert!(db::is_node_whitelisted_for_task(&db, 1, 3), 2);
+
+            test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = ETaskNotFound)]
+    fun test_whitelist_nodes_for_nonexistent_task() {
+        let mut scenario = setup_test();
+        
+        // Try to whitelist nodes for nonexistent task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
+            let mut nodes = vector::empty<u64>();
+            vector::push_back(&mut nodes, 1);
+            
+            db::whitelist_nodes_for_task(
+                &mut db,
+                &manager_badge,
+                999, // nonexistent task_small_id
+                nodes
+            );
+
+            test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = ETaskIsPublic)]
+    fun test_whitelist_nodes_for_public_task() {
+        let mut scenario = setup_test();
+        
+        // First tx: Create a private task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
+            db::create_task_entry(
+                &mut db,
+                &manager_badge,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                true, // is_public
+                test::ctx(&mut scenario)
+            );
+
+            // Try to whitelist nodes for private task
+            let mut nodes = vector::empty<u64>();
+            vector::push_back(&mut nodes, 1);
+
+            db::whitelist_nodes_for_task(
+                &mut db,
+                &manager_badge,
+                1, // task_small_id
+                nodes
+            );
+
+            test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    fun test_whitelist_nodes_empty_vector() {
+        let mut scenario = setup_test();
+        
+        // First tx: Create a task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
+            db::create_task_entry(
+                &mut db,
+                &manager_badge,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                false, // is_public
+                test::ctx(&mut scenario)
+            );
+
+            // Whitelist with empty vector (should succeed but do nothing)
+            let nodes = vector::empty<u64>();
+            
+            db::whitelist_nodes_for_task(
+                &mut db,
+                &manager_badge,
+                1, // task_small_id
+                nodes
+            );
+
+            // Verify no nodes are whitelisted
+            assert!(!db::is_node_whitelisted_for_task(&db, 1, 1), 0);
+
+            test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
         };
         test::end(scenario);
     }
@@ -543,6 +706,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -582,6 +746,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -615,6 +780,59 @@ module atoma::db_tests {
             assert!(db::get_node_subscription_price(&db, 1, db::get_node_badge_small_id(&node_badge)) == 1000, 1);
             assert!(db::get_node_subscription_max_units(&db, 1, db::get_node_badge_small_id(&node_badge)) == 2_560_000, 2);
             
+            test::return_shared(db);
+            test::return_to_sender(&scenario, node_badge);  
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = ENodeNotWhitelistedForTask)]
+    fun test_subscribe_node_to_private_task_panics() {
+        let mut scenario = setup_test();
+        
+        // First tx: Create a task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
+            db::create_task_entry(
+                &mut db,
+                &manager_badge,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                false, // is_public
+                test::ctx(&mut scenario)
+            );
+            test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
+        };
+
+        // Second tx: Register a node
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            db::create_test_node(&mut db, test::ctx(&mut scenario));
+
+            test::return_shared(db);
+        };
+
+        // Third tx: Subscribe node to task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let mut node_badge = test::take_from_sender<NodeBadge>(&scenario);
+            
+            db::subscribe_node_to_task(
+                &mut db,
+                &mut node_badge,
+                1,       // task_small_id   
+                1000,    // price_per_one_million_compute_units
+            );
+
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);  
         };
@@ -672,6 +890,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -736,6 +955,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(), 
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -797,6 +1017,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -848,6 +1069,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -942,6 +1164,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -993,6 +1216,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -1072,6 +1296,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -1129,6 +1354,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -1223,6 +1449,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -1273,6 +1500,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -1349,7 +1577,8 @@ module atoma::db_tests {
                 INFERENCE_ROLE,
                 option::none(),
                 option::none(),
-                option::none(),
+                option::none(), 
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -1423,6 +1652,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -1539,6 +1769,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -1614,6 +1845,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -1686,6 +1918,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -1760,6 +1993,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -1873,6 +2107,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -1949,6 +2184,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -2058,6 +2294,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -2142,6 +2379,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -2267,6 +2505,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -2368,6 +2607,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(), 
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -2465,7 +2705,8 @@ module atoma::db_tests {
                 INFERENCE_ROLE, 
                 option::none(), 
                 option::none(), 
-                option::none(), 
+                option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );      
             test::return_shared(db);
@@ -2545,7 +2786,8 @@ module atoma::db_tests {
                 INFERENCE_ROLE, 
                 option::none(), 
                 option::none(), 
-                option::none(), 
+                option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             ); 
             test::return_shared(db);
@@ -2625,6 +2867,7 @@ module atoma::db_tests {
                 option::none(),
                 option::none(),
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);
@@ -2713,7 +2956,8 @@ module atoma::db_tests {
                 INFERENCE_ROLE, 
                 option::none(), 
                 option::none(), 
-                option::none(), 
+                option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             ); 
             test::return_shared(db);
@@ -2809,6 +3053,7 @@ module atoma::db_tests {
                 option::none(),
                 option::some(1), // Sampling Consensus security level
                 option::none(),
+                true, // is_public
                 test::ctx(&mut scenario)
             );
             test::return_shared(db);

@@ -176,6 +176,9 @@ enum DbCmds {
         /// Optional minimum reputation score required for this task
         #[arg(short = 's', long)]
         minimum_reputation_score: Option<u8>,
+        /// Whether this task is public
+        #[arg(short, long)]
+        is_public: bool,
     },
     /// Deprecates a task in the database.
     /// This command marks a task as deprecated, preventing new subscriptions.
@@ -344,6 +347,18 @@ enum DbCmds {
         #[arg(short, long)]
         tee_attestation_bytes: Vec<u8>,
     },
+    /// Whitelist nodes for a task.
+    WhitelistNodesForTask {
+        /// Optional package ID. If not provided, the default from the environment will be used.
+        #[arg(short, long)]
+        package: Option<String>,
+        /// The small ID of the task to whitelist nodes for.
+        #[arg(short, long)]
+        task_small_id: u64,
+        /// The nodes to whitelist.
+        #[arg(short, long)]
+        nodes_small_ids: Vec<u64>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -463,6 +478,7 @@ async fn main() -> Result<()> {
             model_name,
             security_level,
             minimum_reputation_score,
+            is_public,
         })) => {
             let digest = db::create_task_entry(
                 &mut context.with_optional_atoma_package_id(package),
@@ -470,6 +486,21 @@ async fn main() -> Result<()> {
                 model_name,
                 security_level,
                 minimum_reputation_score,
+                is_public,
+            )
+            .await?;
+
+            println!("{digest}");
+        }
+        Some(Cmds::Db(DbCmds::WhitelistNodesForTask {
+            package,
+            task_small_id,
+            nodes_small_ids,
+        })) => {
+            let digest = db::whitelist_nodes_for_task(
+                &mut context.with_optional_atoma_package_id(package),
+                task_small_id,
+                nodes_small_ids,
             )
             .await?;
 
