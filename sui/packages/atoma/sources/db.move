@@ -12,7 +12,7 @@ module atoma::db {
     use sui::table_vec::{Self, TableVec};
     use sui::table::{Self, Table};
     use sui::vec_set::{Self, VecSet};
-    use toma::toma::TOMA;
+    use usdc::usdc::USDC;
 
     /// How many epochs after the stack expires during which any disputes must be resolved.
     const STACK_DISPUTE_SETTLEMENT_DELAY: u64 = 2;
@@ -52,7 +52,7 @@ module atoma::db {
     const ConfidentialCompute: u16 = 2;
 
     /// How much collateral is required at the time of package publication.
-    const InitialCollateralRequiredForRegistration: u64 = 1_000;
+    const InitialCollateralRequiredForRegistration: u64 = 0;
     /// Maximum time nodes can take to settle a prompt before we attempt to
     /// settle without them.
     /// This is the initial value and can change.
@@ -233,7 +233,7 @@ module atoma::db {
         selected_node_id: NodeSmallId,
         /// The number of compute units allocated to this stack
         num_compute_units: u64,
-        /// The price per one million compute units in TOMA tokens
+        /// The price per one million compute units in USDC tokens
         price_per_one_million_compute_units: u64,
     }
 
@@ -457,7 +457,7 @@ module atoma::db {
     /// Data about a node's price per one million compute units for a task
     public struct NodePriceData has store, copy, drop {
         node_id: NodeSmallId,
-        /// price per one million compute units in TOMA for the current task
+        /// price per one million compute units in USDC for the current task
         price_per_one_million_compute_units: u64,
         /// The maximum number of compute units that the node is willing to process for the current task
         max_num_compute_units: u64,
@@ -467,7 +467,7 @@ module atoma::db {
     public struct Stack has store {
         /// Address of the owner of the stack
         owner: address,
-        /// Price per one million compute units in TOMA
+        /// Price per one million compute units in USDC
         price_per_one_million_compute_units: u64,
         /// Number of compute units remaining in the stack
         num_compute_units: u64,
@@ -549,9 +549,9 @@ module atoma::db {
         /// All fees and honest node rewards go here.
         /// We then do book-keeping on NodeEntry objects to calculate how much
         /// is available for withdrawal by each node.
-        fee_treasury: Balance<TOMA>,
+        fee_treasury: Balance<USDC>,
         /// When nodes get slashed, some of the collateral goes here.
-        communal_treasury: Balance<TOMA>,
+        communal_treasury: Balance<USDC>,
         /// We have a probabilistic cross validation feature.
         /// If the user submits a prompt but does not specify number of nodes
         /// to sample, we sample just one.
@@ -601,7 +601,7 @@ module atoma::db {
 
         /// It can get slashed if node is not responding or if it submitted
         /// results that do not match the oracle's results.
-        collateral: Balance<TOMA>,
+        collateral: Balance<USDC>,
 
         /// What's the epoch number of the last fee settlement.
         last_fee_epoch: u64,
@@ -669,10 +669,10 @@ module atoma::db {
         /// without waiting for nodes that did not respond.
         settlement_timeout_ms: u64,
         /// How much per input token is charged by nodes in this group.
-        /// In TOMA tokens.
+        /// In USDC tokens.
         input_fee_per_token: u64,
         /// How much per output token is charged by nodes in this group.
-        /// In TOMA tokens.
+        /// In USDC tokens.
         ///
         /// The difference between input and output is made because the input
         /// could be text and output could be an image, in which case this is
@@ -759,12 +759,10 @@ module atoma::db {
     /// badge.
     public entry fun register_node_entry(
         self: &mut AtomaDb,
-        wallet: &mut Coin<TOMA>,
         ctx: &mut TxContext,
     ) {
         let badge = register_node(
             self,
-            wallet.balance_mut(),
             ctx,
         );
         transfer::transfer(badge, ctx.sender());
@@ -1022,7 +1020,7 @@ module atoma::db {
     ///
     /// # Arguments
     /// * `self` - A mutable reference to the AtomaDb object.
-    /// * `wallet` - A mutable reference to the sender's Balance<TOMA> object, from which collateral is deducted.
+    /// * `wallet` - A mutable reference to the sender's Balance<USDC> object, from which collateral is deducted.
     /// * `ctx` - A mutable reference to the transaction context.
     ///
     /// # Returns
@@ -1046,19 +1044,15 @@ module atoma::db {
     /// - The function is designed to be flexible, allowing for future extensions and additional features.
     public fun register_node(
         self: &mut AtomaDb,
-        wallet: &mut Balance<TOMA>,
         ctx: &mut TxContext,
     ): NodeBadge {
         assert!(!self.is_registration_disabled, ENodeRegDisabled);
-
-        let collateral =
-            wallet.split(self.registration_collateral_in_protocol_token);
 
         let small_id = self.next_node_small_id;
         self.next_node_small_id.inner = self.next_node_small_id.inner + 1;
 
         let node_entry = NodeEntry {
-            collateral,
+            collateral : balance::zero(),
             was_disabled_in_epoch: option::none(),
             last_fee_epoch: ctx.epoch(),
             last_fee_epoch_amount: 0,
@@ -1226,7 +1220,7 @@ module atoma::db {
     /// * `self` - A mutable reference to the AtomaDb object.
     /// * `node_badge` - A mutable reference to the NodeBadge of the node updating its subscription.
     /// * `task_small_id` - The SmallId of the task for which the subscription is being updated.
-    /// * `price_per_one_million_compute_units` - The new price per one million compute units in TOMA tokens.
+    /// * `price_per_one_million_compute_units` - The new price per one million compute units in USDC tokens.
     /// * `max_num_compute_units` - The new maximum number of compute units the node is willing to process.
     ///
     /// # Errors
@@ -1344,10 +1338,10 @@ module atoma::db {
     ///
     /// # Arguments
     /// * `self` - A mutable reference to the AtomaDb object.
-    /// * `wallet` - A mutable reference to the Coin<TOMA> object to pay for the stack.
+    /// * `wallet` - A mutable reference to the Coin<USDC> object to pay for the stack.
     /// * `task_small_id` - The SmallId of the task associated with this stack.
     /// * `num_compute_units` - The number of compute units allocated to this stack.
-    /// * `price` - The price per one million compute units in TOMA tokens.
+    /// * `price` - The price per one million compute units in USDC tokens.
     /// * `random` - A reference to a Random object for generating random numbers.
     /// * `ctx` - A mutable reference to the transaction context.
     ///
@@ -1367,7 +1361,7 @@ module atoma::db {
     /// Emits a StackCreatedEvent containing details about the newly created stack.
     entry fun acquire_new_stack_entry(
         self: &mut AtomaDb,
-        wallet: &mut Coin<TOMA>,
+        wallet: &mut Coin<USDC>,
         task_small_id: u64,
         num_compute_units: u64,
         price: u64,
@@ -1397,7 +1391,7 @@ module atoma::db {
     /// * `task_small_id` - The SmallId of the task associated with this stack.
     /// * `num_compute_units` - The number of compute units allocated to this stack.
     /// * `expiration_epoch` - An optional expiration epoch for the stack.
-    /// * `price_per_one_million_compute_units` - The price per one million compute units in TOMA tokens.
+    /// * `price_per_one_million_compute_units` - The price per one million compute units in USDC tokens.
     /// * `rng` - A mutable reference to a RandomGenerator for node selection.
     /// * `ctx` - A mutable reference to the transaction context.
     ///
@@ -1416,7 +1410,7 @@ module atoma::db {
     /// - A new SmallId is assigned to the stack, incrementing the `next_stack_small_id` counter.
     fun acquire_new_stack(
         self: &mut AtomaDb,
-        wallet: &mut Balance<TOMA>,
+        wallet: &mut Balance<USDC>,
         task_small_id: u64,
         num_compute_units: u64,
         price_per_one_million_compute_units: u64,
@@ -2226,7 +2220,7 @@ module atoma::db {
     /// won't participate in new prompts.
     public(package) fun slash_node_on_timeout(
         self: &mut AtomaDb, node_id: NodeSmallId,
-    ): Balance<TOMA> {
+    ): Balance<USDC> {
         let has_node = self.nodes.contains(node_id);
         if (!has_node) {
             // this node has already been removed
@@ -2252,7 +2246,7 @@ module atoma::db {
     /// Takes away all node's collateral.
     public(package) fun slash_node_on_dispute(
         self: &mut AtomaDb, node_id: NodeSmallId,
-    ): Balance<TOMA> {
+    ): Balance<USDC> {
         if (!self.nodes.contains(node_id)) {
             // this node has already been removed
             balance::zero()
@@ -2292,7 +2286,7 @@ module atoma::db {
     public(package) fun deposit_fee_to_node(
         self: &mut AtomaDb,
         node_id: NodeSmallId,
-        fee: Balance<TOMA>,
+        fee: Balance<USDC>,
         ctx: &TxContext,
     ) {
         if (!self.nodes.contains(node_id)) {
@@ -2307,11 +2301,11 @@ module atoma::db {
     }
 
     public(package) fun deposit_to_communal_treasury(
-        self: &mut AtomaDb, wallet: Balance<TOMA>,
+        self: &mut AtomaDb, wallet: Balance<USDC>,
     ) { self.communal_treasury.join(wallet); }
 
     public(package) fun deposit_to_fee_treasury(
-        self: &mut AtomaDb, wallet: Balance<TOMA>,
+        self: &mut AtomaDb, wallet: Balance<USDC>,
     ) { self.fee_treasury.join(wallet); }
 
     /// From the given model's echelon, pick a random node.
@@ -3564,7 +3558,7 @@ module atoma::db {
 
         // Create test node entry
         let node_entry = NodeEntry {
-            collateral: balance::create_for_testing<TOMA>(1000000), // Test collateral amount
+            collateral: balance::create_for_testing<USDC>(1000000), // Test collateral amount
             was_disabled_in_epoch: option::none(),
             last_fee_epoch: tx_context::epoch(ctx),
             last_fee_epoch_amount: 0,

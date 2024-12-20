@@ -10,7 +10,7 @@ module atoma::db_tests {
     use sui::test_scenario::{Self as test, Scenario};
     use sui::coin::{Self, Coin};
     use sui::random::Random;
-    use toma::toma::TOMA;
+    use usdc::usdc::USDC;
 
     const SYSTEM: address = @0x0;
     const ADMIN: address = @0xAD;
@@ -38,7 +38,7 @@ module atoma::db_tests {
         test::next_tx(scenario, ADMIN);
         {
             // Create test coins and transfer to recipient
-            let coin = coin::mint_for_testing<TOMA>(amount, test::ctx(scenario));
+            let coin = coin::mint_for_testing<USDC>(amount, test::ctx(scenario));
             transfer::public_transfer(coin, recipient);
         };
     }
@@ -1457,7 +1457,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             
             let random = test::take_shared<Random>(&scenario);
             
@@ -1498,7 +1498,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             
             db::acquire_new_stack_entry(
@@ -1573,7 +1573,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             
             db::acquire_new_stack_entry(
@@ -1648,7 +1648,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             
             db::acquire_new_stack_entry(
@@ -1720,7 +1720,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut empty_wallet = coin::zero<TOMA>(test::ctx(&mut scenario));
+            let mut empty_wallet = coin::zero<USDC>(test::ctx(&mut scenario));
             let random = test::take_shared<Random>(&scenario);
             
             db::acquire_new_stack_entry(
@@ -1794,7 +1794,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             
             db::acquire_new_stack_entry(
@@ -1824,7 +1824,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             
             db::acquire_new_stack_entry(
@@ -1908,7 +1908,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             
             // User creates stack willing to pay only 50 per compute unit
@@ -1983,7 +1983,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             
             db::acquire_new_stack_entry(
@@ -2076,7 +2076,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             
             db::acquire_new_stack_entry(
@@ -2200,7 +2200,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             
             db::acquire_new_stack_entry(
@@ -2301,7 +2301,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             
             db::acquire_new_stack_entry(
@@ -2395,7 +2395,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             db::acquire_new_stack_entry(
                 &mut db, 
@@ -2491,7 +2491,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             db::acquire_new_stack_entry(
                 &mut db, 
@@ -2571,7 +2571,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             db::acquire_new_stack_entry(
                 &mut db, 
@@ -2657,7 +2657,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             db::acquire_new_stack_entry(
                 &mut db, 
@@ -2745,7 +2745,7 @@ module atoma::db_tests {
             test::next_tx(&mut scenario, USER);
             {
                 let mut db = test::take_shared<AtomaDb>(&scenario);
-                let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+                let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
                 let random = test::take_shared<Random>(&scenario);
                 db::acquire_new_stack_entry(
                     &mut db, 
@@ -2841,7 +2841,7 @@ module atoma::db_tests {
         test::next_tx(&mut scenario, USER);
         {
             let mut db = test::take_shared<AtomaDb>(&scenario);
-            let mut wallet = test::take_from_sender<Coin<TOMA>>(&scenario);
+            let mut wallet = test::take_from_sender<Coin<USDC>>(&scenario);
             let random = test::take_shared<Random>(&scenario);
             db::acquire_new_stack_entry(
                 &mut db, 

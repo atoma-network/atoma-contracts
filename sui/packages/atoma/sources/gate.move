@@ -4,7 +4,7 @@ module atoma::gate {
     use std::ascii;
     use sui::balance::Balance;
     use sui::dynamic_field;
-    use toma::toma::TOMA;
+    use usdc::usdc::USDC;
 
     const MaxNodesToSample: u64 = 256;
 
@@ -138,7 +138,7 @@ module atoma::gate {
     /// - user cannot get the list of selected nodes in the same transaction
     public fun submit_text2text_prompt(
         atoma: &mut AtomaDb,
-        wallet: &mut Balance<TOMA>,
+        wallet: &mut Balance<USDC>,
         params: Text2TextPromptParams,
         max_fee_per_token: u64,
         nodes_to_sample: Option<u64>,
@@ -201,7 +201,7 @@ module atoma::gate {
     /// - user cannot get the list of selected nodes in the same transaction
     public fun submit_text2image_prompt(
         atoma: &mut AtomaDb,
-        wallet: &mut Balance<TOMA>,
+        wallet: &mut Balance<USDC>,
         params: Text2ImagePromptParams,
         max_fee_per_input_token: u64,
         max_fee_per_output_token: u64,
@@ -333,7 +333,7 @@ module atoma::gate {
     /// - what were the sampled nodes (so far)
     fun submit_prompt(
         atoma: &mut AtomaDb,
-        wallet: &mut Balance<TOMA>,
+        wallet: &mut Balance<USDC>,
         model: ascii::String,
         model_modality: u64,
         max_fee_per_input_token: u64,
