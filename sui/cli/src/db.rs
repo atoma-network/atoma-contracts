@@ -25,6 +25,7 @@ mod subscribe_node_to_task;
 mod try_settle_stack;
 mod unsubscribe_node_from_task;
 mod update_node_subscription;
+mod whitelist_nodes_for_task;
 
 pub(crate) use acquire_new_stack_entry::command as acquire_new_stack_entry;
 pub(crate) use add_model::command as add_model;
@@ -48,3 +49,4 @@ pub(crate) use subscribe_node_to_task::command as subscribe_node_to_task;
 pub(crate) use try_settle_stack::command as try_settle_stack;
 pub(crate) use unsubscribe_node_from_task::command as unsubscribe_node_from_task;
 pub(crate) use update_node_subscription::command as update_node_subscription;
+pub(crate) use whitelist_nodes_for_task::command as whitelist_nodes_for_task;
