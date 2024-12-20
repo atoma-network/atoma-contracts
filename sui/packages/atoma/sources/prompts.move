@@ -19,14 +19,14 @@ module atoma::prompts {
     use std::ascii;
     use sui::coin::Coin;
     use sui::random::Random;
-    use toma::toma::TOMA;
+    use usdc::usdc::USDC;
 
 
     /// Submits an arbitrary text prompt.
     /// The other alternative is to use programmable txs on client.
     entry fun send_prompt(
         atoma: &mut AtomaDb,
-        wallet: &mut Coin<TOMA>,
+        wallet: &mut Coin<USDC>,
         model: ascii::String,
         output_destination: vector<u8>,
         pre_prompt_tokens: vector<u32>,
@@ -76,7 +76,7 @@ module atoma::prompts {
     /// a pixel art Colosseum.
     entry fun send_image_prompt(
         atoma: &mut AtomaDb,
-        wallet: &mut Coin<TOMA>,
+        wallet: &mut Coin<USDC>,
         model: ascii::String,
         output_destination: vector<u8>,
         max_fee_per_input_token: u64,

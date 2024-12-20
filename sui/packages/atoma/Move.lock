@@ -2,35 +2,54 @@
 
 [move]
 version = 3
-manifest_digest = "E1362A73A44B1F18B9629B74775DE6F23BA62A2DC27551FAE9A25D9E538948D8"
+manifest_digest = "2897EF3A713F5BBB25B77F65E44A45D477C3B1FBD469B01EDB57F7EEF9142B94"
 deps_digest = "3C4103934B1E040BB6B23F1D610B4EF9F2F1166A50A104EADCF77467C004C600"
 dependencies = [
   { id = "Sui", name = "Sui" },
-  { id = "Toma", name = "Toma" },
+  { id = "usdc", name = "usdc" },
 ]
 
 [[move.package]]
 id = "MoveStdlib"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/testnet", subdir = "crates/sui-framework/packages/move-stdlib" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "a4185da5659d8d299d34e1bb2515ff1f7e32a20a", subdir = "crates\\sui-framework\\packages\\move-stdlib" }
 
 [[move.package]]
 id = "Sui"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/testnet", subdir = "crates/sui-framework/packages/sui-framework" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "a4185da5659d8d299d34e1bb2515ff1f7e32a20a", subdir = "crates/sui-framework/packages/sui-framework" }
 
 dependencies = [
   { id = "MoveStdlib", name = "MoveStdlib" },
 ]
 
 [[move.package]]
-id = "Toma"
-source = { local = "../toma" }
+id = "stablecoin"
+source = { git = "https://github.com/atoma-network/stablecoin-sui.git", rev = "main", subdir = "packages\\stablecoin" }
+
+dependencies = [
+  { id = "Sui", name = "Sui" },
+  { id = "sui_extensions", name = "sui_extensions" },
+]
+
+[[move.package]]
+id = "sui_extensions"
+source = { git = "https://github.com/atoma-network/stablecoin-sui.git", rev = "main", subdir = "packages\\sui_extensions" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },
 ]
 
+[[move.package]]
+id = "usdc"
+source = { git = "https://github.com/atoma-network/stablecoin-sui.git", rev = "main", subdir = "packages/usdc" }
+
+dependencies = [
+  { id = "Sui", name = "Sui" },
+  { id = "stablecoin", name = "stablecoin" },
+  { id = "sui_extensions", name = "sui_extensions" },
+]
+
 [move.toolchain-version]
-compiler-version = "1.38.3"
+compiler-version = "1.39.3"
 edition = "2024.beta"
 flavor = "sui"
 
@@ -38,6 +57,6 @@ flavor = "sui"
 
 [env.testnet]
 chain-id = "4c78adac"
-original-published-id = "0xc05bae323433740c969d8cf938c48d7559490be5f8dde158792e7a0623787013"
-latest-published-id = "0xc05bae323433740c969d8cf938c48d7559490be5f8dde158792e7a0623787013"
+original-published-id = "0x8b6bd7293bc2428a87b62dd4e44eb910970c744235b1e871749901ced1ca7f04"
+latest-published-id = "0x8b6bd7293bc2428a87b62dd4e44eb910970c744235b1e871749901ced1ca7f04"
 published-version = "1"
