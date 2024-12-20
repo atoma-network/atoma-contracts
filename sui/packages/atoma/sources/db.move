@@ -52,7 +52,7 @@ module atoma::db {
     const ConfidentialCompute: u16 = 2;
 
     /// How much collateral is required at the time of package publication.
-    const InitialCollateralRequiredForRegistration: u64 = 1_000;
+    const InitialCollateralRequiredForRegistration: u64 = 0;
     /// Maximum time nodes can take to settle a prompt before we attempt to
     /// settle without them.
     /// This is the initial value and can change.
@@ -759,12 +759,10 @@ module atoma::db {
     /// badge.
     public entry fun register_node_entry(
         self: &mut AtomaDb,
-        wallet: &mut Coin<USDC>,
         ctx: &mut TxContext,
     ) {
         let badge = register_node(
             self,
-            wallet.balance_mut(),
             ctx,
         );
         transfer::transfer(badge, ctx.sender());
@@ -1046,19 +1044,15 @@ module atoma::db {
     /// - The function is designed to be flexible, allowing for future extensions and additional features.
     public fun register_node(
         self: &mut AtomaDb,
-        wallet: &mut Balance<USDC>,
         ctx: &mut TxContext,
     ): NodeBadge {
         assert!(!self.is_registration_disabled, ENodeRegDisabled);
-
-        let collateral =
-            wallet.split(self.registration_collateral_in_protocol_token);
 
         let small_id = self.next_node_small_id;
         self.next_node_small_id.inner = self.next_node_small_id.inner + 1;
 
         let node_entry = NodeEntry {
-            collateral,
+            collateral : balance::zero(),
             was_disabled_in_epoch: option::none(),
             last_fee_epoch: ctx.epoch(),
             last_fee_epoch_amount: 0,
