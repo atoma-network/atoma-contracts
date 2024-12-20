@@ -23,6 +23,9 @@ module atoma::db {
     /// Compute units per stack
     const COMPUTE_UNITS_PER_STACK: u64 = 2_560_000;
 
+    /// One million compute units
+    const ONE_MILLION_COMPUTE_UNITS: u64 = 1_000_000;
+
     /// Module level constants defining valid task roles
     #[allow(unused)]
     const TaskRoleChatCompletion: u16 = 0;
@@ -230,7 +233,7 @@ module atoma::db {
         selected_node_id: NodeSmallId,
         /// The number of compute units allocated to this stack
         num_compute_units: u64,
-        /// The price per one million comupte units in TOMA tokens
+        /// The price per one million compute units in TOMA tokens
         price_per_one_million_compute_units: u64,
     }
 
@@ -420,7 +423,7 @@ module atoma::db {
         deprecated_at_epoch: Option<u64>,
         /// Security level for the task
         security_level: SecurityLevel,
-        /// Subscribed nodes table, where key is node SmallId and value is price per one million comupte units
+        /// Subscribed nodes table, where key is node SmallId and value is price per one million compute units
         /// for this current task.
         subscribed_nodes: Table<NodeSmallId, NodePriceData>,
         /// Subscribed nodes small ids, we need to keep track of them separately
@@ -451,10 +454,10 @@ module atoma::db {
         inner: u8,
     }
 
-    /// Data about a node's price per one million comupte units for a task
+    /// Data about a node's price per one million compute units for a task
     public struct NodePriceData has store, copy, drop {
         node_id: NodeSmallId,
-        /// price per one million comupte units in TOMA for the current task
+        /// price per one million compute units in TOMA for the current task
         price_per_one_million_compute_units: u64,
         /// The maximum number of compute units that the node is willing to process for the current task
         max_num_compute_units: u64,
@@ -1215,7 +1218,7 @@ module atoma::db {
 
     /// Updates a node's subscription details for a specific task.
     ///
-    /// This function allows a node to modify its price per one million comupte units and maximum number of compute units
+    /// This function allows a node to modify its price per one million compute units and maximum number of compute units
     /// for a task it's already subscribed to. This enables nodes to dynamically adjust their pricing and
     /// capacity based on current conditions or strategy.
     ///
@@ -1223,7 +1226,7 @@ module atoma::db {
     /// * `self` - A mutable reference to the AtomaDb object.
     /// * `node_badge` - A mutable reference to the NodeBadge of the node updating its subscription.
     /// * `task_small_id` - The SmallId of the task for which the subscription is being updated.
-    /// * `price_per_one_million_compute_units` - The new price per one million comupte units in TOMA tokens.
+    /// * `price_per_one_million_compute_units` - The new price per one million compute units in TOMA tokens.
     /// * `max_num_compute_units` - The new maximum number of compute units the node is willing to process.
     ///
     /// # Errors
@@ -1231,14 +1234,14 @@ module atoma::db {
     /// * `ENodeNotSubscribedToTask` - If the node is not currently subscribed to the specified task.
     ///
     /// # Effects
-    /// - Updates the node's price per one million comupte units and maximum number of compute units for the specified task.
+    /// - Updates the node's price per one million compute units and maximum number of compute units for the specified task.
     /// - Emits a `NodeSubscriptionUpdatedEvent` with the updated subscription details.
     ///
     /// # Events
     /// Emits a `NodeSubscriptionUpdatedEvent` containing:
     /// - `node_small_id`: The SmallId of the node updating its subscription.
     /// - `task_small_id`: The SmallId of the task being updated.
-    /// - `price_per_one_million_compute_units`: The new price per one million comupte units.
+    /// - `price_per_one_million_compute_units`: The new price per one million compute units.
     /// - `max_num_compute_units`: The new maximum number of compute units.
     ///
     /// # Usage
@@ -1344,7 +1347,7 @@ module atoma::db {
     /// * `wallet` - A mutable reference to the Coin<TOMA> object to pay for the stack.
     /// * `task_small_id` - The SmallId of the task associated with this stack.
     /// * `num_compute_units` - The number of compute units allocated to this stack.
-    /// * `price` - The price per one million comupte units in TOMA tokens.
+    /// * `price` - The price per one million compute units in TOMA tokens.
     /// * `random` - A reference to a Random object for generating random numbers.
     /// * `ctx` - A mutable reference to the transaction context.
     ///
@@ -1430,12 +1433,13 @@ module atoma::db {
             // transfer the funds for compute units to the contract
             let task = self.tasks.borrow(task_small_id);
             let security_level = task.security_level;
+            let total_cost = (price_per_one_million_compute_units * num_compute_units) / ONE_MILLION_COMPUTE_UNITS;
             let fee_amount = if (security_level.inner == SamplingConsensus) {
                 let sampling_consensus_charge = self.get_sampling_consensus_charge_permille();
                 let cross_validation_charge = self.get_cross_validation_extra_nodes_charge_permille();
-                (price_per_one_million_compute_units * num_compute_units * (sampling_consensus_charge + cross_validation_charge)) / 1000
+                (total_cost * (sampling_consensus_charge + cross_validation_charge)) / 1000
             } else {
-                (price_per_one_million_compute_units * num_compute_units)
+                total_cost
             };
             // Check if the wallet has enough balance to pay for the compute units
             assert!(balance::value(wallet) >= fee_amount, EInsufficientBalance);
@@ -2358,7 +2362,7 @@ module atoma::db {
     /// This function selects a random node from the pool of eligible nodes for a given task.
     /// A node is considered eligible if it meets the following criteria:
     /// 1. It is subscribed to the task.
-    /// 2. Its price per one million comupte units is less than or equal to the specified price cap.
+    /// 2. Its price per one million compute units is less than or equal to the specified price cap.
     /// 3. Its maximum number of compute units is greater than or equal to the required amount.
     /// 4. It has a positive collateral balance.
     /// 5. It is not disabled.
@@ -2598,7 +2602,7 @@ module atoma::db {
     ///
     /// # Arguments
     /// * `security_level` - The security level of the task (e.g., ascii::string(b"sampling-consensus")).
-    /// * `stack_price` - The price per one million comupte units for the stack.
+    /// * `stack_price` - The price per one million compute units for the stack.
     /// * `num_claimed_compute_units` - The number of compute units claimed for processing.
     /// * `sampling_consensus_charge_permille` - The charge rate in permille (parts per thousand) for sampling consensus.
     ///
