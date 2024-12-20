@@ -5,7 +5,7 @@ module atoma::db_tests {
         EInvalidPricePerComputeUnit, ENodeAlreadySubscribedToTask, ENodeNotSubscribedToTask,
         StackBadge, EInvalidComputeUnits, EInsufficientBalance, ENoNodesSubscribedToTask, ENodeNotSelectedForStack, 
         ETooManyComputedUnits, EStackInSettlementDispute, EInvalidCommittedStackProof, EInvalidStackMerkleLeaf, 
-        ENoNodesEligibleForTask, ETaskIsNotPublic, AtomaManagerBadge
+        ENoNodesEligibleForTask, ETaskIsPublic, ENodeNotWhitelistedForTask, AtomaManagerBadge,
     };
     use sui::test_scenario::{Self as test, Scenario};
     use sui::coin::{Self, Coin};
@@ -538,6 +538,157 @@ module atoma::db_tests {
     }
 
     #[test]
+    fun test_whitelist_nodes_for_task_success() {
+        let mut scenario = setup_test();
+        
+        // First tx: Create a task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
+            db::create_task_entry(
+                &mut db,
+                &manager_badge,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                false, // is_public
+                test::ctx(&mut scenario)
+            );
+
+            // Create nodes vector and whitelist them
+            let mut nodes = vector::empty<u64>();
+            vector::push_back(&mut nodes, 1);
+            vector::push_back(&mut nodes, 2);
+            vector::push_back(&mut nodes, 3);
+
+            db::whitelist_nodes_for_task(
+                &mut db,
+                &manager_badge,
+                1, // task_small_id
+                nodes
+            );
+
+            // Verify nodes are whitelisted
+            assert!(db::is_node_whitelisted_for_task(&db, 1, 1), 0);
+            assert!(db::is_node_whitelisted_for_task(&db, 1, 2), 1);
+            assert!(db::is_node_whitelisted_for_task(&db, 1, 3), 2);
+
+            test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = ETaskNotFound)]
+    fun test_whitelist_nodes_for_nonexistent_task() {
+        let mut scenario = setup_test();
+        
+        // Try to whitelist nodes for nonexistent task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
+            let mut nodes = vector::empty<u64>();
+            vector::push_back(&mut nodes, 1);
+            
+            db::whitelist_nodes_for_task(
+                &mut db,
+                &manager_badge,
+                999, // nonexistent task_small_id
+                nodes
+            );
+
+            test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = ETaskIsPublic)]
+    fun test_whitelist_nodes_for_public_task() {
+        let mut scenario = setup_test();
+        
+        // First tx: Create a private task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
+            db::create_task_entry(
+                &mut db,
+                &manager_badge,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                true, // is_public
+                test::ctx(&mut scenario)
+            );
+
+            // Try to whitelist nodes for private task
+            let mut nodes = vector::empty<u64>();
+            vector::push_back(&mut nodes, 1);
+
+            db::whitelist_nodes_for_task(
+                &mut db,
+                &manager_badge,
+                1, // task_small_id
+                nodes
+            );
+
+            test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
+    fun test_whitelist_nodes_empty_vector() {
+        let mut scenario = setup_test();
+        
+        // First tx: Create a task
+        test::next_tx(&mut scenario, USER);
+        {
+            let mut db = test::take_shared<AtomaDb>(&scenario);
+            let manager_badge = test::take_from_address<AtomaManagerBadge>(&scenario, SYSTEM);
+
+            db::create_task_entry(
+                &mut db,
+                &manager_badge,
+                INFERENCE_ROLE,
+                option::none(),
+                option::none(),
+                option::none(),
+                false, // is_public
+                test::ctx(&mut scenario)
+            );
+
+            // Whitelist with empty vector (should succeed but do nothing)
+            let nodes = vector::empty<u64>();
+            
+            db::whitelist_nodes_for_task(
+                &mut db,
+                &manager_badge,
+                1, // task_small_id
+                nodes
+            );
+
+            // Verify no nodes are whitelisted
+            assert!(!db::is_node_whitelisted_for_task(&db, 1, 1), 0);
+
+            test::return_shared(db);
+            test::return_to_address(SYSTEM, manager_badge);
+        };
+        test::end(scenario);
+    }
+
+    #[test]
     #[expected_failure(abort_code = ENotEnoughEpochsPassed)]
     fun test_remove_recently_deprecated_task() {
         let mut scenario = setup_test();
@@ -636,7 +787,7 @@ module atoma::db_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = ETaskIsNotPublic)]
+    #[expected_failure(abort_code = ENodeNotWhitelistedForTask)]
     fun test_subscribe_node_to_private_task_panics() {
         let mut scenario = setup_test();
         
