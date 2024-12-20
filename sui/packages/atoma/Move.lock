@@ -11,7 +11,7 @@ dependencies = [
 
 [[move.package]]
 id = "MoveStdlib"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "a4185da5659d8d299d34e1bb2515ff1f7e32a20a", subdir = "crates\\sui-framework\\packages\\move-stdlib" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "a4185da5659d8d299d34e1bb2515ff1f7e32a20a", subdir = "crates/sui-framework/packages/move-stdlib" }
 
 [[move.package]]
 id = "Sui"
@@ -23,7 +23,7 @@ dependencies = [
 
 [[move.package]]
 id = "stablecoin"
-source = { git = "https://github.com/atoma-network/stablecoin-sui.git", rev = "main", subdir = "packages\\stablecoin" }
+source = { git = "https://github.com/atoma-network/stablecoin-sui.git", rev = "main", subdir = "packages/stablecoin" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -32,7 +32,7 @@ dependencies = [
 
 [[move.package]]
 id = "sui_extensions"
-source = { git = "https://github.com/atoma-network/stablecoin-sui.git", rev = "main", subdir = "packages\\sui_extensions" }
+source = { git = "https://github.com/atoma-network/stablecoin-sui.git", rev = "main", subdir = "packages/sui_extensions" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -47,16 +47,3 @@ dependencies = [
   { id = "stablecoin", name = "stablecoin" },
   { id = "sui_extensions", name = "sui_extensions" },
 ]
-
-[move.toolchain-version]
-compiler-version = "1.39.3"
-edition = "2024.beta"
-flavor = "sui"
-
-[env]
-
-[env.testnet]
-chain-id = "4c78adac"
-original-published-id = "0xae5d79e2b8575d97deb747beb5b5bdb35eca99a809e95c753291000acf65340a"
-latest-published-id = "0xae5d79e2b8575d97deb747beb5b5bdb35eca99a809e95c753291000acf65340a"
-published-version = "1"

@@ -1923,6 +1923,7 @@ module atoma::db {
     ) {
         let stack_small_id = StackSmallId { inner: stack_small_id };
         let stack_settlement_ticket = self.stack_settlement_tickets.borrow_mut(stack_small_id);
+        assert!(!stack_settlement_ticket.is_in_dispute, EStackAlreadyInDispute);
         stack_settlement_ticket.is_in_dispute = true;
 
         sui::event::emit(StackAttestationDisputeEvent {
