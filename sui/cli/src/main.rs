@@ -176,6 +176,9 @@ enum DbCmds {
         /// Optional minimum reputation score required for this task
         #[arg(short = 's', long)]
         minimum_reputation_score: Option<u8>,
+        /// Whether this task is public
+        #[arg(short, long)]
+        is_public: bool,
     },
     /// Deprecates a task in the database.
     /// This command marks a task as deprecated, preventing new subscriptions.
@@ -463,6 +466,7 @@ async fn main() -> Result<()> {
             model_name,
             security_level,
             minimum_reputation_score,
+            is_public,
         })) => {
             let digest = db::create_task_entry(
                 &mut context.with_optional_atoma_package_id(package),
@@ -470,6 +474,7 @@ async fn main() -> Result<()> {
                 model_name,
                 security_level,
                 minimum_reputation_score,
+                is_public,
             )
             .await?;
 

@@ -8,10 +8,12 @@ pub(crate) async fn command(
     model_name: Option<String>,
     security_level: Option<u16>,
     minimum_reputation_score: Option<u8>,
+    is_public: bool,
 ) -> Result<TransactionDigest> {
     let active_address = context.wallet.active_address()?;
     let atoma_package = context.unwrap_atoma_package_id();
     let atoma_db = context.get_or_load_atoma_db().await?;
+    let manager_badge = context.get_or_load_db_manager_badge().await?;
 
     let model_name = model_name.map(|v| vec![v]).unwrap_or_default();
     let security_level = security_level
@@ -33,10 +35,12 @@ pub(crate) async fn command(
             vec![],
             vec![
                 SuiJsonValue::from_object_id(atoma_db),
+                SuiJsonValue::from_object_id(manager_badge),
                 SuiJsonValue::new(role.to_string().into())?,
                 SuiJsonValue::new(model_name.into())?,
                 SuiJsonValue::new(security_level.into())?,
                 SuiJsonValue::new(minimum_reputation_score.into())?,
+                SuiJsonValue::new(is_public.to_string().into())?,
             ],
             None,
             context.gas_budget(),
