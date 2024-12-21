@@ -2461,7 +2461,9 @@ module atoma::db {
                 && self.nodes.contains(node_id)) 
             {
                 let node = self.nodes.borrow(node_id);
-                if (balance::value(&node.collateral) > 0 && option::is_none(&node.was_disabled_in_epoch)) {
+                // NOTE: we have disabled collateral for the current alpha release, so we don't need to check for it
+                // if (balance::value(&node.collateral) > 0 && option::is_none(&node.was_disabled_in_epoch)) {
+                if (option::is_none(&node.was_disabled_in_epoch)) {
                     vector::push_back(&mut eligible_nodes, node_id);
                 }
             };
