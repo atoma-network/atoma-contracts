@@ -2538,8 +2538,10 @@ module atoma::db {
                 && node_max_num_compute_units >= num_compute_units 
                 && self.nodes.contains(node_id)) 
             {
-                let node = self.nodes.borrow(node_id);  
-                if (balance::value(&node.collateral) > 0 && option::is_none(&node.was_disabled_in_epoch)) {
+                let node = self.nodes.borrow(node_id);
+                // NOTE: we have disabled collateral for the current alpha release, so we don't need to check for it
+                // if (balance::value(&node.collateral) > 0 && option::is_none(&node.was_disabled_in_epoch)) {
+                if (option::is_none(&node.was_disabled_in_epoch)) {
                     vector::push_back(&mut eligible_nodes, node_id);
                 }
             };
@@ -3397,8 +3399,10 @@ module atoma::db {
             let has_node = nodes.contains(node_id);
             if (has_node) {
                 let node = nodes.borrow(node_id);
-                if (node.collateral.value() > 0
-                    && node.was_disabled_in_epoch.is_none()) {
+                // NOTE: we have disabled collateral for the current alpha release, so we don't need to check for it
+                // if (node.collateral.value() > 0
+                //     && node.was_disabled_in_epoch.is_none()) {
+                if (option::is_none(&node.was_disabled_in_epoch)) {
                     break option::some(node_id)
                 };
             };
@@ -3524,8 +3528,10 @@ module atoma::db {
         let has_node = nodes.contains(node_id);
         if (has_node) {
             let node = nodes.borrow(node_id);
-            if (node.collateral.value() > 0
-                && node.was_disabled_in_epoch.is_none()) {
+            // NOTE: we have disabled collateral for the current alpha release, so we don't need to check for it
+            // if (node.collateral.value() > 0
+            //     && node.was_disabled_in_epoch.is_none()) {
+            if (option::is_none(&node.was_disabled_in_epoch)) {
                 return option::some(node_id)
             }
         };
