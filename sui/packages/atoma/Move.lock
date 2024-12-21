@@ -47,3 +47,8 @@ dependencies = [
   { id = "stablecoin", name = "stablecoin" },
   { id = "sui_extensions", name = "sui_extensions" },
 ]
+
+[move.toolchain-version]
+compiler-version = "1.38.3"
+edition = "2024.beta"
+flavor = "sui"

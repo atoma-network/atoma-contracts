@@ -15,7 +15,7 @@ module atoma::db {
     use usdc::usdc::USDC;
 
     /// How many epochs after the stack expires during which any disputes must be resolved.
-    const STACK_DISPUTE_SETTLEMENT_DELAY: u64 = 2;
+    const STACK_DISPUTE_SETTLEMENT_DELAY: u64 = 1;
 
     /// Number of bytes per hash commitment
     const BYTES_PER_HASH_COMMITMENT: u64 = 32;
@@ -46,10 +46,10 @@ module atoma::db {
     /// Security level for a task
     /// No security required
     const NoSecurity: u16 = 0;
-    /// Sampling consensus, using multiple nodes
-    const SamplingConsensus: u16 = 1;
     /// Confidential compute, using trusted hardware
-    const ConfidentialCompute: u16 = 2;
+    const ConfidentialCompute: u16 = 1;
+    /// Sampling consensus, using multiple nodes
+    const SamplingConsensus: u16 = 2;
 
     /// How much collateral is required at the time of package publication.
     const InitialCollateralRequiredForRegistration: u64 = 0;
@@ -139,6 +139,10 @@ module atoma::db {
     const EInvalidCommittedStackProof: u64 = EBase + 41;
     const EInvalidStackMerkleLeaf: u64 = EBase + 42;
     const EInvalidMinimumReputationScore: u64 = EBase + 43;
+    const ETaskIsPublic: u64 = EBase + 44;
+    const ENodeNotWhitelistedForTask: u64 = EBase + 45;
+    const EStackAlreadyInDispute: u64 = EBase + 46;
+    const ETaskSecurityLevelNotSamplingConsensus: u64 = EBase + 47;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -431,6 +435,10 @@ module atoma::db {
         subscribed_nodes_small_ids: TableVec<NodeSmallId>,
         /// Minimum reputation score required for a node to subscribe to the task
         minimum_reputation_score: ReputationScore,
+        /// Some tasks might be administrated by the package owner, in which case only selected nodes can subscribe to the task
+        is_public: bool,
+        /// Nodes that are whitelisted for the task, this should be empty if the task is public
+        whitelisted_nodes: vector<NodeSmallId>,
     }
 
     /// Represents the role or purpose of a computational task in the Atoma network.
@@ -796,6 +804,7 @@ module atoma::db {
         model_name: Option<ascii::String>,
         security_level: Option<u16>,
         minimum_reputation_score: Option<u8>,
+        is_public: bool,
         ctx: &mut TxContext,
     ) {
         let badge = create_task(
@@ -805,6 +814,7 @@ module atoma::db {
             model_name,
             option::get_with_default(&security_level, NoSecurity),
             minimum_reputation_score,
+            is_public,
             ctx,
         );
         transfer::transfer(badge, ctx.sender());
@@ -830,6 +840,7 @@ module atoma::db {
         model_name: Option<ascii::String>,
         security_level: u16,
         minimum_reputation_score: Option<u8>,
+        is_public: bool,
         ctx: &mut TxContext,
     ): TaskBadge {
         // Validate inputs
@@ -842,7 +853,7 @@ module atoma::db {
         self.next_task_small_id.inner = self.next_task_small_id.inner + 1;
         
         let reputation_score = minimum_reputation_score.get_with_default(0);
-
+        
         // Create task object
         let task = Task {
             id: object::new(ctx),
@@ -854,6 +865,8 @@ module atoma::db {
             subscribed_nodes: table::new(ctx),
             subscribed_nodes_small_ids: table_vec::empty(ctx),
             minimum_reputation_score: ReputationScore { inner: reputation_score },
+            is_public,
+            whitelisted_nodes: vector::empty(),
         };
 
         // Add task to AtomaDb
@@ -995,6 +1008,8 @@ module atoma::db {
             subscribed_nodes,
             subscribed_nodes_small_ids,
             minimum_reputation_score: _,
+            is_public: _,
+            whitelisted_nodes: _,
         } = task;
 
         task_badge_id.delete();
@@ -1177,8 +1192,15 @@ module atoma::db {
             assert!(node_meets_task_requirements(self, node_badge, task), ENodeDoesNotMeetTaskRequirements);
         };
 
-        // Check if the task is not deprecated
+        // Check if the task is public
         let task = self.tasks.borrow_mut(task_small_id);
+        if (!task.is_public) {
+            assert!(
+                vector::contains(&task.whitelisted_nodes, &node_badge.small_id),
+                ENodeNotWhitelistedForTask,
+            );
+        };
+        // Check if the task is not deprecated
         assert!(!task.is_deprecated, ETaskDeprecated);
 
         // Check if the node is already subscribed to the task
@@ -1264,6 +1286,7 @@ module atoma::db {
         assert!(self.tasks.contains(task_small_id), ETaskNotFound);
 
         // Check if the node is subscribed to the task
+        // NOTE: we do not check if the task is public here, as if it is not, then the node could not have subscribed to it in the first place
         assert!(dynamic_field::exists_(&node_badge.id, task_small_id), ENodeNotSubscribedToTask);
         
         let task = self.tasks.borrow_mut(task_small_id);
@@ -1888,10 +1911,9 @@ module atoma::db {
 
     /// Initiates an attestation dispute for a stack settlement.
     ///
-    /// This function is called when an attestation node disagrees with the original
-    /// commitment provided by the selected node for a stack settlement. It marks
-    /// the stack settlement as being in dispute and emits an event to notify
-    /// the network of the disagreement.
+    /// When an attestation node discovers a discrepancy between their computed result and the original node's 
+    /// commitment, they can initiate a dispute using this function. This triggers the dispute resolution process
+    /// and prevents the stack from being settled until the dispute is resolved.
     ///
     /// # Arguments
     /// * `self` - A mutable reference to the AtomaDb object.
@@ -1900,21 +1922,31 @@ module atoma::db {
     /// * `attestation_commitment` - The commitment provided by the attestation node, which differs from the original.
     ///
     /// # Effects
-    /// - Marks the stack settlement ticket as being in dispute.
+    /// - Marks the stack settlement ticket as being in dispute (`is_in_dispute = true`).
     /// - Emits a `StackAttestationDisputeEvent` containing details of the dispute.
     ///
+    /// # Errors
+    /// * `EStackAlreadyInDispute` - If the stack is already in a dispute state.
+    /// * `ETaskSecurityLevelNotSamplingConsensus` - If the task's security level is not set to SamplingConsensus.
+    ///
     /// # Events
-    /// Emits a `StackAttestationDisputeEvent` with the following information:
+    /// Emits a `StackAttestationDisputeEvent` with:
     /// - `stack_small_id`: The ID of the stack in dispute.
     /// - `attestation_commitment`: The commitment provided by the disputing attestation node.
     /// - `attestation_node_id`: The ID of the attestation node raising the dispute.
     /// - `original_node_id`: The ID of the original node that provided the initial commitment.
     /// - `original_commitment`: The original commitment that is being disputed.
     ///
+    /// # Security Considerations
+    /// - Only tasks with SamplingConsensus security level can enter disputes.
+    /// - Once a dispute is initiated, the stack cannot be settled until resolved.
+    /// - Malicious nodes may attempt to initiate false disputes - the resolution mechanism must handle this.
+    /// - The dispute process is critical for maintaining computational integrity in the network.
+    ///
     /// # Important Notes
-    /// - This function should only be called by attestation nodes that have been selected for cross-validation.
-    /// - Once a dispute is initiated, it will require further resolution mechanisms to settle the disagreement.
-    /// - The dispute process helps ensure the integrity and correctness of computations in the Atoma network.
+    /// - This function should only be called by attestation nodes that were selected for cross-validation.
+    /// - The dispute resolution process is handled separately from this function.
+    /// - Nodes involved in disputes may face slashing of their collateral based on the resolution outcome.
     public entry fun start_attestation_dispute(
         self: &mut AtomaDb,
         node_badge: &NodeBadge,
@@ -1924,7 +1956,14 @@ module atoma::db {
         let stack_small_id = StackSmallId { inner: stack_small_id };
         let stack_settlement_ticket = self.stack_settlement_tickets.borrow_mut(stack_small_id);
         assert!(!stack_settlement_ticket.is_in_dispute, EStackAlreadyInDispute);
+
+        let stack = self.stacks.borrow(stack_small_id);
+        let task_small_id = stack.task_small_id;
+        let task = self.tasks.borrow(task_small_id);
+        
+        assert!(task.security_level.inner == SamplingConsensus, ETaskSecurityLevelNotSamplingConsensus);
         stack_settlement_ticket.is_in_dispute = true;
+
 
         sui::event::emit(StackAttestationDisputeEvent {
             stack_small_id,
@@ -2801,6 +2840,55 @@ module atoma::db {
         AtomaManagerBadge { id: object::new(ctx) }
     }
 
+    /// Adds nodes to the whitelist for a specific public task.
+    ///
+    /// This function allows an administrator (holder of AtomaManagerBadge) to add multiple nodes
+    /// to a task's whitelist. Only whitelisted nodes will be able to process the task, providing
+    /// an additional layer of access control.
+    ///
+    /// # Arguments
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `_` - A reference to the AtomaManagerBadge to verify admin privileges.
+    /// * `task_small_id` - The ID of the task to whitelist nodes for.
+    /// * `nodes` - A vector of node IDs to be added to the whitelist.
+    ///
+    /// # Aborts
+    /// * `ETaskNotFound` - If the specified task does not exist.
+    /// * `ETaskIsPublic` - If the specified task is not marked as public.
+    ///
+    /// # Security Considerations
+    /// - Only callable by the holder of the AtomaManagerBadge.
+    /// - The task must be marked as public before nodes can be whitelisted.
+    /// - Adding nodes to the whitelist does not automatically grant them access to process the task;
+    ///   nodes must still meet other eligibility criteria (e.g., reputation score, collateral).
+    ///
+    /// # Example
+    /// ```
+    /// let nodes = vector[1, 2, 3]; // Node IDs to whitelist
+    /// whitelist_nodes_for_task(&mut atoma_db, &manager_badge, task_id, nodes);
+    /// ```
+    public entry fun whitelist_nodes_for_task(
+        self: &mut AtomaDb,
+        _: &AtomaManagerBadge,
+        task_small_id: u64,
+        nodes: vector<u64>,
+    ) {
+        let task_small_id = TaskSmallId { inner: task_small_id };
+        assert!(object_table::contains(&self.tasks, task_small_id), ETaskNotFound);
+
+        let task = self.tasks.borrow_mut(task_small_id);
+        assert!(!task.is_public, ETaskIsPublic);
+
+        let mut node_index = 0;
+        let num_nodes = vector::length(&nodes);
+        while (node_index < num_nodes) {
+            let node_small_id = *vector::borrow(&nodes, node_index);
+            let node_small_id = NodeSmallId { inner: node_small_id };
+            vector::push_back(&mut task.whitelisted_nodes, node_small_id);
+            node_index = node_index + 1;
+        };
+    }
+
     /// Triggers a network-wide rotation of node public keys by emitting a key rotation event.
     ///
     /// This function allows the Atoma network administrator to initiate a coordinated rotation
@@ -2873,6 +2961,8 @@ module atoma::db {
             subscribed_nodes,
             subscribed_nodes_small_ids,
             minimum_reputation_score: _,
+            is_public: _,
+            whitelisted_nodes: _,
         } = task;
 
         task_id.delete();
@@ -3653,6 +3743,12 @@ module atoma::db {
         
         vector::length(&settlement.stack_merkle_leaves_vector) == 64
             && proof == settlement.committed_stack_proof
+    }
+
+    #[test_only]
+    public fun is_node_whitelisted_for_task(db: &AtomaDb, task_small_id: u64, node_small_id: u64): bool {
+        let task = db.tasks.borrow(TaskSmallId { inner: task_small_id });
+        vector::contains(&task.whitelisted_nodes, &NodeSmallId { inner: node_small_id })
     }
 
     #[test]
