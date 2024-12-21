@@ -3051,7 +3051,7 @@ module atoma::db_tests {
                 &admin_badge,
                 INFERENCE_ROLE,
                 option::none(),
-                option::some(1), // Sampling Consensus security level
+                option::some(2), // Sampling Consensus security level
                 option::none(),
                 true, // is_public
                 test::ctx(&mut scenario)
@@ -3142,7 +3142,7 @@ module atoma::db_tests {
             assert!(db::compare_stack_and_settlement_ticket(&stack_badge, settlement), 0);
             assert!(db::get_num_requested_attestation_nodes(settlement) == 1, 0);
             assert!(db::compare_requested_attestation_nodes(settlement, 1), 0);
-            assert!(db::confirm_stack_settlement_ticket_dispute_epoch(settlement, test::ctx(&mut scenario).epoch() + 2), 0);
+            assert!(db::confirm_stack_settlement_ticket_dispute_epoch(settlement, test::ctx(&mut scenario).epoch() + 1), 0);
             assert!(db::compare_already_attested_nodes(settlement, 1), 0);
             assert!(db::is_stack_settlement_ticket_disputed(settlement), 0);
             assert!(db::confirm_committed_stack_proof(settlement, proof, leaf), 0);

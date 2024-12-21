@@ -15,7 +15,7 @@ module atoma::db {
     use usdc::usdc::USDC;
 
     /// How many epochs after the stack expires during which any disputes must be resolved.
-    const STACK_DISPUTE_SETTLEMENT_DELAY: u64 = 2;
+    const STACK_DISPUTE_SETTLEMENT_DELAY: u64 = 1;
 
     /// Number of bytes per hash commitment
     const BYTES_PER_HASH_COMMITMENT: u64 = 32;
@@ -46,10 +46,10 @@ module atoma::db {
     /// Security level for a task
     /// No security required
     const NoSecurity: u16 = 0;
-    /// Sampling consensus, using multiple nodes
-    const SamplingConsensus: u16 = 1;
     /// Confidential compute, using trusted hardware
-    const ConfidentialCompute: u16 = 2;
+    const ConfidentialCompute: u16 = 1;
+    /// Sampling consensus, using multiple nodes
+    const SamplingConsensus: u16 = 2;
 
     /// How much collateral is required at the time of package publication.
     const InitialCollateralRequiredForRegistration: u64 = 0;
@@ -141,6 +141,8 @@ module atoma::db {
     const EInvalidMinimumReputationScore: u64 = EBase + 43;
     const ETaskIsPublic: u64 = EBase + 44;
     const ENodeNotWhitelistedForTask: u64 = EBase + 45;
+    const EStackAlreadyInDispute: u64 = EBase + 46;
+    const ETaskSecurityLevelNotSamplingConsensus: u64 = EBase + 47;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -1909,10 +1911,9 @@ module atoma::db {
 
     /// Initiates an attestation dispute for a stack settlement.
     ///
-    /// This function is called when an attestation node disagrees with the original
-    /// commitment provided by the selected node for a stack settlement. It marks
-    /// the stack settlement as being in dispute and emits an event to notify
-    /// the network of the disagreement.
+    /// When an attestation node discovers a discrepancy between their computed result and the original node's 
+    /// commitment, they can initiate a dispute using this function. This triggers the dispute resolution process
+    /// and prevents the stack from being settled until the dispute is resolved.
     ///
     /// # Arguments
     /// * `self` - A mutable reference to the AtomaDb object.
@@ -1921,21 +1922,31 @@ module atoma::db {
     /// * `attestation_commitment` - The commitment provided by the attestation node, which differs from the original.
     ///
     /// # Effects
-    /// - Marks the stack settlement ticket as being in dispute.
+    /// - Marks the stack settlement ticket as being in dispute (`is_in_dispute = true`).
     /// - Emits a `StackAttestationDisputeEvent` containing details of the dispute.
     ///
+    /// # Errors
+    /// * `EStackAlreadyInDispute` - If the stack is already in a dispute state.
+    /// * `ETaskSecurityLevelNotSamplingConsensus` - If the task's security level is not set to SamplingConsensus.
+    ///
     /// # Events
-    /// Emits a `StackAttestationDisputeEvent` with the following information:
+    /// Emits a `StackAttestationDisputeEvent` with:
     /// - `stack_small_id`: The ID of the stack in dispute.
     /// - `attestation_commitment`: The commitment provided by the disputing attestation node.
     /// - `attestation_node_id`: The ID of the attestation node raising the dispute.
     /// - `original_node_id`: The ID of the original node that provided the initial commitment.
     /// - `original_commitment`: The original commitment that is being disputed.
     ///
+    /// # Security Considerations
+    /// - Only tasks with SamplingConsensus security level can enter disputes.
+    /// - Once a dispute is initiated, the stack cannot be settled until resolved.
+    /// - Malicious nodes may attempt to initiate false disputes - the resolution mechanism must handle this.
+    /// - The dispute process is critical for maintaining computational integrity in the network.
+    ///
     /// # Important Notes
-    /// - This function should only be called by attestation nodes that have been selected for cross-validation.
-    /// - Once a dispute is initiated, it will require further resolution mechanisms to settle the disagreement.
-    /// - The dispute process helps ensure the integrity and correctness of computations in the Atoma network.
+    /// - This function should only be called by attestation nodes that were selected for cross-validation.
+    /// - The dispute resolution process is handled separately from this function.
+    /// - Nodes involved in disputes may face slashing of their collateral based on the resolution outcome.
     public entry fun start_attestation_dispute(
         self: &mut AtomaDb,
         node_badge: &NodeBadge,
@@ -1944,7 +1955,15 @@ module atoma::db {
     ) {
         let stack_small_id = StackSmallId { inner: stack_small_id };
         let stack_settlement_ticket = self.stack_settlement_tickets.borrow_mut(stack_small_id);
+        assert!(!stack_settlement_ticket.is_in_dispute, EStackAlreadyInDispute);
+
+        let stack = self.stacks.borrow(stack_small_id);
+        let task_small_id = stack.task_small_id;
+        let task = self.tasks.borrow(task_small_id);
+        
+        assert!(task.security_level.inner == SamplingConsensus, ETaskSecurityLevelNotSamplingConsensus);
         stack_settlement_ticket.is_in_dispute = true;
+
 
         sui::event::emit(StackAttestationDisputeEvent {
             stack_small_id,
@@ -2442,7 +2461,9 @@ module atoma::db {
                 && self.nodes.contains(node_id)) 
             {
                 let node = self.nodes.borrow(node_id);
-                if (balance::value(&node.collateral) > 0 && option::is_none(&node.was_disabled_in_epoch)) {
+                // NOTE: we have disabled collateral for the current alpha release, so we don't need to check for it
+                // if (balance::value(&node.collateral) > 0 && option::is_none(&node.was_disabled_in_epoch)) {
+                if (option::is_none(&node.was_disabled_in_epoch)) {
                     vector::push_back(&mut eligible_nodes, node_id);
                 }
             };
@@ -2517,8 +2538,10 @@ module atoma::db {
                 && node_max_num_compute_units >= num_compute_units 
                 && self.nodes.contains(node_id)) 
             {
-                let node = self.nodes.borrow(node_id);  
-                if (balance::value(&node.collateral) > 0 && option::is_none(&node.was_disabled_in_epoch)) {
+                let node = self.nodes.borrow(node_id);
+                // NOTE: we have disabled collateral for the current alpha release, so we don't need to check for it
+                // if (balance::value(&node.collateral) > 0 && option::is_none(&node.was_disabled_in_epoch)) {
+                if (option::is_none(&node.was_disabled_in_epoch)) {
                     vector::push_back(&mut eligible_nodes, node_id);
                 }
             };
@@ -3376,8 +3399,10 @@ module atoma::db {
             let has_node = nodes.contains(node_id);
             if (has_node) {
                 let node = nodes.borrow(node_id);
-                if (node.collateral.value() > 0
-                    && node.was_disabled_in_epoch.is_none()) {
+                // NOTE: we have disabled collateral for the current alpha release, so we don't need to check for it
+                // if (node.collateral.value() > 0
+                //     && node.was_disabled_in_epoch.is_none()) {
+                if (option::is_none(&node.was_disabled_in_epoch)) {
                     break option::some(node_id)
                 };
             };
@@ -3503,8 +3528,10 @@ module atoma::db {
         let has_node = nodes.contains(node_id);
         if (has_node) {
             let node = nodes.borrow(node_id);
-            if (node.collateral.value() > 0
-                && node.was_disabled_in_epoch.is_none()) {
+            // NOTE: we have disabled collateral for the current alpha release, so we don't need to check for it
+            // if (node.collateral.value() > 0
+            //     && node.was_disabled_in_epoch.is_none()) {
+            if (option::is_none(&node.was_disabled_in_epoch)) {
                 return option::some(node_id)
             }
         };

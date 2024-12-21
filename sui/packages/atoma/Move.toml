@@ -5,7 +5,7 @@ edition = "2024.beta"
 
 [dependencies]
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "a4185da5659d8d299d34e1bb2515ff1f7e32a20a" }
-usdc =  { git = "https://github.com/atoma-network/stablecoin-sui.git", subdir = "packages/usdc", rev = "main" }
+usdc =  { git = "https://github.com/atoma-network/stablecoin-sui.git", subdir = "packages/usdc", rev = "master" }
 
 [addresses]
 atoma = "0x0"
