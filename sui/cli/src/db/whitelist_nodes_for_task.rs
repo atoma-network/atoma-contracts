@@ -11,6 +11,10 @@ pub(crate) async fn command(
     let atoma_package = context.unwrap_atoma_package_id();
     let atoma_db = context.get_or_load_atoma_db().await?;
     let manager_badge = context.get_or_load_db_manager_badge().await?;
+    let nodes_small_ids = nodes_small_ids
+        .iter()
+        .map(|v| v.to_string())
+        .collect::<Vec<String>>();
 
     let tx = context
         .get_client()
