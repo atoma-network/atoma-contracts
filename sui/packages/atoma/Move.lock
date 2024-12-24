@@ -2,7 +2,7 @@
 
 [move]
 version = 3
-manifest_digest = "2897EF3A713F5BBB25B77F65E44A45D477C3B1FBD469B01EDB57F7EEF9142B94"
+manifest_digest = "58137566037116AFB679D2310A9728B99C9A932B440C909887AC3CC9441F4813"
 deps_digest = "3C4103934B1E040BB6B23F1D610B4EF9F2F1166A50A104EADCF77467C004C600"
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -23,7 +23,7 @@ dependencies = [
 
 [[move.package]]
 id = "stablecoin"
-source = { git = "https://github.com/atoma-network/stablecoin-sui.git", rev = "main", subdir = "packages/stablecoin" }
+source = { git = "https://github.com/atoma-network/stablecoin-sui.git", rev = "master", subdir = "packages/stablecoin" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -32,7 +32,7 @@ dependencies = [
 
 [[move.package]]
 id = "sui_extensions"
-source = { git = "https://github.com/atoma-network/stablecoin-sui.git", rev = "main", subdir = "packages/sui_extensions" }
+source = { git = "https://github.com/atoma-network/stablecoin-sui.git", rev = "master", subdir = "packages/sui_extensions" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -40,7 +40,7 @@ dependencies = [
 
 [[move.package]]
 id = "usdc"
-source = { git = "https://github.com/atoma-network/stablecoin-sui.git", rev = "main", subdir = "packages/usdc" }
+source = { git = "https://github.com/atoma-network/stablecoin-sui.git", rev = "master", subdir = "packages/usdc" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -49,6 +49,14 @@ dependencies = [
 ]
 
 [move.toolchain-version]
-compiler-version = "1.38.3"
+compiler-version = "1.39.3"
 edition = "2024.beta"
 flavor = "sui"
+
+[env]
+
+[env.testnet]
+chain-id = "4c78adac"
+original-published-id = "0xfa971724b5fb14c2ffc9a959b81cce4d85d457da27e29f793e12428ed71bb922"
+latest-published-id = "0xfa971724b5fb14c2ffc9a959b81cce4d85d457da27e29f793e12428ed71bb922"
+published-version = "1"

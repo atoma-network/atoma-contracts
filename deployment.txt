@@ -2,4 +2,4 @@ Contract deployment
 
 1) go to sui/packages/atoma
 2) remove build dir and move.lock (if they exists)
-3) run `sui publish --skip-dependency-verification --skip-fetch-latest-git-deps --gas-budget 1000000000`
+3) run `sui client publish --skip-dependency-verification --skip-fetch-latest-git-deps --gas-budget 1000000000`
