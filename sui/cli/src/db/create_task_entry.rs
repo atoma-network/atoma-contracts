@@ -20,7 +20,7 @@ pub(crate) async fn command(
         .map(|v| vec![v.to_string()])
         .unwrap_or_default();
     let minimum_reputation_score = minimum_reputation_score
-        .map(|v| vec![v.to_string()])
+        .map(|v| vec![v])
         .unwrap_or_default();
 
     let tx = context
@@ -40,7 +40,7 @@ pub(crate) async fn command(
                 SuiJsonValue::new(model_name.into())?,
                 SuiJsonValue::new(security_level.into())?,
                 SuiJsonValue::new(minimum_reputation_score.into())?,
-                SuiJsonValue::new(is_public.to_string().into())?,
+                SuiJsonValue::new(is_public.into())?,
             ],
             None,
             context.gas_budget(),
