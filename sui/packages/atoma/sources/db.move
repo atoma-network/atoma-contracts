@@ -993,7 +993,7 @@ module atoma::db {
         
         // Check if the deprecated_at_epoch exists and if 4 epochs have passed
         let deprecated_epoch = *option::borrow(&task.deprecated_at_epoch);
-        assert!(ctx.epoch() >= deprecated_epoch + 2, ENotEnoughEpochsPassed);
+        assert!(ctx.epoch() >= deprecated_epoch + 1, ENotEnoughEpochsPassed);
 
         // If all checks pass, remove the task from the object table
         // and drop the task object altogether
