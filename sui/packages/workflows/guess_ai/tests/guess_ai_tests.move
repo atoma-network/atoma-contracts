@@ -1,7 +1,7 @@
 #[test_only]
-module secret_guessing::secret_guessing_tests {
+module guess_ai::guess_ai_tests {
     use std::ascii::Self;
-    use secret_guessing::contract::{Self, AtomaSecretGuessingDb, GuessBadge};
+    use guess_ai::contract::{Self, AtomaSecretGuessingDb, GuessBadge};
     use sui::test_scenario::{Self as test, Scenario};
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
@@ -82,7 +82,7 @@ module secret_guessing::secret_guessing_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = secret_guessing::contract::EInsufficientBalance)]
+    #[expected_failure(abort_code = guess_ai::contract::EInsufficientBalance)]
     fun test_guess_entry_insufficient_balance() {
         let mut scenario = setup_test();
         

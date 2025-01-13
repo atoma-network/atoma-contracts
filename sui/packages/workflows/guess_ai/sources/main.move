@@ -1,4 +1,4 @@
-module secret_guessing::secret_guessing {
+module guess_ai::guess_ai {
     //! # AI Agent Secret Guessing Game
     //!
     //! A blockchain-based guessing game that interacts with an AI Language Model (LLM) running in a 
@@ -32,10 +32,10 @@ module secret_guessing::secret_guessing {
     //! - Builds excitement as players get closer to the secret
     //! - Twitter thread serves as an immutable history of the game
     
-    public struct SECRET_GUESSING has drop {}
+    public struct GUESS_AI has drop {}
 
     /// The package publisher allows upgrades and admin access to other modules.
-    fun init(otw: SECRET_GUESSING, ctx: &mut TxContext) {
+    fun init(otw: GUESS_AI, ctx: &mut TxContext) {
         // https://examples.sui.io/basics/publisher.html
         sui::package::claim_and_keep(otw, ctx);
     }
