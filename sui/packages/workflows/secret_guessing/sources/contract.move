@@ -24,8 +24,8 @@ module secret_guessing::contract {
     /// The address of the AI agent that will be used to guess the secret
     const AI_AGENT_ADDRESS: address = @0x0;
 
-    /// The number of bytes in the challenge nonce
-    const NUM_NONCE_CHALLENGE_BYTES: u16 = 32;
+    /// The maximum number of guesses allowed
+    const MAXIMUM_NUM_GUESSES: u64 = 10_000;
 
     /// Base error code
     const EBase: u64 = 312012_000;
@@ -62,13 +62,14 @@ module secret_guessing::contract {
         treasury_pool_balance: u64,
     }
 
-    /// Event emitted when the TDX quote is rotated by the AI agent
+    /// Event emitted when the TDX quote needs to be rotated by the AI agent
+    /// and a new secret guessing game is started
     public struct RotateTdxQuoteEvent has copy, drop {
         /// The epoch at which the TDX quote was rotated
         epoch: u64,
 
-        /// The challenge nonce, that is randomly generated on-chain
-        challenge_nonce: vector<u8>,
+        /// Random seed to be used for inference
+        random_seed: u64
     }
 
     /// Event emitted when the TDX quote is resubmitted by the AI agent
@@ -78,6 +79,9 @@ module secret_guessing::contract {
 
         /// The TDX quote V4
         tdx_quote_v4: vector<u8>,
+
+        /// The public key bytes of the AI agent for encrypted AI inference
+        public_key_bytes: vector<u8>,
     }
 
     /// A badge that represents the manager of the AtomaSecretGuessingDb object
@@ -125,6 +129,9 @@ module secret_guessing::contract {
 
         /// The number of guesses after which the fee will be updated
         update_fee_every_n_guesses: u64,
+
+        /// The address of the winner
+        winner_address: Option<address>,
     }        
 
     /// Initializes the secret guessing game by creating and sharing the main database object
@@ -156,6 +163,7 @@ module secret_guessing::contract {
             dev_address: ATOMA_DEV_ADDRESS,
             agent_address: AI_AGENT_ADDRESS,
             update_fee_every_n_guesses: UpdateFeeEveryNGuesses,
+            winner_address: std::option::none(),
         };
 
         let secret_guessing_db_badge = AtomaSecretGuessingManagerBadge { 
@@ -223,12 +231,14 @@ module secret_guessing::contract {
     public entry fun resubmit_tdx_attestation(
         db: &mut AtomaSecretGuessingDb,
         tdx_quote_v4: vector<u8>,
+        public_key_bytes: vector<u8>,
         ctx: &mut TxContext,
     ) {
         assert!(ctx.sender() == db.agent_address, EOnlyAgentCanResubmitRemoteAttestation);
         sui::event::emit(TDXQuoteResubmittedEvent { 
             epoch: ctx.epoch(),
             tdx_quote_v4: tdx_quote_v4,
+            public_key_bytes: public_key_bytes,
         });
     }
 
@@ -281,8 +291,14 @@ module secret_guessing::contract {
         if (db.guess_count % db.update_fee_every_n_guesses == 0) {
             db.next_fee = db.next_fee + (db.fee_rate_increase_per_guess_per_mille * db.next_fee / 1000);
         };
+
+        // 5. If the maximum number of guesses has been reached, set the winner to the dev
+        // and distribute the funds to the dev, as there is no winner for the secret guessing game
+        if (db.guess_count >= MAXIMUM_NUM_GUESSES) {
+            db.send_funds_to_dev(ctx);
+        };
         
-        // 5. Emit the new guess event
+        // 6. Emit the new guess event
         sui::event::emit(NewGuessEvent { 
             fee: db.next_fee,
             guess: guess,
@@ -290,7 +306,7 @@ module secret_guessing::contract {
             treasury_pool_balance: balance::value(&db.treasury_pool),
         });
 
-        // 6. Return the guess badge
+        // 7. Return the guess badge
         GuessBadge { 
             id: object::new(ctx),
         }
@@ -346,6 +362,9 @@ module secret_guessing::contract {
         // Transfer to respective addresses
         transfer::public_transfer(winner_coin, winner_address);
         transfer::public_transfer(dev_coin, ATOMA_DEV_ADDRESS);
+
+        // Set the game to inactive
+        db.is_active = false;
     }
 
     // ||================================||
@@ -440,10 +459,10 @@ module secret_guessing::contract {
         ctx: &mut TxContext,
     ) {
         let mut rng = random.new_generator(ctx);
-        let challenge_nonce = rng.generate_bytes(NUM_NONCE_CHALLENGE_BYTES);
+        let random_seed = rng.generate_u64();
         sui::event::emit(RotateTdxQuoteEvent { 
             epoch: ctx.epoch(),
-            challenge_nonce,
+            random_seed,
         });
     }
 
@@ -508,6 +527,28 @@ module secret_guessing::contract {
     ) {
         let fee = wallet.split(db.next_fee);
         db.treasury_pool.join(fee);
+    }
+
+    /// Transfers all funds from the treasury pool to the developer address.
+    /// This function is called when the maximum number of guesses has been reached
+    /// without finding a winner.
+    /// 
+    /// # Arguments
+    /// * `db` - Mutable reference to the AtomaSecretGuessingDb object
+    /// * `ctx` - The transaction context used to create new coin objects
+    ///
+    /// # Effects
+    /// * Empties the treasury pool
+    /// * Creates a new Coin object with the entire treasury balance
+    /// * Transfers the coin to the developer's address stored in `db.dev_address`
+    public fun send_funds_to_dev(
+        db: &mut AtomaSecretGuessingDb,
+        ctx: &mut TxContext,
+    ) {
+        let total_balance = balance::value(&db.treasury_pool);
+        let dev_balance = balance::split(&mut db.treasury_pool, total_balance);
+        let dev_coin = coin::from_balance(dev_balance, ctx);
+        transfer::public_transfer(dev_coin, db.dev_address);
     }
 
     // Test-only functions
