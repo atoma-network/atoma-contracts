@@ -11,21 +11,16 @@ module guess_ai::contract {
     use sui::sui::SUI;
 
     /// The initial fee rate increase per guess
-    const InitialFeeRateIncreasePerGuessPerMille: u64 = 100;
-    /// The percentage of the treasury pool that will be given to the winner
-    const WinnerPercentageOfTreasuryPoolPerMille: u64 = 70;
+    const InitialFeeRateIncreasePerGuessPerMille: u64 = 100; // 10%
+    /// The protocol fee per guess applied by the protocol
+    const ProtocolFeePerMille: u64 = 50; // 5%
     /// The initial fee for the first guess
     const StartingFee: u64 = 1000;
     /// The number of guesses after which the fee will be updated
     const UpdateFeeEveryNGuesses: u64 = 100;
 
-    /// The address of the developer of the contract
-    const ATOMA_DEV_ADDRESS: address = @0x0;
     /// The address of the AI agent that will be used to guess the secret
     const AI_AGENT_ADDRESS: address = @0x0;
-
-    /// The maximum number of guesses allowed
-    const MAXIMUM_NUM_GUESSES: u64 = 10_000;
 
     /// Base error code
     const EBase: u64 = 312012_000;
@@ -118,14 +113,14 @@ module guess_ai::contract {
         /// The fee rate increase per guess
         fee_rate_increase_per_guess_per_mille: u64,
 
-        /// The percentage of the treasury pool that will be given to the winner
-        percentage_treasury_to_winner_per_mille: u64,
+        /// The protocol fee per guess applied by the protocol
+        protocol_fee_per_mille: u64,
+
+        /// The protocol treasury address
+        protocol_fee_pool: Balance<SUI>,
 
         /// The AI agent address that will be used to guess the secret
         agent_address: address,
-
-        /// The address of the developer of the contract
-        dev_address: address,
 
         /// The number of guesses after which the fee will be updated
         update_fee_every_n_guesses: u64,
@@ -155,12 +150,12 @@ module guess_ai::contract {
         let db = AtomaSecretGuessingDb { 
             id: object::new(ctx),
             treasury_pool: balance::zero(),
+            protocol_fee_pool: balance::zero(),
             guess_count: 0,
             next_fee: StartingFee,
             is_active: true,
             fee_rate_increase_per_guess_per_mille: InitialFeeRateIncreasePerGuessPerMille,
-            percentage_treasury_to_winner_per_mille: WinnerPercentageOfTreasuryPoolPerMille,
-            dev_address: ATOMA_DEV_ADDRESS,
+            protocol_fee_per_mille: ProtocolFeePerMille,
             agent_address: AI_AGENT_ADDRESS,
             update_fee_every_n_guesses: UpdateFeeEveryNGuesses,
             winner_address: std::option::none(),
@@ -292,12 +287,6 @@ module guess_ai::contract {
             db.next_fee = db.next_fee + (db.fee_rate_increase_per_guess_per_mille * db.next_fee / 1000);
         };
 
-        // 5. If the maximum number of guesses has been reached, set the winner to the dev
-        // and distribute the funds to the dev, as there is no winner for the secret guessing game
-        if (db.guess_count >= MAXIMUM_NUM_GUESSES) {
-            db.send_funds_to_dev(ctx);
-        };
-        
         // 6. Emit the new guess event
         sui::event::emit(NewGuessEvent { 
             fee: db.next_fee,
@@ -348,23 +337,12 @@ module guess_ai::contract {
         );
 
         let total_balance = balance::value(&db.treasury_pool);
-        let winner_amount = total_balance * db.percentage_treasury_to_winner_per_mille / 1000;
-        let dev_amount = total_balance - winner_amount;
-
         // Split the winner's portion and convert to Coin
-        let winner_balance = balance::split(&mut db.treasury_pool, winner_amount);
-        let winner_coin = coin::from_balance(winner_balance, ctx);
+        let total_balance = balance::split(&mut db.treasury_pool, total_balance);
+        let total_balance_coin = coin::from_balance(total_balance, ctx);
         
-        // Split the dev's portion and convert to Coin
-        let dev_balance = balance::split(&mut db.treasury_pool, dev_amount);
-        let dev_coin = coin::from_balance(dev_balance, ctx);
-
         // Transfer to respective addresses
-        transfer::public_transfer(winner_coin, winner_address);
-        transfer::public_transfer(dev_coin, ATOMA_DEV_ADDRESS);
-
-        // Set the game to inactive
-        db.is_active = false;
+        transfer::public_transfer(total_balance_coin, winner_address);
     }
 
     // ||================================||
@@ -386,7 +364,7 @@ module guess_ai::contract {
     /// * If `new_fee_rate_increase_per_guess_per_mille` is greater than 1000
     ///
     /// # Access Control
-    /// * Only callable by the holder of the AtomaSecretGuessingManagerBadge
+    /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
     public fun set_fee_rate_increase_per_guess_per_mille(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
@@ -399,24 +377,22 @@ module guess_ai::contract {
         db.fee_rate_increase_per_guess_per_mille = new_fee_rate_increase_per_guess_per_mille;
     }
 
-    /// Updates the developer address that receives a portion of the treasury pool funds.
+    /// Sets the game to inactive, which means that no more guesses can be made.
     /// 
     /// # Arguments
     /// * `db` - Mutable reference to the AtomaSecretGuessingDb object
     /// * `_` - Reference to the manager badge for access control
-    /// * `new_dev_address` - The new address that will receive developer funds
     ///
     /// # Effects
-    /// * Updates the `dev_address` field in the database
+    /// * Sets the `is_active` field in the database to false
     ///
     /// # Access Control
-    /// * Only callable by the holder of the AtomaSecretGuessingManagerBadge
-    public entry fun set_dev_address(
+    /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
+    public entry fun set_game_inactive(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
-        new_dev_address: address,
     ) {
-        db.dev_address = new_dev_address;
+        db.is_active = false;
     }
 
     /// Updates the AI agent address that will be used to guess the secret.
@@ -430,7 +406,7 @@ module guess_ai::contract {
     /// * Updates the `agent_address` field in the database
     ///
     /// # Access Control
-    /// * Only callable by the holder of the AtomaSecretGuessingManagerBadge
+    /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
     public entry fun set_agent_address(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
@@ -451,7 +427,7 @@ module guess_ai::contract {
     /// * Emits a `RotateTdxQuoteEvent` with the current epoch and new challenge nonce
     ///
     /// # Access Control
-    /// * Only callable by the holder of the AtomaSecretGuessingManagerBadge
+    /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
     entry fun rotate_tdx_quote(
         _: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
@@ -477,7 +453,7 @@ module guess_ai::contract {
     /// * Updates the `next_fee` field in the database
     ///
     /// # Access Control
-    /// * Only callable by the holder of the AtomaSecretGuessingManagerBadge
+    /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
     public fun set_starting_fee(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
@@ -494,7 +470,7 @@ module guess_ai::contract {
     /// * `new_update_fee_every_n_guesses` - The new number of guesses after which the fee will be updated
     ///
     /// # Access Control
-    /// * Only callable by the holder of the AtomaSecretGuessingManagerBadge
+    /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
     public fun set_update_fee_every_n_guesses(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
@@ -503,52 +479,88 @@ module guess_ai::contract {
         db.update_fee_every_n_guesses = new_update_fee_every_n_guesses;
     }
 
+    /// Sets the protocol fee per guess applied by the protocol
+    /// 
+    /// # Arguments
+    /// * `db` - Mutable reference to the AtomaSecretGuessingDb object
+    /// * `_` - Reference to the manager badge for access control
+    /// * `new_protocol_fee_per_mille` - The new protocol fee per guess in permille (must be <= 1000)
+    ///
+    /// # Aborts
+    /// * If `new_protocol_fee_per_mille` is greater than 1000
+    ///
+    /// # Access Control
+    /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
+    public fun set_protocol_fee_per_mille(
+        db: &mut AtomaSecretGuessingDb,
+        _: &AtomaSecretGuessingManagerBadge,
+        new_protocol_fee_per_mille: u64,
+    ) {
+        db.protocol_fee_per_mille = new_protocol_fee_per_mille;
+    }
+
+    /// Transfers all funds from the protocol fee pool to the transaction sender.
+    /// 
+    /// # Arguments
+    /// * `db` - Mutable reference to the AtomaSecretGuessingDb object
+    /// * `_` - Reference to the manager badge for access control
+    /// * `ctx` - The transaction context used to create new coin objects
+    ///
+    /// # Effects
+    /// * Empties the protocol fee pool
+    /// * Creates a new Coin object with the entire protocol fee balance
+    /// * Transfers the coin to the transaction sender
+    ///
+    /// # Access Control
+    /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
+    public entry fun withdraw_protocol_fees(
+        db: &mut AtomaSecretGuessingDb,
+        _: &AtomaSecretGuessingManagerBadge,
+        ctx: &mut TxContext,
+    ) {
+        let total_balance = balance::value(&db.protocol_fee_pool);
+        let dev_balance = balance::split(&mut db.protocol_fee_pool, total_balance);
+        let dev_coin = coin::from_balance(dev_balance, ctx);
+        transfer::public_transfer(dev_coin, ctx.sender());
+    }
+
     // ||================================||
     // ||          Utility functions     ||
     // ||================================||
 
-    /// Deposits a fee from the provided wallet balance into the treasury pool.
-    /// The fee amount is determined by the current fee rate increase per guess setting.
+    /// Deposits a fee from the provided wallet balance into both the treasury pool and protocol fee pool.
+    /// The fee is split between the treasury and protocol based on the protocol_fee_per_mille setting.
     /// 
     /// # Arguments
     /// * `db` - Mutable reference to the AtomaSecretGuessingDb object
     /// * `wallet` - Mutable reference to the balance from which the fee will be deducted
     ///
     /// # Effects
-    /// * Splits the fee amount from the provided wallet balance
-    /// * Adds the fee to the treasury pool balance
+    /// * Calculates protocol fee portion based on protocol_fee_per_mille
+    /// * Splits the total fee into treasury and protocol portions
+    /// * Adds the treasury portion to the treasury pool balance
+    /// * Adds the protocol portion to the protocol fee pool balance
     ///
-    /// # Access Control
-    /// * This function can be called by anyone with access to an AtomaSecretGuessingDb object
-    /// and a Balance<SUI>
-    public fun deposit_fee_to_treasury_pool(
+    /// # Example
+    /// If next_fee is 1000 and protocol_fee_per_mille is 50 (5%):
+    /// * Protocol fee = 50 (5% of 1000)
+    /// * Treasury fee = 950 (remaining 95%)
+    ///
+    /// # Note
+    /// This is an internal utility function used by the guess mechanism to handle
+    /// fee distribution between the protocol and treasury pools.
+    fun deposit_fee_to_treasury_pool(
         db: &mut AtomaSecretGuessingDb, 
         wallet: &mut Balance<SUI>,
     ) {
-        let fee = wallet.split(db.next_fee);
-        db.treasury_pool.join(fee);
-    }
+        let next_fee = db.next_fee;
+        let protocol_fee = next_fee * db.protocol_fee_per_mille / 1000;
+        let treasury_fee = next_fee - protocol_fee;
+        let treasury_fee_balance = wallet.split(treasury_fee);
+        let protocol_fee_balance = wallet.split(protocol_fee);
 
-    /// Transfers all funds from the treasury pool to the developer address.
-    /// This function is called when the maximum number of guesses has been reached
-    /// without finding a winner.
-    /// 
-    /// # Arguments
-    /// * `db` - Mutable reference to the AtomaSecretGuessingDb object
-    /// * `ctx` - The transaction context used to create new coin objects
-    ///
-    /// # Effects
-    /// * Empties the treasury pool
-    /// * Creates a new Coin object with the entire treasury balance
-    /// * Transfers the coin to the developer's address stored in `db.dev_address`
-    public fun send_funds_to_dev(
-        db: &mut AtomaSecretGuessingDb,
-        ctx: &mut TxContext,
-    ) {
-        let total_balance = balance::value(&db.treasury_pool);
-        let dev_balance = balance::split(&mut db.treasury_pool, total_balance);
-        let dev_coin = coin::from_balance(dev_balance, ctx);
-        transfer::public_transfer(dev_coin, db.dev_address);
+        db.treasury_pool.join(treasury_fee_balance);
+        db.protocol_fee_pool.join(protocol_fee_balance);
     }
 
     // Test-only functions

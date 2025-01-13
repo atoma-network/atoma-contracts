@@ -82,7 +82,7 @@ module guess_ai::guess_ai_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = secret_guessing::contract::EInsufficientBalance)]
+    #[expected_failure(abort_code = guess_ai::contract::EInsufficientBalance)]
     fun test_guess_entry_insufficient_balance() {
         let mut scenario = setup_test();
         
