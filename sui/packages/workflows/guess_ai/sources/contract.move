@@ -1,4 +1,4 @@
-module secret_guessing::contract {
+module guess_ai::contract {
     //! # Secret Guessing Contract
     //!
     //! This contract manages the game state and interactions with the AI agent.

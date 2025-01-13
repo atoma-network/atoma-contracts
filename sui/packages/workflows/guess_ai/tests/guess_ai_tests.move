@@ -1,7 +1,7 @@
 #[test_only]
-module secret_guessing::secret_guessing_tests {
+module guess_ai::guess_ai_tests {
     use std::ascii::Self;
-    use secret_guessing::contract::{Self, AtomaSecretGuessingDb, GuessBadge};
+    use guess_ai::contract::{Self, AtomaSecretGuessingDb, GuessBadge};
     use sui::test_scenario::{Self as test, Scenario};
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
