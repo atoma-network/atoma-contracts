@@ -499,31 +499,6 @@ module guess_ai::contract {
         db.protocol_fee_per_mille = new_protocol_fee_per_mille;
     }
 
-    /// Transfers all funds from the protocol fee pool to the transaction sender.
-    /// 
-    /// # Arguments
-    /// * `db` - Mutable reference to the AtomaSecretGuessingDb object
-    /// * `_` - Reference to the manager badge for access control
-    /// * `ctx` - The transaction context used to create new coin objects
-    ///
-    /// # Effects
-    /// * Empties the protocol fee pool
-    /// * Creates a new Coin object with the entire protocol fee balance
-    /// * Transfers the coin to the transaction sender
-    ///
-    /// # Access Control
-    /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
-    public entry fun withdraw_protocol_fees(
-        db: &mut AtomaSecretGuessingDb,
-        _: &AtomaSecretGuessingManagerBadge,
-        ctx: &mut TxContext,
-    ) {
-        let total_balance = balance::value(&db.protocol_fee_pool);
-        let dev_balance = balance::split(&mut db.protocol_fee_pool, total_balance);
-        let dev_coin = coin::from_balance(dev_balance, ctx);
-        transfer::public_transfer(dev_coin, ctx.sender());
-    }
-
     // ||================================||
     // ||          Utility functions     ||
     // ||================================||
