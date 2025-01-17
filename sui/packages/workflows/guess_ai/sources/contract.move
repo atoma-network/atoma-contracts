@@ -454,7 +454,7 @@ module guess_ai::contract {
     ///
     /// # Access Control
     /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
-    public fun set_starting_fee(
+    public entry fun set_starting_fee(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
         new_starting_fee: u64,
@@ -471,7 +471,7 @@ module guess_ai::contract {
     ///
     /// # Access Control
     /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
-    public fun set_update_fee_every_n_guesses(
+    public entry fun set_update_fee_every_n_guesses(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
         new_update_fee_every_n_guesses: u64,
