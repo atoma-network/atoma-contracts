@@ -365,7 +365,7 @@ module guess_ai::contract {
     ///
     /// # Access Control
     /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
-    public fun set_fee_rate_increase_per_guess_per_mille(
+    entry fun set_fee_rate_increase_per_guess_per_mille(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
         new_fee_rate_increase_per_guess_per_mille: u64,
@@ -388,7 +388,7 @@ module guess_ai::contract {
     ///
     /// # Access Control
     /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
-    public entry fun set_game_inactive(
+    entry fun set_game_inactive(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
     ) {
@@ -407,7 +407,7 @@ module guess_ai::contract {
     ///
     /// # Access Control
     /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
-    public entry fun set_agent_address(
+    entry fun set_agent_address(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
         new_agent_address: address,
@@ -454,7 +454,7 @@ module guess_ai::contract {
     ///
     /// # Access Control
     /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
-    public entry fun set_starting_fee(
+    entry fun set_starting_fee(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
         new_starting_fee: u64,
@@ -471,7 +471,7 @@ module guess_ai::contract {
     ///
     /// # Access Control
     /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
-    public entry fun set_update_fee_every_n_guesses(
+    entry fun set_update_fee_every_n_guesses(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
         new_update_fee_every_n_guesses: u64,
@@ -491,7 +491,7 @@ module guess_ai::contract {
     ///
     /// # Access Control
     /// * Only callable by the holder of the [`AtomaSecretGuessingManagerBadge`]
-    public fun set_protocol_fee_per_mille(
+    entry fun set_protocol_fee_per_mille(
         db: &mut AtomaSecretGuessingDb,
         _: &AtomaSecretGuessingManagerBadge,
         new_protocol_fee_per_mille: u64,
