@@ -11,3 +11,5 @@ target
 .env.mainnet
 # ignore multisig configuration
 .multisig-pubkeys
+packages/atoma/Move.lock
+packages/atoma/atoma_build.json
