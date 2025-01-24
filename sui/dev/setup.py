@@ -60,7 +60,7 @@ COLLATERAL = 1
 NODE_ECHELON = 1
 
 # Models (model_name, model_type, echelon)
-models = [("TinyLlama/TinyLlama-1.1B-Chat-v1.0", TEXT2TEXT, 1)]
+models = [("unsloth/Llama-3.2-1B-Instruct", TEXT2TEXT, 1)]
 
 
 output_json = sui_client(f'call --package "{atoma_package}" --module "db" --function "register_node_entry" --args "{atoma_db}" --gas-budget 900000000')
@@ -69,16 +69,6 @@ small_id = output_json["events"][0]["parsedJson"]["node_small_id"]["inner"]
 
 # Add models
 for model, model_type, echelon in models:
-    # Add model entry
-    sui_client(
-        f'call --package "{atoma_package}" --module "db" --function "add_model_entry" --args "{atoma_db}" "{atoma_manager_badge}" "{model}" "{model_type}" --gas-budget 900000000'
-    )
-
-    # Add model to echelon
-    sui_client(
-        f'call --package "{atoma_package}" --module "db" --function "add_model_echelon_entry" --args "{atoma_db}" "{atoma_manager_badge}" "{model}" "{echelon}" "{INPUT_FEE_PER_TOKEN}" "{OUTPUT_FEE_PER_TOKEN}" "{RELATIVE_PERFORMANCE}"'
-    )
-
     task = sui_client(
         f'call --package "{atoma_package}" --module "db" --function "create_task_entry" --args "{atoma_db}" "{atoma_manager_badge}" 0 ["{model}"] ["0"] ["50"] true'
     )
