@@ -32,6 +32,8 @@ module guess_ai::contract {
     const EOnlyAgentCanWithdrawFunds: u64 = EBase + 3;
     /// Only the AI agent can resubmit the TDX attestation
     const EOnlyAgentCanResubmitRemoteAttestation: u64 = EBase + 4;
+    /// Incorrect guess game ID
+    const EIncorrectGuessGameId: u64 = EBase + 5;
 
     /// Event emitted when the contract is initialized
     public struct PublishEvent has copy, drop { 
@@ -55,6 +57,11 @@ module guess_ai::contract {
 
         /// The balance of the treasury pool
         treasury_pool_balance: u64,
+    }
+
+    public struct NewGuessGameEvent has copy, drop {
+        /// The new guess game ID
+        guess_game_id: u64,
     }
 
     /// Event emitted when the TDX quote needs to be rotated by the AI agent
@@ -106,6 +113,9 @@ module guess_ai::contract {
         /// The total number of guesses made
         guess_count: u64,
 
+        /// The guess game ID
+        guess_game_id: u64,
+
         /// Whether the secret guessing is still ongoing or not. It stops when
         /// the secret is successfully guessed.
         is_active: bool,
@@ -152,6 +162,7 @@ module guess_ai::contract {
             treasury_pool: balance::zero(),
             protocol_fee_pool: balance::zero(),
             guess_count: 0,
+            guess_game_id: 0,
             next_fee: StartingFee,
             is_active: true,
             fee_rate_increase_per_guess_per_mille: InitialFeeRateIncreasePerGuessPerMille,
@@ -201,9 +212,10 @@ module guess_ai::contract {
         db: &mut AtomaSecretGuessingDb,
         wallet: &mut Coin<SUI>,
         guess: String,
+        guess_game_id: u64,
         ctx: &mut TxContext,
     ) {
-        let badge = guess(db, wallet.balance_mut(), guess, ctx);
+        let badge = guess(db, wallet.balance_mut(), guess, guess_game_id, ctx);
         transfer::transfer(badge, ctx.sender());
     }
 
@@ -268,6 +280,7 @@ module guess_ai::contract {
         db: &mut AtomaSecretGuessingDb,
         wallet: &mut Balance<SUI>,
         guess: String,
+        guess_game_id: u64,
         ctx: &mut TxContext,
     ): GuessBadge {
         // 1. Check if the wallet has enough balance to pay for the guess
@@ -275,6 +288,8 @@ module guess_ai::contract {
             balance::value(wallet) >= db.next_fee,
             EInsufficientBalance
         );
+
+        assert!(db.guess_game_id == guess_game_id, EIncorrectGuessGameId);
 
         // 2. Update the guess count
         db.guess_count = db.guess_count + 1;
@@ -340,6 +355,15 @@ module guess_ai::contract {
         // Split the winner's portion and convert to Coin
         let total_balance = balance::split(&mut db.treasury_pool, total_balance);
         let total_balance_coin = coin::from_balance(total_balance, ctx);
+
+        // Increment the guess game ID
+        db.guess_game_id = db.guess_game_id + 1;
+        db.guess_count = 0;
+
+        sui::event::emit(NewGuessGameEvent { 
+            guess_game_id: db.guess_game_id,
+        });
+
         
         // Transfer to respective addresses
         transfer::public_transfer(total_balance_coin, winner_address);
