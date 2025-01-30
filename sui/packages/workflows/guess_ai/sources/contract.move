@@ -331,10 +331,7 @@ module guess_ai::contract {
         winner_address: address,
         ctx: &mut TxContext,
     ) {
-        assert!(
-            db.agent_address != ctx.sender(),
-            EOnlyAgentCanWithdrawFunds
-        );
+        assert!(ctx.sender() == db.agent_address, EOnlyAgentCanWithdrawFunds);
 
         let total_balance = balance::value(&db.treasury_pool);
         // Split the winner's portion and convert to Coin
