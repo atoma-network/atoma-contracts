@@ -73,11 +73,6 @@ module guess_ai::contract {
         treasury_pool_balance: u64,
     }
 
-    public struct NewGuessGameEvent has copy, drop {
-        /// The new guess game ID
-        guess_game_id: u64,
-    }
-
     /// Event emitted when the TDX quote needs to be rotated by the AI agent
     /// and a new secret guessing game is started
     public struct RotateTdxQuoteEvent has copy, drop {
