@@ -26,6 +26,18 @@ module atoma::db {
     /// One million compute units
     const ONE_MILLION_COMPUTE_UNITS: u64 = 1_000_000;
 
+    /// The Intel CPU device
+    const INTEL_CPU: u16 = 0;
+
+    /// The AMD CPU device
+    const AMD_CPU: u16 = 1;
+
+    /// The Nvidia GPU device
+    const NVIDIA_GPU: u16 = 2;
+
+    /// The Nvidia NVSwitch device
+    const NVIDIA_NVSWITCH: u16 = 3;
+
     /// Module level constants defining valid task roles
     #[allow(unused)]
     const TaskRoleChatCompletion: u16 = 0;
@@ -143,6 +155,9 @@ module atoma::db {
     const ENodeNotWhitelistedForTask: u64 = EBase + 45;
     const EStackAlreadyInDispute: u64 = EBase + 46;
     const ETaskSecurityLevelNotSamplingConsensus: u64 = EBase + 47;
+    const EInvalidDeviceType: u64 = EBase + 48;
+    const EInvalidKeyRotationCounter: u64 = EBase + 49;
+    const EPublicKeyCommitmentMismatch: u64 = EBase + 50;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -163,12 +178,22 @@ module atoma::db {
         nonce: u64,
     }
 
+    /// Emitted when a node's public key is committed.
     public struct NodePublicKeyCommittmentEvent has copy, drop {
+        /// The epoch in which the public key was committed
         epoch: u64,
+        /// The key rotation counter
         key_rotation_counter: u64,
+        /// The node's small id
         node_id: NodeSmallId,
+        /// The new public key commitment
         new_public_key: vector<u8>,
-        tee_remote_attestation_bytes: vector<u8>,
+        /// Device type (either Intel CPU -> 0, AMD CPU -> 1, Nvidia GPU -> 2, Nvidia NVSwitch -> 3)
+        device_type: u16,
+        /// Only required if device is of type Nvidia GPU.
+        task_small_id: Option<TaskSmallId>,
+        /// The TEE remote attestation bytes
+        remote_attestation_bytes: vector<u8>,
     }
 
     public struct NodeSubscribedToModelEvent has copy, drop {
@@ -642,9 +667,6 @@ module atoma::db {
 
         /// Public key commitment for the node
         confidential_compute_public_key_commitment: Option<vector<u8>>,
-
-        /// Tee remote attestation bytes for the node
-        confidential_compute_tee_remote_attestation_bytes: Option<vector<u8>>,
     }
 
     /// Object field of AtomaDb.
@@ -1075,7 +1097,6 @@ module atoma::db {
             available_fee_amount: 0,
             reputation_score: ReputationScore { inner: REPUTATION_SCORE_START },
             confidential_compute_public_key_commitment: option::none(),
-            confidential_compute_tee_remote_attestation_bytes: option::none(),
             confidential_compute_last_updated_epoch: option::none(),
             confidential_compute_last_rotation_counter: option::none(),
         };
@@ -1093,70 +1114,75 @@ module atoma::db {
         }
     }
 
-    /// Rotates a node's confidential compute public key commitment and TEE remote attestation bytes.
+    /// Rotates a node's confidential compute public key commitment.
     ///
-    /// This function allows a node operator to update their node's cryptographic credentials used for
-    /// confidential computing. The rotation can only occur once per epoch to prevent potential
-    /// security issues from rapid key changes.
+    /// This function allows a node to update its confidential compute public key commitment
+    /// as part of the key rotation process. Multiple attestations (e.g., for different device types)
+    /// can be submitted for the same rotation period, but they must use the same public key commitment.
     ///
     /// # Arguments
-    /// * `self` - A mutable reference to the AtomaDb object
-    /// * `node_badge` - A mutable reference to the NodeBadge of the node updating its keys
-    /// * `confidential_compute_public_key_commitment` - The new public key commitment for confidential compute
-    /// * `confidential_compute_tee_remote_attestation_bytes` - The new TEE remote attestation bytes
-    /// * `ctx` - A mutable reference to the transaction context
+    /// * `self` - A mutable reference to the AtomaDb object.
+    /// * `node_badge` - A mutable reference to the NodeBadge of the node.
+    /// * `confidential_compute_public_key_commitment` - The new public key commitment.
+    /// * `confidential_compute_remote_attestation_bytes` - The remote attestation bytes.
+    /// * `key_rotation_counter` - The current key rotation counter.
+    /// * `device_type` - The type of device providing the attestation.
+    /// * `task_small_id` - Optional task ID associated with this attestation.
+    /// * `ctx` - The transaction context.
     ///
     /// # Errors
-    /// * `ENotEnoughEpochsPassed` - If attempting to rotate keys in the same epoch as the previous rotation
-    ///
-    /// # Effects
-    /// - Updates the node's confidential compute public key commitment
-    /// - Updates the node's TEE remote attestation bytes
-    /// - Updates the last updated epoch timestamp
-    /// - Emits a `NodePublicKeyCommittmentEvent`
+    /// * `EInvalidDeviceType` - If the specified device type is not valid.
+    /// * `EInvalidKeyRotationCounter` - If the key rotation counter doesn't match the current global counter.
+    /// * `ENotEnoughEpochsPassed` - If attempting to use a rotation counter lower than the node's last rotation.
+    /// * `EPublicKeyCommitmentMismatch` - If submitting a different public key commitment for the same rotation period.
     ///
     /// # Events
-    /// Emits a `NodePublicKeyCommittmentEvent` containing:
-    /// * `node_id` - The SmallId of the node
-    /// * `epoch` - The epoch when the key rotation occurred
-    /// * `new_public_key` - The new public key commitment
-    /// * `tee_remote_attestation_bytes` - The new TEE remote attestation bytes
-    ///
-    /// # Security Considerations
-    /// - Both the public key commitment and TEE attestation must be provided together
-    /// - The function preserves the node's ability to participate in confidential compute tasks
-    ///
-    /// # Example
-    /// ```move
-    /// // Rotate a node's confidential compute keys
-    /// atoma_db.rotate_node_public_key(
-    ///     &mut node_badge,
-    ///     new_public_key_commitment,
-    ///     new_tee_attestation_bytes,
-    ///     ctx
-    /// );
-    /// ```
+    /// Emits a `NodePublicKeyCommittmentEvent` with details about the rotation.
     public entry fun rotate_node_public_key(
         self: &mut AtomaDb,
         node_badge: &mut NodeBadge,
         confidential_compute_public_key_commitment: vector<u8>,
-        confidential_compute_tee_remote_attestation_bytes: vector<u8>,
+        confidential_compute_remote_attestation_bytes: vector<u8>,
+        key_rotation_counter: u64,
+        device_type: u16,
+        task_small_id: Option<u64>,
         ctx: &mut TxContext,
     ) {
+        // Validate inputs
+        assert!(is_device_type_valid(device_type), EInvalidDeviceType);
+        assert!(key_rotation_counter == self.key_rotation_counter, EInvalidKeyRotationCounter);
+
         let node_small_id = node_badge.small_id;
         let node = self.nodes.borrow_mut(node_small_id);
 
-        node.confidential_compute_public_key_commitment = option::some(confidential_compute_public_key_commitment);
-        node.confidential_compute_tee_remote_attestation_bytes = option::some(confidential_compute_tee_remote_attestation_bytes);
-        node.confidential_compute_last_updated_epoch = option::some(ctx.epoch());
-        node.confidential_compute_last_rotation_counter = option::some(self.key_rotation_counter);
-
+        // Handle attestation based on node's current state
+        if (node.confidential_compute_last_updated_epoch.is_some()) {
+            // Node has already set up attestation, so we need to check if the key rotation counter is valid
+            handle_existing_node_attestation(
+                node,
+                confidential_compute_public_key_commitment,
+                key_rotation_counter,
+                ctx,
+            );
+        } else {
+            // First time setting up attestation, so we update these fields
+            initialize_node_attestation(
+                node,
+                confidential_compute_public_key_commitment,
+                key_rotation_counter,
+                ctx,
+            );
+        };
+        
+        let task_small_id = format_task_small_id(task_small_id);
         sui::event::emit(NodePublicKeyCommittmentEvent {
             node_id: node_small_id,
             epoch: ctx.epoch(),
             key_rotation_counter: self.key_rotation_counter,
             new_public_key: confidential_compute_public_key_commitment,
-            tee_remote_attestation_bytes: confidential_compute_tee_remote_attestation_bytes,
+            remote_attestation_bytes: confidential_compute_remote_attestation_bytes,
+            device_type,
+            task_small_id,
         });
     }
 
@@ -2085,7 +2111,6 @@ module atoma::db {
             available_fee_amount: _,
             reputation_score: _,
             confidential_compute_public_key_commitment: _,
-            confidential_compute_tee_remote_attestation_bytes: _,
             confidential_compute_last_updated_epoch: _,
             confidential_compute_last_rotation_counter: _,
         } = self.nodes.remove(node_badge.small_id);
@@ -3282,6 +3307,53 @@ module atoma::db {
     //                          Helpers
     // =========================================================================
 
+    /// Helper function to handle attestation for nodes that have been previously attested
+    fun handle_existing_node_attestation(
+        node: &mut NodeEntry,
+        public_key_commitment: vector<u8>,
+        key_rotation_counter: u64,
+        ctx: &TxContext
+    ) {
+        let last_rotation_counter = *option::borrow(&node.confidential_compute_last_rotation_counter);
+        assert!(key_rotation_counter >= last_rotation_counter, ENotEnoughEpochsPassed);
+
+        if (key_rotation_counter == last_rotation_counter) {
+            // Same rotation period - verify key commitment matches
+            assert!(
+                option::is_some(&node.confidential_compute_public_key_commitment) && 
+                public_key_commitment == *option::borrow(&node.confidential_compute_public_key_commitment),
+                EPublicKeyCommitmentMismatch
+            );
+        } else {
+            // New rotation period - update all fields
+            node.confidential_compute_public_key_commitment = option::some(public_key_commitment);
+            node.confidential_compute_last_updated_epoch = option::some(ctx.epoch());
+            node.confidential_compute_last_rotation_counter = option::some(key_rotation_counter);
+        };
+    }
+
+    /// Helper function to initialize node attestation fields
+    fun initialize_node_attestation(
+        node: &mut NodeEntry,
+        public_key_commitment: vector<u8>,
+        key_rotation_counter: u64,
+        ctx: &TxContext,
+    ) {
+        node.confidential_compute_public_key_commitment = option::some(public_key_commitment);
+        node.confidential_compute_last_updated_epoch = option::some(ctx.epoch());
+        node.confidential_compute_last_rotation_counter = option::some(key_rotation_counter);
+    }
+
+    /// Helper function to format task_small_id for event emission
+    fun format_task_small_id(task_small_id: Option<u64>): Option<TaskSmallId> {
+        if (option::is_some(&task_small_id)) {
+            let id = *option::borrow(&task_small_id);
+            option::some(TaskSmallId { inner: id })
+        } else {
+            option::none()
+        }
+    }
+
     // Helper function to check if a node meets the task's requirements
     fun node_meets_task_requirements(self: &AtomaDb, node_badge: &NodeBadge, task: &Task): bool {
         let node = self.nodes.borrow(node_badge.small_id);
@@ -3574,6 +3646,19 @@ module atoma::db {
             let wallet = coin::from_balance(self.fee_treasury.split(amount), ctx);
             transfer::public_transfer(wallet, recipient);
         }
+    }
+
+    /// Returns true if the device type is valid (Intel, AMD, Nvidia GPU, Nvidia NVSwitch)
+    public fun is_device_type_valid(device_type: u16): bool {
+        device_type == INTEL_CPU || 
+        device_type == AMD_CPU || 
+        device_type == NVIDIA_GPU || 
+        device_type == NVIDIA_NVSWITCH
+    }
+
+    /// Returns true if the device type is a NVIDIA device
+    public fun is_nvidia(device_type: u16): bool {
+        device_type == NVIDIA_GPU || device_type == NVIDIA_NVSWITCH
     }
 
     #[test_only]
