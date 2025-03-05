@@ -26,17 +26,20 @@ module atoma::db {
     /// One million compute units
     const ONE_MILLION_COMPUTE_UNITS: u64 = 1_000_000;
 
-    /// The Intel CPU device
+    /// The Intel CPU device type (values are reserved from 0 to 99)
     const INTEL_CPU: u16 = 0;
 
-    /// The AMD CPU device
-    const AMD_CPU: u16 = 1;
+    /// The AMD CPU device type (values are reserved from 100 to 199)
+    const AMD_CPU: u16 = 100;
 
-    /// The Nvidia GPU device
-    const NVIDIA_GPU: u16 = 2;
+    /// The ARM CPU device type (values are reserved from 200 to 299)
+    const ARM_CPU: u16 = 200;
 
-    /// The Nvidia NVSwitch device
-    const NVIDIA_NVSWITCH: u16 = 3;
+    /// The Nvidia GPU device type (values are reserved from 300 to 9999)
+    const NVIDIA_GPU: u16 = 300;
+
+    /// The Nvidia NVSwitch device type (values are reserved from 10000 to 15999)
+    const NVIDIA_NVSWITCH: u16 = 10000;
 
     /// Module level constants defining valid task roles
     #[allow(unused)]
@@ -190,7 +193,7 @@ module atoma::db {
         new_public_key: vector<u8>,
         /// Device type (either Intel CPU -> 0, AMD CPU -> 1, Nvidia GPU -> 2, Nvidia NVSwitch -> 3)
         device_type: u16,
-        /// Only required if device is of type Nvidia GPU.
+        /// Only required if device is either Nvidia GPU or Nvidia NVSwitch.
         task_small_id: Option<TaskSmallId>,
         /// The TEE remote attestation bytes
         remote_attestation_bytes: vector<u8>,
@@ -3650,15 +3653,12 @@ module atoma::db {
 
     /// Returns true if the device type is valid (Intel, AMD, Nvidia GPU, Nvidia NVSwitch)
     public fun is_device_type_valid(device_type: u16): bool {
-        device_type == INTEL_CPU || 
-        device_type == AMD_CPU || 
-        device_type == NVIDIA_GPU || 
-        device_type == NVIDIA_NVSWITCH
+        device_type <= NVIDIA_NVSWITCH + 5999
     }
 
     /// Returns true if the device type is a NVIDIA device
     public fun is_nvidia(device_type: u16): bool {
-        device_type == NVIDIA_GPU || device_type == NVIDIA_NVSWITCH
+        device_type >= NVIDIA_GPU && device_type <= NVIDIA_NVSWITCH + 5999
     }
 
     #[test_only]
