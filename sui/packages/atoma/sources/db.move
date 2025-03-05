@@ -160,6 +160,7 @@ module atoma::db {
     public struct NewKeyRotationEvent has copy, drop {
         key_rotation_counter: u64,
         epoch: u64,
+        nonce: u64,
     }
 
     public struct NodePublicKeyCommittmentEvent has copy, drop {
@@ -2917,15 +2918,19 @@ module atoma::db {
     /// - The actual key rotation is performed off-chain by the nodes.
     /// - Nodes should maintain both old and new keys during the transition period.
     /// - The rotation event marks the beginning of the transition period.
-    public entry fun new_network_key_rotation(
+    entry fun new_network_key_rotation(
         self: &mut AtomaDb,
         _: &AtomaManagerBadge,
+        random: &sui::random::Random,
         ctx: &mut TxContext,
     ) {
+        let mut rng = random.new_generator(ctx);
+        let nonce = rng.generate_u64();
         self.key_rotation_counter = self.key_rotation_counter + 1;
         sui::event::emit(NewKeyRotationEvent {
             epoch: ctx.epoch(),
             key_rotation_counter: self.key_rotation_counter,
+            nonce,
         });
     }
 
