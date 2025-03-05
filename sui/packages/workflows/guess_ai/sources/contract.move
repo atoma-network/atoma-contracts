@@ -55,13 +55,22 @@ module guess_ai::contract {
         /// The total number of guesses made
         guess_count: u64,
 
+        /// Guess game id
+        guess_game_id: u64,
+
         /// The balance of the treasury pool
         treasury_pool_balance: u64,
     }
 
     public struct NewGuessGameEvent has copy, drop {
+        /// The fee for the guess
+        fee: u64,
+
         /// The new guess game ID
         guess_game_id: u64,
+
+        /// The balance of the treasury pool
+        treasury_pool_balance: u64,
     }
 
     /// Event emitted when the TDX quote needs to be rotated by the AI agent
@@ -307,6 +316,7 @@ module guess_ai::contract {
             fee: db.next_fee,
             guess: guess,
             guess_count: db.guess_count,
+            guess_game_id: db.guess_game_id,
             treasury_pool_balance: balance::value(&db.treasury_pool),
         });
 
@@ -358,7 +368,9 @@ module guess_ai::contract {
         db.guess_count = 0;
 
         sui::event::emit(NewGuessGameEvent { 
+            fee: StartingFee,
             guess_game_id: db.guess_game_id,
+            treasury_pool_balance: 0,
         });
 
         
