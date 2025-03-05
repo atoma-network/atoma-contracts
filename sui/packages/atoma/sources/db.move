@@ -14,9 +14,6 @@ module atoma::db {
     use sui::vec_set::{Self, VecSet};
     use usdc::usdc::USDC;
 
-    /// Random nonce size for the network key rotation
-    const NONCE_SIZE: u16 = 32;
-
     /// How many epochs after the stack expires during which any disputes must be resolved.
     const STACK_DISPUTE_SETTLEMENT_DELAY: u64 = 1;
 
@@ -163,7 +160,7 @@ module atoma::db {
     public struct NewKeyRotationEvent has copy, drop {
         key_rotation_counter: u64,
         epoch: u64,
-        nonce: vector<u8>,
+        nonce: u64,
     }
 
     public struct NodePublicKeyCommittmentEvent has copy, drop {
@@ -2928,7 +2925,7 @@ module atoma::db {
         ctx: &mut TxContext,
     ) {
         let mut rng = random.new_generator(ctx);
-        let nonce = rng.generate_bytes(NONCE_SIZE);
+        let nonce = rng.generate_u64();
         self.key_rotation_counter = self.key_rotation_counter + 1;
         sui::event::emit(NewKeyRotationEvent {
             epoch: ctx.epoch(),
