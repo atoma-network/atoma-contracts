@@ -27,12 +27,15 @@ module atoma::db {
     const ONE_MILLION_COMPUTE_UNITS: u64 = 1_000_000;
 
     /// The Intel CPU device type (values are reserved from 0 to 99)
+    #[allow(unused)]
     const INTEL_CPU: u16 = 0;
 
     /// The AMD CPU device type (values are reserved from 100 to 199)
+    #[allow(unused)]
     const AMD_CPU: u16 = 100;
 
     /// The ARM CPU device type (values are reserved from 200 to 299)
+    #[allow(unused)]
     const ARM_CPU: u16 = 200;
 
     /// The Nvidia GPU device type (values are reserved from 300 to 9999)
@@ -606,6 +609,8 @@ module atoma::db {
 
         /// Key rotation counter for the node
         key_rotation_counter: u64,
+        /// Nonce for the remote attestation generation
+        nonce: u64,
 
         // Configuration
 
@@ -772,6 +777,7 @@ module atoma::db {
             cross_validation_extra_nodes_charge_permille:
                 InitialCrossValidationExtraAttestationNodesChargePermille,
             key_rotation_counter: 0,
+            nonce: ctx.epoch(), // TODO: change to a random number, but for now we use the epoch as a good proxy
         };
 
         // Create a manager badge for the package owner for convenience.
@@ -3349,12 +3355,7 @@ module atoma::db {
 
     /// Helper function to format task_small_id for event emission
     fun format_task_small_id(task_small_id: Option<u64>): Option<TaskSmallId> {
-        if (option::is_some(&task_small_id)) {
-            let id = *option::borrow(&task_small_id);
-            option::some(TaskSmallId { inner: id })
-        } else {
-            option::none()
-        }
+        option::map!(task_small_id, |id| TaskSmallId { inner: id })
     }
 
     // Helper function to check if a node meets the task's requirements
