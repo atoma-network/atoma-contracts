@@ -17,7 +17,7 @@ pub(crate) async fn command(
 
     let model_name = model_name.map(|v| vec![v]).unwrap_or_default();
     let security_level = security_level
-        .map(|v| vec![v.to_string()])
+        .map(|v| vec![v])
         .unwrap_or_default();
     let minimum_reputation_score = minimum_reputation_score
         .map(|v| vec![v])
@@ -36,7 +36,7 @@ pub(crate) async fn command(
             vec![
                 SuiJsonValue::from_object_id(atoma_db),
                 SuiJsonValue::from_object_id(manager_badge),
-                SuiJsonValue::new(role.to_string().into())?,
+                SuiJsonValue::new(role.into())?,
                 SuiJsonValue::new(model_name.into())?,
                 SuiJsonValue::new(security_level.into())?,
                 SuiJsonValue::new(minimum_reputation_score.into())?,
