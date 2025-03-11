@@ -196,8 +196,6 @@ module atoma::db {
         new_public_key: vector<u8>,
         /// Device type (either Intel CPU -> 0, AMD CPU -> 1, Nvidia GPU -> 2, Nvidia NVSwitch -> 3)
         device_type: u16,
-        /// Only required if device is either Nvidia GPU or Nvidia NVSwitch.
-        task_small_id: Option<TaskSmallId>,
         /// The TEE remote attestation bytes
         remote_attestation_bytes: vector<u8>,
     }
@@ -1154,7 +1152,6 @@ module atoma::db {
         confidential_compute_remote_attestation_bytes: vector<u8>,
         key_rotation_counter: u64,
         device_type: u16,
-        task_small_id: Option<u64>,
         ctx: &mut TxContext,
     ) {
         // Validate inputs
@@ -1183,7 +1180,6 @@ module atoma::db {
             );
         };
         
-        let task_small_id = format_task_small_id(task_small_id);
         sui::event::emit(NodePublicKeyCommittmentEvent {
             node_id: node_small_id,
             epoch: ctx.epoch(),
@@ -1191,7 +1187,6 @@ module atoma::db {
             new_public_key: confidential_compute_public_key_commitment,
             remote_attestation_bytes: confidential_compute_remote_attestation_bytes,
             device_type,
-            task_small_id,
         });
     }
 
@@ -3353,11 +3348,6 @@ module atoma::db {
         node.confidential_compute_last_rotation_counter = option::some(key_rotation_counter);
     }
 
-    /// Helper function to format task_small_id for event emission
-    fun format_task_small_id(task_small_id: Option<u64>): Option<TaskSmallId> {
-        option::map!(task_small_id, |id| TaskSmallId { inner: id })
-    }
-
     // Helper function to check if a node meets the task's requirements
     fun node_meets_task_requirements(self: &AtomaDb, node_badge: &NodeBadge, task: &Task): bool {
         let node = self.nodes.borrow(node_badge.small_id);
@@ -3755,7 +3745,6 @@ module atoma::db {
             available_fee_amount: 0,
             reputation_score: ReputationScore { inner: REPUTATION_SCORE_START },
             confidential_compute_public_key_commitment: option::none(),
-            confidential_compute_tee_remote_attestation_bytes: option::none(),
             confidential_compute_last_updated_epoch: option::none(),
             confidential_compute_last_rotation_counter: option::none(),
         };
@@ -3868,7 +3857,6 @@ module atoma::db {
                 available_fee_amount: 0,
                 reputation_score: ReputationScore { inner: 100 },
                 confidential_compute_public_key_commitment: option::none(),
-                confidential_compute_tee_remote_attestation_bytes: option::none(),
                 confidential_compute_last_updated_epoch: option::none(),
                 confidential_compute_last_rotation_counter: option::none(),
             });

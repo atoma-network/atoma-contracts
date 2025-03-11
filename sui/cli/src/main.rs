@@ -352,9 +352,6 @@ enum DbCmds {
         /// The device type.
         #[arg(short, long)]
         device_type: u16,
-        /// The small ID of the task.
-        #[arg(short, long)]
-        task_small_id: Option<u64>,
     },
     /// Whitelist nodes for a task.
     WhitelistNodesForTask {
@@ -661,7 +658,6 @@ async fn main() -> Result<()> {
             tee_attestation_bytes,
             key_rotation_counter,
             device_type,
-            task_small_id,
         })) => {
             let digest = db::rotate_node_public_key(
                 &mut context.with_optional_atoma_package_id(package),
@@ -669,7 +665,6 @@ async fn main() -> Result<()> {
                 tee_attestation_bytes,
                 key_rotation_counter,
                 device_type,
-                task_small_id,
             )
             .await?;
 
