@@ -882,9 +882,10 @@ module atoma::settlement {
     /// When creating a ticket, we store Sui epoch id and MS since epoch started.
     /// When checking for timeout, we check it against the current epoch and
     /// current MS since it started.
+    ///
     /// 1. If the timeout threshold has been reached, the ticket is timed out.
     /// 2. If the epoch is the same (hot path because epoch takes 24 hours),
-    ////   check the diff between current ms and the stored one.
+    ///    check the diff between current ms and the stored one.
     /// 3. If the current epoch is +1 of the stored ones, the epoch just got
     ///    bumped.
     ///    We don't know exactly how long since the epoch changed unfortunately,
