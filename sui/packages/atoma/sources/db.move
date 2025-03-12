@@ -199,7 +199,7 @@ module atoma::db {
         /// The TEE remote attestation bytes
         remote_attestation_bytes: vector<u8>,
         /// The certificate chain for the current GPU device (empty if device is not a GPU or a NVSwitch)
-        certificate_chain: vector<u8>,
+        certificate_chain_bytes: vector<u8>,
     }
 
     public struct NodeSubscribedToModelEvent has copy, drop {
@@ -1189,7 +1189,7 @@ module atoma::db {
             key_rotation_counter: self.key_rotation_counter,
             new_public_key: confidential_compute_public_key_commitment,
             remote_attestation_bytes: confidential_compute_remote_attestation_bytes,
-            certificate_chain: confidential_compute_certificate_chain,
+            certificate_chain_bytes: confidential_compute_certificate_chain,
             device_type,
         });
     }
