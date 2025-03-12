@@ -346,6 +346,9 @@ enum DbCmds {
         /// The new tee attestation bytes.
         #[arg(short, long)]
         tee_attestation_bytes: Vec<u8>,
+        /// The new certificate chain.
+        #[arg(short, long)]
+        certificate_chain: Vec<u8>,
         /// The key rotation counter.
         #[arg(short, long)]
         key_rotation_counter: u64,
@@ -656,6 +659,7 @@ async fn main() -> Result<()> {
             package,
             public_key_commitment,
             tee_attestation_bytes,
+            certificate_chain,
             key_rotation_counter,
             device_type,
         })) => {
@@ -663,6 +667,7 @@ async fn main() -> Result<()> {
                 &mut context.with_optional_atoma_package_id(package),
                 public_key_commitment,
                 tee_attestation_bytes,
+                certificate_chain,
                 key_rotation_counter,
                 device_type,
             )

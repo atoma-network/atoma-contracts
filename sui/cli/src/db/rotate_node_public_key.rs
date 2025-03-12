@@ -6,6 +6,7 @@ pub(crate) async fn command(
     context: &mut Context,
     new_public_key_commitment: Vec<u8>,
     remote_attestation_bytes: Vec<u8>,
+    certificate_chain: Vec<u8>,
     key_rotation_counter: u64,
     device_type: u16,
 ) -> Result<TransactionDigest> {
@@ -29,6 +30,7 @@ pub(crate) async fn command(
                 SuiJsonValue::from_object_id(node_badge),
                 SuiJsonValue::new(new_public_key_commitment.into())?,
                 SuiJsonValue::new(remote_attestation_bytes.into())?,
+                SuiJsonValue::new(certificate_chain.into())?,
                 SuiJsonValue::new(key_rotation_counter.to_string().into())?,
                 SuiJsonValue::new(device_type.into())?,
             ],

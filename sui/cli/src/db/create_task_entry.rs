@@ -16,9 +16,7 @@ pub(crate) async fn command(
     let manager_badge = context.get_or_load_db_manager_badge().await?;
 
     let model_name = model_name.map(|v| vec![v]).unwrap_or_default();
-    let security_level = security_level
-        .map(|v| vec![v])
-        .unwrap_or_default();
+    let security_level = security_level.map(|v| vec![v]).unwrap_or_default();
     let minimum_reputation_score = minimum_reputation_score
         .map(|v| vec![v])
         .unwrap_or_default();
