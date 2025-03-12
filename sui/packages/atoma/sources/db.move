@@ -26,22 +26,17 @@ module atoma::db {
     /// One million compute units
     const ONE_MILLION_COMPUTE_UNITS: u64 = 1_000_000;
 
-    /// The Intel CPU device type (values are reserved from 0 to 99)
     #[allow(unused)]
     const INTEL_CPU: u16 = 0;
 
-    /// The AMD CPU device type (values are reserved from 100 to 199)
     #[allow(unused)]
     const AMD_CPU: u16 = 100;
 
-    /// The ARM CPU device type (values are reserved from 200 to 299)
     #[allow(unused)]
     const ARM_CPU: u16 = 200;
 
-    /// The Nvidia GPU device type (values are reserved from 300 to 9999)
     const NVIDIA_GPU: u16 = 300;
 
-    /// The Nvidia NVSwitch device type (values are reserved from 10000 to 15999)
     const NVIDIA_NVSWITCH: u16 = 10000;
 
     /// Module level constants defining valid task roles
@@ -196,10 +191,8 @@ module atoma::db {
         new_public_key: vector<u8>,
         /// Device type (either Intel CPU -> 0, AMD CPU -> 1, Nvidia GPU -> 2, Nvidia NVSwitch -> 3)
         device_type: u16,
-        /// The TEE remote attestation bytes
-        remote_attestation_bytes: vector<u8>,
-        /// The certificate chain for the current GPU device (empty if device is not a GPU or a NVSwitch)
-        certificate_chain_bytes: vector<u8>,
+        /// The TEE evidence data (including the remote attestation bytes and the certificate chain bytes, in the case of Nvidia devices)
+        evidence_bytes: vector<u8>,
     }
 
     public struct NodeSubscribedToModelEvent has copy, drop {
@@ -1151,8 +1144,7 @@ module atoma::db {
         self: &mut AtomaDb,
         node_badge: &mut NodeBadge,
         confidential_compute_public_key_commitment: vector<u8>,
-        confidential_compute_remote_attestation_bytes: vector<u8>,
-        confidential_compute_certificate_chain: vector<u8>,
+        confidential_compute_evidence_bytes: vector<u8>,
         key_rotation_counter: u64,
         device_type: u16,
         ctx: &mut TxContext,
@@ -1188,8 +1180,7 @@ module atoma::db {
             epoch: ctx.epoch(),
             key_rotation_counter: self.key_rotation_counter,
             new_public_key: confidential_compute_public_key_commitment,
-            remote_attestation_bytes: confidential_compute_remote_attestation_bytes,
-            certificate_chain_bytes: confidential_compute_certificate_chain,
+            evidence_bytes: confidential_compute_evidence_bytes,
             device_type,
         });
     }

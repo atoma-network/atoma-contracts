@@ -343,12 +343,9 @@ enum DbCmds {
         /// The new public key commitment.
         #[arg(short, long)]
         public_key_commitment: Vec<u8>,
-        /// The new tee attestation bytes.
+        /// The new TEE evidence bytes (including the remote attestation bytes and the certificate chain bytes, in the case of Nvidia devices).
         #[arg(short, long)]
-        tee_attestation_bytes: Vec<u8>,
-        /// The new certificate chain.
-        #[arg(short, long)]
-        certificate_chain: Vec<u8>,
+        evidence_bytes: Vec<u8>,
         /// The key rotation counter.
         #[arg(short, long)]
         key_rotation_counter: u64,
@@ -658,16 +655,14 @@ async fn main() -> Result<()> {
         Some(Cmds::Db(DbCmds::RotateNodePublicKey {
             package,
             public_key_commitment,
-            tee_attestation_bytes,
-            certificate_chain,
+            evidence_bytes,
             key_rotation_counter,
             device_type,
         })) => {
             let digest = db::rotate_node_public_key(
                 &mut context.with_optional_atoma_package_id(package),
                 public_key_commitment,
-                tee_attestation_bytes,
-                certificate_chain,
+                evidence_bytes,
                 key_rotation_counter,
                 device_type,
             )
