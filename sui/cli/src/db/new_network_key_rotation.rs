@@ -1,3 +1,5 @@
+use sui_sdk::types::SUI_RANDOMNESS_STATE_OBJECT_ID;
+
 use crate::{prelude::*, DB_MODULE_NAME};
 
 const ENDPOINT_NAME: &str = "new_network_key_rotation";
@@ -23,6 +25,7 @@ pub(crate) async fn command(
             vec![
                 SuiJsonValue::from_object_id(atoma_db),
                 SuiJsonValue::from_object_id(manager_badge),
+                SuiJsonValue::from_object_id(SUI_RANDOMNESS_STATE_OBJECT_ID),
             ],
             None,
             context.gas_budget(),
