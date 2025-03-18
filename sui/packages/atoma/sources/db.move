@@ -3321,7 +3321,7 @@ module atoma::db {
         ctx: &TxContext
     ) {
         let last_rotation_counter = *option::borrow(&node.confidential_compute_last_rotation_counter);
-        assert!(key_rotation_counter < last_rotation_counter, EInvalidKeyRotationCounter);
+        assert!(key_rotation_counter >= last_rotation_counter, EInvalidKeyRotationCounter);
 
         if (key_rotation_counter == last_rotation_counter) {
             // Same rotation period - verify key commitment matches
