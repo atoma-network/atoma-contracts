@@ -1155,7 +1155,7 @@ module atoma::db {
     ) {
         // Validate inputs
         assert!(is_device_type_valid(device_type), EInvalidDeviceType);
-        assert!(key_rotation_counter < self.key_rotation_counter, EInvalidKeyRotationCounter);
+        assert!(key_rotation_counter == self.key_rotation_counter, EInvalidKeyRotationCounter);
 
         let node_small_id = node_badge.small_id;
         let node = self.nodes.borrow_mut(node_small_id);
