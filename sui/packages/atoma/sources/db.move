@@ -668,6 +668,9 @@ module atoma::db {
 
         /// Public key commitment for the node
         confidential_compute_public_key_commitment: Option<vector<u8>>,
+
+        /// Device types supported by the node
+        confidential_compute_device_types: vector<u16>,
     }
 
     /// Object field of AtomaDb.
@@ -1101,6 +1104,7 @@ module atoma::db {
             confidential_compute_public_key_commitment: option::none(),
             confidential_compute_last_updated_epoch: option::none(),
             confidential_compute_last_rotation_counter: option::none(),
+            confidential_compute_device_types: vector::empty(),
         };
         self.nodes.add(small_id, node_entry);
 
@@ -1151,7 +1155,7 @@ module atoma::db {
     ) {
         // Validate inputs
         assert!(is_device_type_valid(device_type), EInvalidDeviceType);
-        assert!(key_rotation_counter == self.key_rotation_counter, EInvalidKeyRotationCounter);
+        assert!(key_rotation_counter < self.key_rotation_counter, EInvalidKeyRotationCounter);
 
         let node_small_id = node_badge.small_id;
         let node = self.nodes.borrow_mut(node_small_id);
@@ -1163,6 +1167,7 @@ module atoma::db {
                 node,
                 confidential_compute_public_key_commitment,
                 key_rotation_counter,
+                device_type,
                 ctx,
             );
         } else {
@@ -2112,6 +2117,7 @@ module atoma::db {
             confidential_compute_public_key_commitment: _,
             confidential_compute_last_updated_epoch: _,
             confidential_compute_last_rotation_counter: _,
+            confidential_compute_device_types: _,
         } = self.nodes.remove(node_badge.small_id);
 
         let was_disabled_in_epoch = was_disabled_in_epoch.extract();
@@ -3311,16 +3317,19 @@ module atoma::db {
         node: &mut NodeEntry,
         public_key_commitment: vector<u8>,
         key_rotation_counter: u64,
+        device_type: u16,
         ctx: &TxContext
     ) {
         let last_rotation_counter = *option::borrow(&node.confidential_compute_last_rotation_counter);
-        assert!(key_rotation_counter >= last_rotation_counter, ENotEnoughEpochsPassed);
+        assert!(key_rotation_counter < last_rotation_counter, EInvalidKeyRotationCounter);
 
         if (key_rotation_counter == last_rotation_counter) {
             // Same rotation period - verify key commitment matches
             assert!(
-                option::is_some(&node.confidential_compute_public_key_commitment) && 
-                public_key_commitment == *option::borrow(&node.confidential_compute_public_key_commitment),
+                option::is_some(&node.confidential_compute_public_key_commitment) &&
+                !vector::contains(&node.confidential_compute_device_types, &device_type) &&
+                public_key_commitment == *option::borrow(&node.confidential_compute_public_key_commitment)
+                ,
                 EPublicKeyCommitmentMismatch
             );
         } else {
@@ -3742,6 +3751,7 @@ module atoma::db {
             confidential_compute_public_key_commitment: option::none(),
             confidential_compute_last_updated_epoch: option::none(),
             confidential_compute_last_rotation_counter: option::none(),
+            confidential_compute_device_types: vector::empty(),
         };
 
         // Add node to DB
@@ -3854,6 +3864,7 @@ module atoma::db {
                 confidential_compute_public_key_commitment: option::none(),
                 confidential_compute_last_updated_epoch: option::none(),
                 confidential_compute_last_rotation_counter: option::none(),
+                confidential_compute_device_types: vector::empty(),
             });
             echelon_nodes.push_back(node_id);
         };
