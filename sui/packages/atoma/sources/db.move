@@ -3323,20 +3323,24 @@ module atoma::db {
         let last_rotation_counter = *option::borrow(&node.confidential_compute_last_rotation_counter);
         assert!(key_rotation_counter >= last_rotation_counter, EInvalidKeyRotationCounter);
 
-        if (key_rotation_counter == last_rotation_counter) {
+        if ((key_rotation_counter == last_rotation_counter) && 
+            !vector::contains(&node.confidential_compute_device_types, &device_type)) {
             // Same rotation period - verify key commitment matches
             assert!(
                 option::is_some(&node.confidential_compute_public_key_commitment) &&
-                !vector::contains(&node.confidential_compute_device_types, &device_type) &&
                 public_key_commitment == *option::borrow(&node.confidential_compute_public_key_commitment)
                 ,
                 EPublicKeyCommitmentMismatch
             );
+            node.confidential_compute_last_updated_epoch = option::some(ctx.epoch());
+            node.confidential_compute_last_rotation_counter = option::some(key_rotation_counter);
+            vector::push_back(&mut node.confidential_compute_device_types, device_type);
         } else {
             // New rotation period - update all fields
             node.confidential_compute_public_key_commitment = option::some(public_key_commitment);
             node.confidential_compute_last_updated_epoch = option::some(ctx.epoch());
             node.confidential_compute_last_rotation_counter = option::some(key_rotation_counter);
+            vector::push_back(&mut node.confidential_compute_device_types, device_type);
         };
     }
 
