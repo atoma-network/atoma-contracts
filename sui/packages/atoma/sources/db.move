@@ -1176,6 +1176,7 @@ module atoma::db {
                 node,
                 confidential_compute_public_key_commitment,
                 key_rotation_counter,
+                device_type,
                 ctx,
             );
         };
@@ -3349,11 +3350,13 @@ module atoma::db {
         node: &mut NodeEntry,
         public_key_commitment: vector<u8>,
         key_rotation_counter: u64,
+        device_type: u16,
         ctx: &TxContext,
     ) {
         node.confidential_compute_public_key_commitment = option::some(public_key_commitment);
         node.confidential_compute_last_updated_epoch = option::some(ctx.epoch());
         node.confidential_compute_last_rotation_counter = option::some(key_rotation_counter);
+        node.confidential_compute_device_types = vector::singleton(device_type);
     }
 
     // Helper function to check if a node meets the task's requirements
