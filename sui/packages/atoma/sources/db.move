@@ -3333,10 +3333,10 @@ module atoma::db {
                         public_key_commitment == *option::borrow(&node.confidential_compute_public_key_commitment),
                         EPublicKeyCommitmentMismatch
                     );
+                    vector::push_back(&mut node.confidential_compute_device_types, device_type);
                 };
                 node.confidential_compute_last_updated_epoch = option::some(ctx.epoch());
                 node.confidential_compute_last_rotation_counter = option::some(key_rotation_counter);
-                vector::push_back(&mut node.confidential_compute_device_types, device_type);
         } else {
             // New rotation period - update all fields
             node.confidential_compute_public_key_commitment = option::some(public_key_commitment);
