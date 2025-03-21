@@ -21,7 +21,7 @@ module atoma::db {
     const BYTES_PER_HASH_COMMITMENT: u64 = 32;
 
     /// Compute units per stack
-    const COMPUTE_UNITS_PER_STACK: u64 = 2_560_000;
+    const COMPUTE_UNITS_PER_STACK: u64 = 1_000_000;
 
     /// One million compute units
     const ONE_MILLION_COMPUTE_UNITS: u64 = 1_000_000;
@@ -159,6 +159,9 @@ module atoma::db {
     const EInvalidDeviceType: u64 = EBase + 48;
     const EInvalidKeyRotationCounter: u64 = EBase + 49;
     const EPublicKeyCommitmentMismatch: u64 = EBase + 50;
+    const ETaskIsNotConfidentialCompute: u64 = EBase + 51;
+    const EInvalidNumClaimedComputeUnitsPerStack: u64 = EBase + 52;
+    const EStackAlreadyClaimed: u64 = EBase + 53;
 
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
@@ -508,6 +511,8 @@ module atoma::db {
         selected_node_id: NodeSmallId,
         /// The associated task SmallId
         task_small_id: TaskSmallId,
+        /// Is claimed
+        is_claimed: bool,
     }
 
     /// Represents a settlement ticket for a completed stack execution in the Atoma network.
@@ -668,6 +673,9 @@ module atoma::db {
 
         /// Public key commitment for the node
         confidential_compute_public_key_commitment: Option<vector<u8>>,
+
+        /// Device types supported by the node
+        confidential_compute_device_types: vector<u16>,
     }
 
     /// Object field of AtomaDb.
@@ -1101,6 +1109,7 @@ module atoma::db {
             confidential_compute_public_key_commitment: option::none(),
             confidential_compute_last_updated_epoch: option::none(),
             confidential_compute_last_rotation_counter: option::none(),
+            confidential_compute_device_types: vector::empty(),
         };
         self.nodes.add(small_id, node_entry);
 
@@ -1163,6 +1172,7 @@ module atoma::db {
                 node,
                 confidential_compute_public_key_commitment,
                 key_rotation_counter,
+                device_type,
                 ctx,
             );
         } else {
@@ -1171,6 +1181,7 @@ module atoma::db {
                 node,
                 confidential_compute_public_key_commitment,
                 key_rotation_counter,
+                device_type,
                 ctx,
             );
         };
@@ -1506,6 +1517,7 @@ module atoma::db {
             num_compute_units,
             selected_node_id,
             price_per_one_million_compute_units,
+            is_claimed: false,
         };
 
         // Assign a new SmallId to the stack and add it to the stacks table
@@ -1810,6 +1822,98 @@ module atoma::db {
         });
     }
 
+    /// Claims and distributes funds for completed computation stacks, handling both node rewards and user refunds.
+    ///
+    /// # Overview
+    /// This function processes multiple computation stacks simultaneously, calculating and distributing:
+    /// - Node fees for completed computations
+    /// - Refunds to users for unused compute units
+    /// - System fees
+    ///
+    /// # Arguments
+    /// * `self` - Mutable reference to the AtomaDb instance
+    /// * `node_badge` - Reference to the NodeBadge of the claiming node
+    /// * `stack_small_ids` - Vector of stack IDs to process
+    /// * `num_claimed_compute_units_per_stack` - Vector of claimed compute units corresponding to each stack
+    /// * `ctx` - Mutable transaction context
+    ///
+    /// # Security Considerations
+    /// 
+    /// ## Access Control
+    /// + ✓ Function requires a valid NodeBadge, ensuring only authorized nodes can claim funds
+    /// + ✓ Each stack's security level is verified to be ConfidentialCompute
+    ///
+    /// ## Input Validation
+    /// + ✓ Validates that the number of claimed compute units matches the number of stacks
+    /// + ✓ Does not verify that claimed compute units don't exceed available compute units
+    /// + ✓ No validation of stack ownership or previous claims
+    ///
+    /// ## Financial Security
+    /// + ✓ Calculates fees using a consistent formula for both node rewards and user refunds
+    /// + ✓ Processes refunds individually per stack before aggregating node fees
+    /// - ⚠️ Potential integer overflow risk in total_node_fee accumulation
+    ///
+    /// ## State Management
+    /// + ✓ Validates that the node is processing a stack that is being processed through confidential compute
+    /// - ⚠️ No explicit check for stack settlement status
+    /// - ⚠️ No explicit dispute period verification
+    /// - ⚠️ No cleanup of processed stacks
+    ///
+    /// # Events
+    /// - No events are currently emitted for fund transfers
+    /// - Consider adding events for transparency and auditability
+    ///
+    /// # Returns
+    /// * No direct return value. Effects are applied through state changes and transfers.
+    public fun claim_funds_for_stacks(
+        self: &mut AtomaDb,
+        node_badge: &NodeBadge,
+        stack_small_ids: vector<u64>,
+        num_claimed_compute_units_per_stack: vector<u64>,
+        ctx: &mut TxContext,
+    ) {
+        assert!(
+            vector::length(&num_claimed_compute_units_per_stack) == vector::length(&stack_small_ids), 
+            EInvalidNumClaimedComputeUnitsPerStack
+        );
+        let mut index = 0;
+        let num_stacks = vector::length(&stack_small_ids);
+        let mut total_node_fee = 0u64;
+        while (index < num_stacks) {
+            let stack_small_id = StackSmallId { inner: *vector::borrow(&stack_small_ids, index) };
+            let stack = self.stacks.borrow(stack_small_id);
+            assert!(!stack.is_claimed, EStackAlreadyClaimed);
+            let stack_owner = stack.owner;
+            let stack_num_compute_units = stack.num_compute_units;
+            let stack_num_claimed_compute_units = *vector::borrow(&num_claimed_compute_units_per_stack, index);
+            assert!(stack_num_claimed_compute_units <= stack_num_compute_units, EInvalidNumClaimedComputeUnitsPerStack);
+            let task_small_id = self.stacks.borrow(stack_small_id).task_small_id;
+            let task = self.tasks.borrow(task_small_id);
+            assert!(task.security_level.inner == ConfidentialCompute, ETaskIsNotConfidentialCompute);
+            // Compute the funds accrued by the node, by processing the current stack
+            let node_fee_amount = 
+                calculate_stack_fee_amount(
+                    SecurityLevel { inner: ConfidentialCompute }, 
+                    stack.price_per_one_million_compute_units, 
+                    stack_num_claimed_compute_units, 
+                    self.get_sampling_consensus_charge_permille()
+                );
+            total_node_fee = total_node_fee + node_fee_amount;
+            let remaining_compute_units = stack_num_compute_units - stack_num_claimed_compute_units;
+            let user_refund_amount = 
+                calculate_stack_fee_amount(
+                    SecurityLevel { inner: ConfidentialCompute }, 
+                    stack.price_per_one_million_compute_units, 
+                    remaining_compute_units, 
+                    self.get_sampling_consensus_charge_permille()
+                );
+            self.transfer_funds(user_refund_amount, stack_owner, ctx);
+            index = index + 1;
+        };
+        self.transfer_funds(total_node_fee, ctx.sender(), ctx);
+        self.withdraw_fees(node_badge, ctx);
+    }
+
     /// Claims funds for settled stacks and distributes rewards to nodes and users.
     ///
     /// This function allows a node to claim funds for multiple settled stacks. It processes each
@@ -1931,7 +2035,7 @@ module atoma::db {
         // Transfer the total node fee to the node
         self.transfer_funds(total_node_fee, ctx.sender(), ctx);
 
-        // We distribute the remaning funds to the node
+        // We distribute the remaining funds to the node
         self.withdraw_fees(node_badge, ctx);
     }
 
@@ -2112,6 +2216,7 @@ module atoma::db {
             confidential_compute_public_key_commitment: _,
             confidential_compute_last_updated_epoch: _,
             confidential_compute_last_rotation_counter: _,
+            confidential_compute_device_types: _,
         } = self.nodes.remove(node_badge.small_id);
 
         let was_disabled_in_epoch = was_disabled_in_epoch.extract();
@@ -2646,7 +2751,7 @@ module atoma::db {
             ctx.epoch() >= stack_settlement_ticket.dispute_settled_at_epoch, 
             EStackDisputePeriodIsNotOver
         );
-        
+        assert!(!stack.is_claimed, EStackAlreadyClaimed);
         (
             task.security_level,
             stack.price_per_one_million_compute_units,
@@ -2802,6 +2907,7 @@ module atoma::db {
                 owner: _,
                 price_per_one_million_compute_units: _,
                 num_compute_units: _,
+                is_claimed: _,
             } = table::remove(&mut self.stacks, stack_small_id);
     }
 
@@ -2951,6 +3057,7 @@ module atoma::db {
         let mut rng = random.new_generator(ctx);
         let nonce = rng.generate_u64();
         self.key_rotation_counter = self.key_rotation_counter + 1;
+        self.nonce = nonce;
         sui::event::emit(NewKeyRotationEvent {
             epoch: ctx.epoch(),
             key_rotation_counter: self.key_rotation_counter,
@@ -3311,23 +3418,30 @@ module atoma::db {
         node: &mut NodeEntry,
         public_key_commitment: vector<u8>,
         key_rotation_counter: u64,
+        device_type: u16,
         ctx: &TxContext
     ) {
         let last_rotation_counter = *option::borrow(&node.confidential_compute_last_rotation_counter);
-        assert!(key_rotation_counter >= last_rotation_counter, ENotEnoughEpochsPassed);
+        assert!(key_rotation_counter >= last_rotation_counter, EInvalidKeyRotationCounter);
 
-        if (key_rotation_counter == last_rotation_counter) {
-            // Same rotation period - verify key commitment matches
-            assert!(
-                option::is_some(&node.confidential_compute_public_key_commitment) && 
-                public_key_commitment == *option::borrow(&node.confidential_compute_public_key_commitment),
-                EPublicKeyCommitmentMismatch
-            );
+        if (key_rotation_counter == last_rotation_counter)
+            {
+                if (!vector::contains(&node.confidential_compute_device_types, &device_type)) {
+                    // Same rotation period - verify key commitment matches
+                    assert!(
+                        option::is_some(&node.confidential_compute_public_key_commitment) &&
+                        public_key_commitment == *option::borrow(&node.confidential_compute_public_key_commitment),
+                        EPublicKeyCommitmentMismatch
+                    );
+                    vector::push_back(&mut node.confidential_compute_device_types, device_type);
+                };
+                node.confidential_compute_last_updated_epoch = option::some(ctx.epoch());
         } else {
             // New rotation period - update all fields
             node.confidential_compute_public_key_commitment = option::some(public_key_commitment);
             node.confidential_compute_last_updated_epoch = option::some(ctx.epoch());
             node.confidential_compute_last_rotation_counter = option::some(key_rotation_counter);
+            node.confidential_compute_device_types = vector::singleton(device_type);
         };
     }
 
@@ -3336,11 +3450,13 @@ module atoma::db {
         node: &mut NodeEntry,
         public_key_commitment: vector<u8>,
         key_rotation_counter: u64,
+        device_type: u16,
         ctx: &TxContext,
     ) {
         node.confidential_compute_public_key_commitment = option::some(public_key_commitment);
         node.confidential_compute_last_updated_epoch = option::some(ctx.epoch());
         node.confidential_compute_last_rotation_counter = option::some(key_rotation_counter);
+        node.confidential_compute_device_types = vector::singleton(device_type);
     }
 
     // Helper function to check if a node meets the task's requirements
@@ -3742,6 +3858,7 @@ module atoma::db {
             confidential_compute_public_key_commitment: option::none(),
             confidential_compute_last_updated_epoch: option::none(),
             confidential_compute_last_rotation_counter: option::none(),
+            confidential_compute_device_types: vector::empty(),
         };
 
         // Add node to DB
@@ -3854,6 +3971,7 @@ module atoma::db {
                 confidential_compute_public_key_commitment: option::none(),
                 confidential_compute_last_updated_epoch: option::none(),
                 confidential_compute_last_rotation_counter: option::none(),
+                confidential_compute_device_types: vector::empty(),
             });
             echelon_nodes.push_back(node_id);
         };
