@@ -374,6 +374,21 @@ module atoma::db {
         original_commitment: vector<u8>,
     }
 
+    /// Event emitted when a stack is claimed and the associated funds are distributed.
+    ///
+    /// This event is triggered when a node successfully claims the funds for a completed stack execution
+    /// and any remaining funds are refunded to the user.
+    public struct ClaimedStackEvent has copy, drop {
+        /// The unique identifier of the stack that was claimed.
+        stack_small_id: StackSmallId,
+        /// The identifier of the node that processed the stack and is claiming the funds.
+        selected_node_id: NodeSmallId,
+        /// The number of compute units actually used and claimed by the node.
+        num_claimed_compute_units: u64,
+        /// The amount of funds refunded to the user for unused compute units.
+        user_refund_amount: u64,
+    }
+
     /// Owned object.
     ///
     /// Represents authority over the package.
@@ -1925,6 +1940,12 @@ module atoma::db {
                 stack.is_claimed = true;
             };
             index = index + 1;
+            sui::event::emit(ClaimedStackEvent {
+                stack_small_id,
+                selected_node_id: node_badge.small_id,
+                num_claimed_compute_units: stack_num_claimed_compute_units,
+                user_refund_amount,
+            });
         };
         self.transfer_funds(total_node_fee, ctx.sender(), ctx);
         self.withdraw_fees(node_badge, ctx);
