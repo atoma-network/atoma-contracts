@@ -162,7 +162,7 @@ module atoma::db {
     const ETaskIsNotConfidentialCompute: u64 = EBase + 51;
     const EInvalidNumClaimedComputeUnitsPerStack: u64 = EBase + 52;
     const EStackAlreadyClaimed: u64 = EBase + 53;
-
+    const ENodeNotSelectedForClaim: u64 = EBase + 54;
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
         /// ID of the AtomaDb object
@@ -1865,7 +1865,7 @@ module atoma::db {
     ///
     /// # Returns
     /// * No direct return value. Effects are applied through state changes and transfers.
-    public fun claim_funds_for_stacks(
+    public entry fun claim_funds_for_stacks(
         self: &mut AtomaDb,
         node_badge: &NodeBadge,
         stack_small_ids: vector<u64>,
@@ -1879,35 +1879,51 @@ module atoma::db {
         let mut index = 0;
         let num_stacks = vector::length(&stack_small_ids);
         let mut total_node_fee = 0u64;
+        let sampling_consensus_charge_permille = self.get_sampling_consensus_charge_permille();
         while (index < num_stacks) {
             let stack_small_id = StackSmallId { inner: *vector::borrow(&stack_small_ids, index) };
-            let stack = self.stacks.borrow(stack_small_id);
-            assert!(!stack.is_claimed, EStackAlreadyClaimed);
-            let stack_owner = stack.owner;
-            let stack_num_compute_units = stack.num_compute_units;
+            let mut stack_owner;
+            let mut stack_num_compute_units;
+            let mut price_per_one_million_compute_units;
+            let mut task_small_id;
+            {
+                let stack = self.stacks.borrow_mut(stack_small_id);
+                assert!(stack.selected_node_id == node_badge.small_id, ENodeNotSelectedForClaim);
+                assert!(!stack.is_claimed, EStackAlreadyClaimed);
+                stack_owner = stack.owner;
+                stack_num_compute_units = stack.num_compute_units;
+                price_per_one_million_compute_units = stack.price_per_one_million_compute_units;
+                task_small_id = stack.task_small_id;
+            };
             let stack_num_claimed_compute_units = *vector::borrow(&num_claimed_compute_units_per_stack, index);
             assert!(stack_num_claimed_compute_units <= stack_num_compute_units, EInvalidNumClaimedComputeUnitsPerStack);
-            let task_small_id = self.stacks.borrow(stack_small_id).task_small_id;
-            let task = self.tasks.borrow(task_small_id);
-            assert!(task.security_level.inner == ConfidentialCompute, ETaskIsNotConfidentialCompute);
+            {
+                let task = self.tasks.borrow(task_small_id);
+                assert!(task.security_level.inner == ConfidentialCompute, ETaskIsNotConfidentialCompute);
+            };
             // Compute the funds accrued by the node, by processing the current stack
             let node_fee_amount = 
                 calculate_stack_fee_amount(
                     SecurityLevel { inner: ConfidentialCompute }, 
-                    stack.price_per_one_million_compute_units, 
-                    stack_num_claimed_compute_units, 
-                    self.get_sampling_consensus_charge_permille()
+                        price_per_one_million_compute_units, 
+                        stack_num_claimed_compute_units, 
+                    sampling_consensus_charge_permille
                 );
+            // Update the total node fee
             total_node_fee = total_node_fee + node_fee_amount;
             let remaining_compute_units = stack_num_compute_units - stack_num_claimed_compute_units;
             let user_refund_amount = 
                 calculate_stack_fee_amount(
                     SecurityLevel { inner: ConfidentialCompute }, 
-                    stack.price_per_one_million_compute_units, 
+                    price_per_one_million_compute_units, 
                     remaining_compute_units, 
-                    self.get_sampling_consensus_charge_permille()
+                    sampling_consensus_charge_permille
                 );
             self.transfer_funds(user_refund_amount, stack_owner, ctx);
+            {
+                let stack = self.stacks.borrow_mut(stack_small_id);
+                stack.is_claimed = true;
+            };
             index = index + 1;
         };
         self.transfer_funds(total_node_fee, ctx.sender(), ctx);
