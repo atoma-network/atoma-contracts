@@ -21,7 +21,7 @@ module atoma::db {
     const BYTES_PER_HASH_COMMITMENT: u64 = 32;
 
     /// Compute units per stack
-    const COMPUTE_UNITS_PER_STACK: u64 = 2_560_000;
+    const COMPUTE_UNITS_PER_STACK: u64 = 1_000_000;
 
     /// One million compute units
     const ONE_MILLION_COMPUTE_UNITS: u64 = 1_000_000;
@@ -159,7 +159,10 @@ module atoma::db {
     const EInvalidDeviceType: u64 = EBase + 48;
     const EInvalidKeyRotationCounter: u64 = EBase + 49;
     const EPublicKeyCommitmentMismatch: u64 = EBase + 50;
-
+    const ETaskIsNotConfidentialCompute: u64 = EBase + 51;
+    const EInvalidNumClaimedComputeUnitsPerStack: u64 = EBase + 52;
+    const EStackAlreadyClaimed: u64 = EBase + 53;
+    const ENodeNotSelectedForClaim: u64 = EBase + 54;
     /// Emitted once upon publishing.
     public struct PublishedEvent has copy, drop {
         /// ID of the AtomaDb object
@@ -508,6 +511,8 @@ module atoma::db {
         selected_node_id: NodeSmallId,
         /// The associated task SmallId
         task_small_id: TaskSmallId,
+        /// Is claimed
+        is_claimed: bool,
     }
 
     /// Represents a settlement ticket for a completed stack execution in the Atoma network.
@@ -1512,6 +1517,7 @@ module atoma::db {
             num_compute_units,
             selected_node_id,
             price_per_one_million_compute_units,
+            is_claimed: false,
         };
 
         // Assign a new SmallId to the stack and add it to the stacks table
@@ -1816,6 +1822,114 @@ module atoma::db {
         });
     }
 
+    /// Claims and distributes funds for completed computation stacks, handling both node rewards and user refunds.
+    ///
+    /// # Overview
+    /// This function processes multiple computation stacks simultaneously, calculating and distributing:
+    /// - Node fees for completed computations
+    /// - Refunds to users for unused compute units
+    /// - System fees
+    ///
+    /// # Arguments
+    /// * `self` - Mutable reference to the AtomaDb instance
+    /// * `node_badge` - Reference to the NodeBadge of the claiming node
+    /// * `stack_small_ids` - Vector of stack IDs to process
+    /// * `num_claimed_compute_units_per_stack` - Vector of claimed compute units corresponding to each stack
+    /// * `ctx` - Mutable transaction context
+    ///
+    /// # Security Considerations
+    /// 
+    /// ## Access Control
+    /// + ✓ Function requires a valid NodeBadge, ensuring only authorized nodes can claim funds
+    /// + ✓ Each stack's security level is verified to be ConfidentialCompute
+    ///
+    /// ## Input Validation
+    /// + ✓ Validates that the number of claimed compute units matches the number of stacks
+    /// + ✓ Does not verify that claimed compute units don't exceed available compute units
+    /// + ✓ No validation of stack ownership or previous claims
+    ///
+    /// ## Financial Security
+    /// + ✓ Calculates fees using a consistent formula for both node rewards and user refunds
+    /// + ✓ Processes refunds individually per stack before aggregating node fees
+    /// - ⚠️ Potential integer overflow risk in total_node_fee accumulation
+    ///
+    /// ## State Management
+    /// + ✓ Validates that the node is processing a stack that is being processed through confidential compute
+    /// - ⚠️ No explicit check for stack settlement status
+    /// - ⚠️ No explicit dispute period verification
+    /// - ⚠️ No cleanup of processed stacks
+    ///
+    /// # Events
+    /// - No events are currently emitted for fund transfers
+    /// - Consider adding events for transparency and auditability
+    ///
+    /// # Returns
+    /// * No direct return value. Effects are applied through state changes and transfers.
+    public entry fun claim_funds_for_stacks(
+        self: &mut AtomaDb,
+        node_badge: &NodeBadge,
+        stack_small_ids: vector<u64>,
+        num_compute_units_per_stack_to_claim: vector<u64>,
+        ctx: &mut TxContext,
+    ) {
+        assert!(
+            vector::length(&num_compute_units_per_stack_to_claim) == vector::length(&stack_small_ids), 
+            EInvalidNumClaimedComputeUnitsPerStack
+        );
+        let mut index = 0;
+        let num_stacks = vector::length(&stack_small_ids);
+        let mut total_node_fee = 0u64;
+        let sampling_consensus_charge_permille = self.get_sampling_consensus_charge_permille();
+        while (index < num_stacks) {
+            let stack_small_id = StackSmallId { inner: *vector::borrow(&stack_small_ids, index) };
+            let mut stack_owner;
+            let mut stack_num_compute_units;
+            let mut price_per_one_million_compute_units;
+            let mut task_small_id;
+            {
+                let stack = self.stacks.borrow_mut(stack_small_id);
+                assert!(stack.selected_node_id == node_badge.small_id, ENodeNotSelectedForClaim);
+                assert!(!stack.is_claimed, EStackAlreadyClaimed);
+                stack_owner = stack.owner;
+                stack_num_compute_units = stack.num_compute_units;
+                price_per_one_million_compute_units = stack.price_per_one_million_compute_units;
+                task_small_id = stack.task_small_id;
+            };
+            let stack_num_claimed_compute_units = *vector::borrow(&num_compute_units_per_stack_to_claim, index);
+            assert!(stack_num_claimed_compute_units <= stack_num_compute_units, EInvalidNumClaimedComputeUnitsPerStack);
+            {
+                let task = self.tasks.borrow(task_small_id);
+                assert!(task.security_level.inner == ConfidentialCompute, ETaskIsNotConfidentialCompute);
+            };
+            // Compute the funds accrued by the node, by processing the current stack
+            let node_fee_amount = 
+                calculate_stack_fee_amount(
+                    SecurityLevel { inner: ConfidentialCompute }, 
+                        price_per_one_million_compute_units, 
+                        stack_num_claimed_compute_units, 
+                    sampling_consensus_charge_permille
+                );
+            // Update the total node fee
+            total_node_fee = total_node_fee + node_fee_amount;
+            let remaining_compute_units = stack_num_compute_units - stack_num_claimed_compute_units;
+            let user_refund_amount = 
+                calculate_stack_fee_amount(
+                    SecurityLevel { inner: ConfidentialCompute }, 
+                    price_per_one_million_compute_units, 
+                    remaining_compute_units, 
+                    sampling_consensus_charge_permille
+                );
+            self.transfer_funds(user_refund_amount, stack_owner, ctx);
+            {
+                let stack = self.stacks.borrow_mut(stack_small_id);
+                stack.is_claimed = true;
+            };
+            index = index + 1;
+        };
+        self.transfer_funds(total_node_fee, ctx.sender(), ctx);
+        self.withdraw_fees(node_badge, ctx);
+    }
+
     /// Claims funds for settled stacks and distributes rewards to nodes and users.
     ///
     /// This function allows a node to claim funds for multiple settled stacks. It processes each
@@ -1937,7 +2051,7 @@ module atoma::db {
         // Transfer the total node fee to the node
         self.transfer_funds(total_node_fee, ctx.sender(), ctx);
 
-        // We distribute the remaning funds to the node
+        // We distribute the remaining funds to the node
         self.withdraw_fees(node_badge, ctx);
     }
 
@@ -2653,7 +2767,7 @@ module atoma::db {
             ctx.epoch() >= stack_settlement_ticket.dispute_settled_at_epoch, 
             EStackDisputePeriodIsNotOver
         );
-        
+        assert!(!stack.is_claimed, EStackAlreadyClaimed);
         (
             task.security_level,
             stack.price_per_one_million_compute_units,
@@ -2809,6 +2923,7 @@ module atoma::db {
                 owner: _,
                 price_per_one_million_compute_units: _,
                 num_compute_units: _,
+                is_claimed: _,
             } = table::remove(&mut self.stacks, stack_small_id);
     }
 
@@ -2958,6 +3073,7 @@ module atoma::db {
         let mut rng = random.new_generator(ctx);
         let nonce = rng.generate_u64();
         self.key_rotation_counter = self.key_rotation_counter + 1;
+        self.nonce = nonce;
         sui::event::emit(NewKeyRotationEvent {
             epoch: ctx.epoch(),
             key_rotation_counter: self.key_rotation_counter,

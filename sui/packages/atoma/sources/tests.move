@@ -778,7 +778,7 @@ module atoma::db_tests {
             // Verify subscription
             assert!(db::is_node_subscribed_to_task(&db, &node_badge, 1), 0);
             assert!(db::get_node_subscription_price(&db, 1, db::get_node_badge_small_id(&node_badge)) == 1000, 1);
-            assert!(db::get_node_subscription_max_units(&db, 1, db::get_node_badge_small_id(&node_badge)) == 2_560_000, 2);
+            assert!(db::get_node_subscription_max_units(&db, 1, db::get_node_badge_small_id(&node_badge)) == 1_000_000, 2);
             
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);  
@@ -1106,7 +1106,7 @@ module atoma::db_tests {
             
             // Verify the update
             assert!(db::get_node_subscription_price(&db, 1, db::get_node_badge_small_id(&node_badge)) == 2000, 0);
-            assert!(db::get_node_subscription_max_units(&db, 1, db::get_node_badge_small_id(&node_badge)) == 2_560_000, 1);
+            assert!(db::get_node_subscription_max_units(&db, 1, db::get_node_badge_small_id(&node_badge)) == 1_000_000, 1);
             
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
@@ -1624,7 +1624,7 @@ module atoma::db_tests {
             // Verify new subscription parameters
             assert!(db::is_node_subscribed_to_task(&db, &node_badge, 1), 0);
             assert!(db::get_node_subscription_price(&db, 1, db::get_node_badge_small_id(&node_badge)) == 2000, 1);
-            assert!(db::get_node_subscription_max_units(&db, 1, db::get_node_badge_small_id(&node_badge)) == 2_560_000, 2);
+            assert!(db::get_node_subscription_max_units(&db, 1, db::get_node_badge_small_id(&node_badge)) == 1_000_000, 2);
             
             test::return_shared(db);
             test::return_to_sender(&scenario, node_badge);
