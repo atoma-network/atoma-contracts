@@ -1869,11 +1869,11 @@ module atoma::db {
         self: &mut AtomaDb,
         node_badge: &NodeBadge,
         stack_small_ids: vector<u64>,
-        num_claimed_compute_units_per_stack: vector<u64>,
+        num_compute_units_per_stack_to_claim: vector<u64>,
         ctx: &mut TxContext,
     ) {
         assert!(
-            vector::length(&num_claimed_compute_units_per_stack) == vector::length(&stack_small_ids), 
+            vector::length(&num_compute_units_per_stack_to_claim) == vector::length(&stack_small_ids), 
             EInvalidNumClaimedComputeUnitsPerStack
         );
         let mut index = 0;
@@ -1895,7 +1895,7 @@ module atoma::db {
                 price_per_one_million_compute_units = stack.price_per_one_million_compute_units;
                 task_small_id = stack.task_small_id;
             };
-            let stack_num_claimed_compute_units = *vector::borrow(&num_claimed_compute_units_per_stack, index);
+            let stack_num_claimed_compute_units = *vector::borrow(&num_compute_units_per_stack_to_claim, index);
             assert!(stack_num_claimed_compute_units <= stack_num_compute_units, EInvalidNumClaimedComputeUnitsPerStack);
             {
                 let task = self.tasks.borrow(task_small_id);
