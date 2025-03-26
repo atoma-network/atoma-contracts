@@ -2601,7 +2601,7 @@ module atoma::db {
         rng: &mut sui::random::RandomGenerator,
     ): NodeSmallId {
         let task = self.tasks.borrow_mut(task_small_id);
-        let nodes_count = table_vec::length(&task.subscribed_nodes_small_ids);
+        let mut nodes_count = table_vec::length(&task.subscribed_nodes_small_ids);
         if (nodes_count == 0) {
             // no nodes subscribed to this task, should not happen
             abort ENoNodesSubscribedToTask
@@ -2616,6 +2616,7 @@ module atoma::db {
                 // after the node was unsubscribed from the task, so we can remove it now from the subscribed_nodes_small_ids
                 // table_vec as well, and continue with the next node
                 table_vec::swap_remove(&mut task.subscribed_nodes_small_ids, i);
+                nodes_count = nodes_count - 1;
                 continue
             };
             let node_price_data = task.subscribed_nodes.borrow(node_id);
