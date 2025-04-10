@@ -2832,9 +2832,9 @@ module atoma::db {
         sampling_consensus_charge_permille: u64,
     ): u64 {
         if (security_level.inner == SamplingConsensus) {
-            (num_claimed_compute_units * stack_price * sampling_consensus_charge_permille) / 1000
+            (num_claimed_compute_units * stack_price * sampling_consensus_charge_permille) / (ONE_MILLION_COMPUTE_UNITS * 1000)
         } else {
-            num_claimed_compute_units * stack_price
+            num_claimed_compute_units * stack_price / ONE_MILLION_COMPUTE_UNITS
         }
     }
 
